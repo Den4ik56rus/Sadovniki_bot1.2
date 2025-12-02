@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Collaboration Rules
+
+1. Execute the task immediately. No intros, no summaries, no extra comments.
+2. Do not ask clarifying questions unless the task is technically impossible without them.
+3. Do not propose plans. Go straight to implementation.
+4. Locate all necessary files yourself. Do not ask me to provide files unless they truly cannot be found.
+5. When modifying a file, always return the full updated file.
+6. Keep explanations minimal (3–6 short bullet points). No line-by-line analysis unless I explicitly ask.
+7. Do not create new files or restructure the project unless I explicitly instruct you to.
+8. Do not suggest additional improvements. Perform only the task I describe.
+
+
 ## Project Overview
 
 This is a Telegram bot for gardening consultations (Sadovniki-bot) specializing in berry crops (strawberries, raspberries, currants, gooseberries, etc.). The bot uses OpenAI's GPT models for consultations and implements a RAG (Retrieval-Augmented Generation) system with PostgreSQL + pgvector for knowledge base search.

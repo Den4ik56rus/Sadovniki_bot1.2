@@ -113,7 +113,8 @@ async def handle_text(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    await message.chat.do("typing")
+    # Показываем статус "печатает" и отправляем сообщение ожидания
+    status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
     # Вызов LLM с защитой
     try:
@@ -129,6 +130,12 @@ async def handle_text(message: Message) -> None:
             "Сейчас не получается обработать запрос через модель. "
             "Попробуйте ещё раз чуть позже."
         )
+    finally:
+        # Удаляем сообщение ожидания
+        try:
+            await status_message.delete()
+        except Exception:
+            pass
 
     # Ответ пользователю
     await message.answer(reply_text)

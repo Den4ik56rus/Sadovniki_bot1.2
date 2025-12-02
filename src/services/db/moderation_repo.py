@@ -200,3 +200,22 @@ async def moderation_count_pending() -> int:
             """
         )
         return int(row["cnt"]) if row and row["cnt"] is not None else 0
+
+
+async def moderation_update_answer(item_id: int, new_answer: str) -> None:
+    """
+    Обновляет ответ в записи moderation_queue.
+
+    Используется при редактировании ответа через LLM модератором.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE moderation_queue
+            SET answer = $2, updated_at = NOW()
+            WHERE id = $1;
+            """,
+            item_id,
+            new_answer,
+        )

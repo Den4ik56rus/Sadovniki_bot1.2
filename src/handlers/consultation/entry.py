@@ -22,19 +22,13 @@ from aiogram.types import Message
 from src.services.db.users_repo import get_or_create_user
 from src.services.db.topics_repo import get_or_create_open_topic
 from src.services.db.messages_repo import log_message
-from src.services.db.moderation_repo import (
-    moderation_add,
-    moderation_set_category,
-)
+from src.services.db.moderation_repo import moderation_add
 
 # LLM
 from src.services.llm.consultation_llm import ask_consultation_llm
 
 # Утилита для session_id
 from src.handlers.common import build_session_id_from_message
-
-# Админские структуры
-from src.handlers.admin import ADMIN_IDS, WAITING_CATEGORY
 
 
 router = Router()
@@ -44,37 +38,12 @@ router = Router()
 async def handle_text(message: Message) -> None:
     """
     Обработка всех текстовых сообщений (кроме команд).
+    Консультационный сценарий для всех пользователей.
     """
 
     print("DEBUG: handle_text получил сообщение:", message.text)
 
     user = message.from_user
-
-    # ------------------------------------------------------
-    # 1. Ввод категории админом
-    # ------------------------------------------------------
-    if user is not None and user.id in ADMIN_IDS and user.id in WAITING_CATEGORY:
-        item_id = WAITING_CATEGORY.pop(user.id)
-        category = (message.text or "").strip()
-
-        if not category:
-            await message.answer(
-                "Категория не может быть пустой. "
-                "Нажми кнопку ещё раз и попробуй снова."
-            )
-            return
-
-        await moderation_set_category(item_id=item_id, category=category)
-
-        await message.answer(
-            f"Категория <b>{category}</b> установлена для кандидата #{item_id}.\n"
-            f"Теперь можно снова открыть /kb_pending и добавить его в базу."
-        )
-        return
-
-    # ------------------------------------------------------
-    # 2. Обычная консультация
-    # ------------------------------------------------------
     session_id = build_session_id_from_message(message)
 
     if user is not None:

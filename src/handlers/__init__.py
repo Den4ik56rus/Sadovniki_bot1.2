@@ -25,14 +25,18 @@ from src.handlers.admin import moderation as moderation_handlers
 def setup_routers(dp: Dispatcher) -> None:
     """
     Подключает все роутеры к переданному Dispatcher.
+
+    ВАЖНО: Порядок регистрации имеет значение!
+    Админские хендлеры должны быть ПЕРЕД консультационными,
+    иначе общий обработчик F.text перехватит сообщения админа.
     """
 
     # 1. Главное меню
     dp.include_router(menu_handlers.router)
 
-    # 2. Консультации (общий роутер, внутри — entry + питание и т.д.)
+    # 2. Админка (модерация /kb_pending и пр.) — ПЕРЕД консультациями!
+    dp.include_router(moderation_handlers.router)
+
+    # 3. Консультации (общий роутер, внутри — entry + питание и т.д.)
     consultation_router = get_consultation_router()
     dp.include_router(consultation_router)
-
-    # 3. Админка (модерация /kb_pending и пр.)
-    dp.include_router(moderation_handlers.router)

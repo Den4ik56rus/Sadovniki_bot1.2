@@ -130,12 +130,16 @@ async def kb_search(
     return rows
 
 
-async def kb_get_distinct_categories(limit: int = 50) -> List[str]:
+async def kb_get_distinct_categories(limit: int = 50, only_valid: bool = True) -> List[str]:
     """
     Возвращает список уникальных ЗНАЧЕНИЙ category из базы знаний (knowledge_base).
 
-    Сейчас category используется как ТИП консультации:
-        'питание растений', 'посадка и уход', 'защита растений' и т.п.
+    Сейчас category используется как КУЛЬТУРА:
+        'клубника общая', 'клубника летняя', 'малина общая' и т.п.
+
+    Args:
+        limit: Максимум записей
+        only_valid: Если True, вернёт только категории из валидного списка
 
     Внимание: служебные bootstrap-записи с is_active=FALSE всё равно попадут сюда,
     если у них заполнено поле category.
@@ -154,7 +158,27 @@ async def kb_get_distinct_categories(limit: int = 50) -> List[str]:
             limit,
         )
 
-    return [r["category"] for r in rows]
+    categories = [r["category"] for r in rows]
+
+    # Если требуется - отфильтровать только валидные категории культур
+    if only_valid:
+        valid_set = {
+            "клубника общая",
+            "клубника летняя",
+            "клубника ремонтантная",
+            "малина общая",
+            "малина летняя",
+            "малина ремонтантная",
+            "смородина",
+            "голубика",
+            "жимолость",
+            "крыжовник",
+            "ежевика",
+            "общая информация",
+        }
+        categories = [c for c in categories if c in valid_set]
+
+    return categories
 
 
 async def kb_get_distinct_subcategories(limit: int = 200) -> List[str]:

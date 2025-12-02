@@ -49,3 +49,13 @@ async def get_or_create_user(
 
         # Возвращаем id только что созданной записи
         return row["id"]
+
+
+async def count_all_users() -> int:
+    """
+    Возвращает общее количество пользователей в БД.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow("SELECT COUNT(*) AS cnt FROM users;")
+        return int(row["cnt"]) if row and row["cnt"] is not None else 0

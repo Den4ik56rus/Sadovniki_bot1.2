@@ -26,7 +26,28 @@ def build_kb_context_snippet(snippets: List[Dict[str, Any]]) -> str:
     return "\n\n".join(lines)
 
 
-def build_consultation_system_prompt(
+async def build_terminology_section() -> str:
+    """
+    Формирует секцию со словарём терминологии из БД.
+    """
+    from src.services.db.terminology_repo import get_all_terminology
+
+    try:
+        terms = await get_all_terminology()
+        if not terms:
+            return ""
+
+        lines = ["Словарь терминов (используй эти формулировки):"]
+        for term in terms:
+            lines.append(f"- Вместо '{term['term']}' используй '{term['preferred_phrase']}'")
+
+        return "\n".join(lines) + "\n"
+    except Exception as e:
+        print(f"[build_terminology_section] Error: {e}")
+        return ""
+
+
+async def build_consultation_system_prompt(
     culture: str,                     # Культура ('strawberry', 'raspberry', 'bush' и т.п.)
     kb_snippets: List[Dict[str, Any]], # Список фрагментов базы знаний
     consultation_category: str = ""    # Тип консультации (например, "питание растений")
@@ -43,6 +64,9 @@ def build_consultation_system_prompt(
     """
     # Строим блок с фрагментами знаний
     kb_text_block = build_kb_context_snippet(kb_snippets)
+
+    # Загружаем словарь терминов
+    terminology_section = await build_terminology_section()
 
     # Если блок непустой — оборачиваем его заголовком, иначе делаем пустую строку
     if kb_text_block:
@@ -110,6 +134,8 @@ def build_consultation_system_prompt(
 {variety_clarification_rule}
 
 {kb_section}
+
+{terminology_section}
 
 Помни:
 - Отвечай простым, понятным языком.

@@ -8,18 +8,22 @@ from aiogram.filters import CommandStart       # CommandStart — срабаты
 from aiogram.types import Message, CallbackQuery  # Message — входящее сообщение, CallbackQuery — нажатие инлайн-кнопки
 
 # Импортируем функции работы с БД: пользователи, темы, логи сообщений
-from src.services.db.users_repo import get_or_create_user            # Создание/поиск пользователя по telegram_user_id
+from src.services.db.users_repo import get_or_create_user, count_all_users  # Создание/поиск пользователя по telegram_user_id
 from src.services.db.topics_repo import get_or_create_open_topic     # Создание/поиск "открытой" темы (диалога)
 from src.services.db.messages_repo import log_message                # Логирование сообщений в таблицу messages
+from src.services.db.moderation_repo import moderation_count_pending # Подсчёт вопросов на модерации
 
 # Импортируем глобальное состояние консультации и утилиту для сборки session_id
 from src.handlers.common import CONSULTATION_STATE, build_session_id_from_message
 
 # Импортируем функцию, создающую клавиатуру главного меню
-from src.keyboards.main.main_menu import get_main_keyboard
+from src.keyboards.main.main_menu import get_main_keyboard, get_admin_start_keyboard
 
 # Импортируем инлайн-меню консультаций (6 тем + кнопка "Закрыть")
 from src.keyboards.consultation.common import CONSULTATION_MENU_INLINE_KB
+
+# Импортируем список админов
+from src.handlers.admin import ADMIN_IDS
 
 # Создаём роутер для этого модуля
 router = Router()
@@ -33,7 +37,7 @@ async def cmd_start(message: Message) -> None:
     1) Регистрирует (или находит) пользователя в БД.
     2) Находит или создаёт открытую тему (topic).
     3) Логирует /start и приветственный текст.
-    4) Показывает клавиатуру главного меню.
+    4) Показывает клавиатуру главного меню (для админа - специальную).
     5) Сбрасывает состояние консультации для этого пользователя.
     """
     session_id = build_session_id_from_message(message)
@@ -72,15 +76,36 @@ async def cmd_start(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    welcome_text = (
-        "Привет! Я бот-ассистент садовода.\n\n"
-        "Нажмите кнопку «🧑‍🌾 Консультация», чтобы получить помощь по посадке, уходу и подбору ягодных культур."
-    )
+    # Проверяем, является ли пользователь администратором
+    is_admin = user is not None and telegram_user_id in ADMIN_IDS
 
-    await message.answer(
-        welcome_text,
-        reply_markup=get_main_keyboard(),
-    )
+    if is_admin:
+        # Для администратора показываем статистику
+        total_users = await count_all_users()
+        pending_questions = await moderation_count_pending()
+
+        welcome_text = (
+            f"<b>Администратор</b>\n\n"
+            f"👥 Пользователей: <b>{total_users}</b>\n"
+            f"📋 Вопросов на модерацию: <b>{pending_questions}</b>\n\n"
+            f"Выберите режим работы:"
+        )
+
+        await message.answer(
+            welcome_text,
+            reply_markup=get_admin_start_keyboard(),
+        )
+    else:
+        # Для обычного пользователя стандартное приветствие
+        welcome_text = (
+            "Привет! Я бот-ассистент садовода.\n\n"
+            "Нажмите кнопку «🧑‍🌾 Консультация», чтобы получить помощь по посадке, уходу и подбору ягодных культур."
+        )
+
+        await message.answer(
+            welcome_text,
+            reply_markup=get_main_keyboard(),
+        )
 
     await log_message(
         user_id=user_id,
@@ -92,6 +117,45 @@ async def cmd_start(message: Message) -> None:
 
     if user is not None and user.id in CONSULTATION_STATE:
         CONSULTATION_STATE.pop(user.id, None)
+
+
+@router.message(F.text == "👤 Режим пользователя")
+async def handle_user_mode(message: Message) -> None:
+    """
+    Переключение администратора в режим обычного пользователя.
+    """
+    user = message.from_user
+    if user is None or user.id not in ADMIN_IDS:
+        return
+
+    welcome_text = (
+        "Привет! Я бот-ассистент садовода.\n\n"
+        "Нажмите кнопку «🧑‍🌾 Консультация», чтобы получить помощь по посадке, уходу и подбору ягодных культур."
+    )
+
+    await message.answer(
+        welcome_text,
+        reply_markup=get_main_keyboard(),
+    )
+
+
+@router.message(F.text == "🛠 Режим администратора")
+async def handle_admin_mode(message: Message) -> None:
+    """
+    Переключение в режим администратора.
+    """
+    user = message.from_user
+    if user is None or user.id not in ADMIN_IDS:
+        await message.answer("Эта функция доступна только администраторам.")
+        return
+
+    # Импортируем клавиатуру админа
+    from src.keyboards.admin.menu import admin_main_menu_kb
+
+    await message.answer(
+        "Меню администратора:",
+        reply_markup=admin_main_menu_kb()
+    )
 
 
 @router.message(F.text == "🧑‍🌾 Консультация")

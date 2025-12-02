@@ -68,6 +68,12 @@ class Settings(BaseSettings):
         description="Имя модели OpenAI для эмбеддингов",
     )
 
+    # --- Администраторы ---
+    admin_ids: str = Field(
+        "",
+        description="Telegram user IDs администраторов (через запятую)",
+    )
+
     # Общая конфигурация pydantic-settings
     model_config = SettingsConfigDict(
         env_file=".env",             # брать переменные ещё и из файла .env в корне проекта

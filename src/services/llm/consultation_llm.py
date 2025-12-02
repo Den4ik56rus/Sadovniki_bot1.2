@@ -189,7 +189,7 @@ async def ask_consultation_llm(
     messages: List[Dict[str, str]] = []
 
     # Используем новый улучшенный системный промпт с обязательными уточняющими вопросами
-    system_prompt = build_consultation_system_prompt(
+    system_prompt = await build_consultation_system_prompt(
         culture=culture or "не определено",
         kb_snippets=kb_snippets,
         consultation_category=consultation_category or "",

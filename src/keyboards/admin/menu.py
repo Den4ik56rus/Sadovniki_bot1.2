@@ -18,6 +18,12 @@ def admin_main_menu_kb() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="📚 Словарь терминов",
+                    callback_data="admin_terminology",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     text="❌ Закрыть меню",
                     callback_data="admin_close_menu",
                 )

@@ -19,7 +19,7 @@ from src.services.db.moderation_repo import (
 )
 
 from src.services.db.kb_repo import (
-    kb_get_distinct_categories,
+    kb_get_distinct_subcategories,
     kb_insert,
 )
 
@@ -33,14 +33,28 @@ from src.keyboards.admin.menu import (
     admin_category_menu_kb,
     admin_category_suggestions_kb,
 )
+from src.config import settings
 
 
 router = Router()
 
-# Только эти user_id считаются администраторами
-ADMIN_IDS = {
-    833371989,
-}
+# Загружаем ADMIN_IDS из переменной окружения
+def _load_admin_ids() -> set[int]:
+    """
+    Парсит ADMIN_IDS из строки в settings.admin_ids.
+    Формат: "123456789,987654321" -> {123456789, 987654321}
+    """
+    if not settings.admin_ids:
+        return set()
+
+    ids = set()
+    for id_str in settings.admin_ids.split(","):
+        id_str = id_str.strip()
+        if id_str.isdigit():
+            ids.add(int(id_str))
+    return ids
+
+ADMIN_IDS = _load_admin_ids()
 
 # Маппинг человекочитаемых типов консультаций → коды, которые храним в БД.
 # ЛЕВАЯ часть — то, что админ пишет / видит,
@@ -246,7 +260,7 @@ async def cb_admin_back(callback: CallbackQuery):
         await callback.answer("Доступ запрещён.", show_alert=True)
         return
 
-    await cmd_admin(callback.message)
+    await callback.message.answer("Меню администратора:", reply_markup=admin_main_menu_kb())
     await callback.answer()
 
 
@@ -548,7 +562,7 @@ async def cb_kb_choose_category(callback: CallbackQuery):
         await callback.answer("Кандидат не найден.", show_alert=True)
         return
 
-    categories = await kb_get_distinct_categories(limit=50)
+    categories = await kb_get_distinct_subcategories(limit=50)
     if not categories:
         await callback.answer("Пока нет существующих категорий. Создай новую.", show_alert=True)
         return

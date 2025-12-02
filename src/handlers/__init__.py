@@ -20,6 +20,7 @@ from src.handlers.consultation.router import get_consultation_router
 
 # Админка (модерация базы знаний)
 from src.handlers.admin import moderation as moderation_handlers
+from src.handlers.admin import terminology as terminology_handlers
 
 
 def setup_routers(dp: Dispatcher) -> None:
@@ -36,6 +37,7 @@ def setup_routers(dp: Dispatcher) -> None:
 
     # 2. Админка (модерация /kb_pending и пр.) — ПЕРЕД консультациями!
     dp.include_router(moderation_handlers.router)
+    dp.include_router(terminology_handlers.router)
 
     # 3. Консультации (общий роутер, внутри — entry + питание и т.д.)
     consultation_router = get_consultation_router()

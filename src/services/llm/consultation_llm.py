@@ -17,7 +17,7 @@
 from typing import Optional, List, Dict
 
 from src.services.db.messages_repo import get_last_messages      # История сообщений
-from src.services.rag.kb_retriever import retrieve_kb_snippets   # RAG-поиск по KB
+from src.services.rag.unified_retriever import retrieve_unified_snippets  # Объединенный RAG-поиск (Q&A + документы)
 from src.services.llm.embeddings_llm import get_text_embedding   # Эмбеддинги текста
 from src.services.llm.core_llm import create_chat_completion     # Вызов ChatGPT
 from src.prompts.consultation_prompts import build_consultation_system_prompt  # Системный промпт
@@ -168,18 +168,54 @@ async def ask_consultation_llm(
     kb_snippets: List[Dict] = []
 
     if rag_category is not None:
+        print(f"\n{'='*60}")
+        print(f"[RAG] Начинаем поиск в базе знаний")
+        print(f"[RAG] Категория: {rag_category}")
+        print(f"[RAG] Подкатегория (культура): {rag_subcategory or 'не указана'}")
+        print(f"[RAG] Запрос пользователя: {text[:100]}...")
+
         try:
             query_embedding: List[float] = await get_text_embedding(
                 recent_for_category or text
             )
+            print(f"[RAG] Получен эмбеддинг запроса (размер: {len(query_embedding)})")
 
-            kb_snippets = await retrieve_kb_snippets(
+            kb_snippets = await retrieve_unified_snippets(
                 category=rag_category,
                 subcategory=rag_subcategory,
                 query_embedding=query_embedding,
-                limit=3,
-                distance_threshold=0.4,
+                qa_limit=20,          # Уровень 1: Q&A (увеличено в 10 раз)
+                level2_limit=20,      # Уровень 2: Специфичные документы (увеличено в 10 раз)
+                level3_limit=20,      # Уровень 3: Общие документы (увеличено в 10 раз)
+                qa_distance_threshold=0.6,    # Увеличен порог для Q&A
+                doc_distance_threshold=0.75,  # Увеличен порог для документов
             )
+
+            print(f"[RAG] Найдено фрагментов: {len(kb_snippets)}")
+
+            if kb_snippets:
+                print(f"[RAG] Детали найденных фрагментов:")
+                for idx, snippet in enumerate(kb_snippets, 1):
+                    source_type = snippet.get("source_type", "unknown")
+                    priority = snippet.get("priority_level", "?")
+                    distance = snippet.get("distance", 0)
+                    category = snippet.get("category", "?")
+                    subcategory = snippet.get("subcategory", "?")
+                    content_preview = snippet.get("content", "")[:150]
+
+                    print(f"  #{idx} [УРОВЕНЬ {priority}] [{source_type}]")
+                    print(f"      Категория: {category} / Подкатегория: {subcategory}")
+                    print(f"      Distance: {distance:.4f}")
+                    print(f"      Контент: {content_preview}...")
+            else:
+                print(f"[RAG] ⚠️ НИЧЕГО НЕ НАЙДЕНО в базе знаний!")
+                print(f"[RAG] Возможные причины:")
+                print(f"      - База знаний пуста")
+                print(f"      - Нет документов для категории '{rag_category}'")
+                print(f"      - Нет документов для подкатегории '{rag_subcategory}'")
+                print(f"      - Все найденные фрагменты за порогом distance (>0.6 для Q&A, >0.75 для документов)")
+
+            print(f"{'='*60}\n")
 
         except Exception as e:
             print(f"[ask_consultation_llm][KB/RAG error] {e}")

@@ -64,7 +64,7 @@ class Settings(BaseSettings):
         description="Имя модели OpenAI для чат-ответов",
     )
     openai_embeddings_model: str = Field(
-        "text-embedding-3-large",  # модель эмбеддингов
+        "text-embedding-3-small",  # модель эмбеддингов (1536 dimensions)
         description="Имя модели OpenAI для эмбеддингов",
     )
 

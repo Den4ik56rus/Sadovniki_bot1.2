@@ -1,6 +1,25 @@
 # src/prompts/consultation_prompts.py
 
-from typing import List, Dict, Any  # Для описания типов входных данных
+"""
+Оркестратор системных промптов для консультаций.
+
+Собирает финальный промпт из:
+- Базовой части (роль, scope, формат)
+- Категорийной части (специфика: питание, болезни, посадка и т.п.)
+- Контекста из базы знаний (RAG)
+- Словаря терминологии
+"""
+
+from typing import List, Dict, Any
+
+from src.prompts.base_prompt import get_base_system_prompt
+from src.prompts.category_prompts import (
+    get_nutrition_category_prompt,
+    get_planting_care_category_prompt,
+    get_diseases_pests_category_prompt,
+    get_soil_improvement_category_prompt,
+    get_variety_selection_category_prompt,
+)
 
 
 def build_kb_context_snippet(snippets: List[Dict[str, Any]]) -> str:
@@ -32,8 +51,7 @@ def build_kb_context_snippet(snippets: List[Dict[str, Any]]) -> str:
         for i, snip in enumerate(level1, start=1):
             text = snip.get("content") or snip.get("answer", "")
             lines.append(f"  {i}) {text}")
-            print(f"[KB_CONTEXT][УРОВЕНЬ 1][#{i}] Длина текста: {len(text)} символов")
-            print(f"[KB_CONTEXT][УРОВЕНЬ 1][#{i}] ПОЛНЫЙ ТЕКСТ:\n{text}\n{'-'*60}")
+            print(f"[KB_CONTEXT][УРОВЕНЬ 1][#{i}] Документ загружен ({len(text)} символов)")
         lines.append("")  # Пустая строка между уровнями
 
     # УРОВЕНЬ 2: Специфичные документы (средний приоритет)
@@ -42,8 +60,7 @@ def build_kb_context_snippet(snippets: List[Dict[str, Any]]) -> str:
         for i, snip in enumerate(level2, start=1):
             text = snip.get("content", "")
             lines.append(f"  {i}) {text}")
-            print(f"[KB_CONTEXT][УРОВЕНЬ 2][#{i}] Длина текста: {len(text)} символов")
-            print(f"[KB_CONTEXT][УРОВЕНЬ 2][#{i}] ПОЛНЫЙ ТЕКСТ:\n{text}\n{'-'*60}")
+            print(f"[KB_CONTEXT][УРОВЕНЬ 2][#{i}] Документ загружен ({len(text)} символов)")
         lines.append("")  # Пустая строка между уровнями
 
     # УРОВЕНЬ 3: Общие документы (низкий приоритет)
@@ -52,8 +69,7 @@ def build_kb_context_snippet(snippets: List[Dict[str, Any]]) -> str:
         for i, snip in enumerate(level3, start=1):
             text = snip.get("content", "")
             lines.append(f"  {i}) {text}")
-            print(f"[KB_CONTEXT][УРОВЕНЬ 3][#{i}] Длина текста: {len(text)} символов")
-            print(f"[KB_CONTEXT][УРОВЕНЬ 3][#{i}] ПОЛНЫЙ ТЕКСТ:\n{text}\n{'-'*60}")
+            print(f"[KB_CONTEXT][УРОВЕНЬ 3][#{i}] Документ загружен ({len(text)} символов)")
 
     # Склеиваем все строки
     result = "\n".join(lines)
@@ -82,31 +98,95 @@ async def build_terminology_section() -> str:
         return ""
 
 
-async def build_consultation_system_prompt(
-    culture: str,                     # Культура ('strawberry', 'raspberry', 'bush' и т.п.)
-    kb_snippets: List[Dict[str, Any]], # Список фрагментов базы знаний
-    consultation_category: str = ""    # Тип консультации (например, "питание растений")
+def _get_category_specific_prompt(
+    consultation_category: str,
+    culture: str,
+    default_location: str = "средняя полоса",
+    default_growing_type: str = "открытый грунт"
 ) -> str:
     """
-    Формирует системный промт для LLM-консультации по ягодным культурам.
+    Возвращает специфичный промпт для категории консультации.
 
-    Учитывает:
-    - бота-консультанта по ягодным растениям,
-    - запрет отвечать на вопросы не по теме,
-    - структуру консультации (уточняющие вопросы → финальный ответ),
-    - использование базы знаний как "каноничных" подсказок,
-    - обязательное уточнение типа сорта для клубники/малины.
+    Args:
+        consultation_category: Тип консультации (например, "питание растений")
+        culture: Название культуры (например, "малина", "голубика")
+        default_location: Местоположение по умолчанию
+        default_growing_type: Тип выращивания по умолчанию
+
+    Returns:
+        Строка с инструкциями для конкретной категории или пустая строка
     """
-    # Строим блок с фрагментами знаний
+    # Маппинг категорий на функции промптов
+    category_map = {
+        "питание растений": get_nutrition_category_prompt,
+        "посадка и уход": get_planting_care_category_prompt,
+        "защита растений": get_diseases_pests_category_prompt,
+        "болезни и вредители": get_diseases_pests_category_prompt,  # алиас
+        "улучшение почвы": get_soil_improvement_category_prompt,
+        "подбор сортов": get_variety_selection_category_prompt,
+        "подбор сорта": get_variety_selection_category_prompt,  # алиас
+    }
+
+    # Нормализуем название категории (lowercase, trim)
+    normalized_category = consultation_category.lower().strip()
+
+    # Ищем соответствующую функцию
+    prompt_func = category_map.get(normalized_category)
+
+    if prompt_func:
+        return prompt_func(culture, default_location, default_growing_type)
+    else:
+        # Если категория не найдена - возвращаем пустую строку
+        # (будет использоваться только базовый промпт)
+        print(f"[_get_category_specific_prompt] Unknown category: {consultation_category!r}")
+        return ""
+
+
+async def build_consultation_system_prompt(
+    culture: str,                     # Культура (например, 'малина', 'голубика', 'не определено')
+    kb_snippets: List[Dict[str, Any]], # Список фрагментов базы знаний
+    consultation_category: str = "",   # Тип консультации (например, "питание растений")
+    default_location: str = "средняя полоса",        # Местоположение по умолчанию
+    default_growing_type: str = "открытый грунт"     # Тип выращивания по умолчанию
+) -> str:
+    """
+    Формирует полный системный промпт для LLM-консультации по ягодным культурам.
+
+    Собирает промпт из четырёх частей:
+    1. Базовый промпт (роль, scope, формат работы)
+    2. Категорийный промпт (специфика: питание, болезни, посадка и т.п.)
+    3. Контекст из базы знаний (RAG с приоритетами)
+    4. Словарь терминологии
+
+    Args:
+        culture: Название культуры
+        kb_snippets: Фрагменты из базы знаний для RAG
+        consultation_category: Тип консультации
+        default_location: Местоположение по умолчанию
+        default_growing_type: Тип выращивания по умолчанию
+
+    Returns:
+        Полный системный промпт для отправки в LLM
+    """
+    # 1. Базовый промпт (общий для всех категорий)
+    base_prompt = get_base_system_prompt(default_location, default_growing_type)
+
+    # 2. Категорийный промпт (специфика категории)
+    category_prompt = ""
+    if consultation_category:
+        category_prompt = _get_category_specific_prompt(
+            consultation_category,
+            culture,
+            default_location,
+            default_growing_type
+        )
+
+    # 3. Контекст из базы знаний
     kb_text_block = build_kb_context_snippet(kb_snippets)
 
-    # Загружаем словарь терминов
-    terminology_section = await build_terminology_section()
-
-    # Если блок непустой — оборачиваем его заголовком с правилами приоритизации
     if kb_text_block:
         kb_section = (
-            "Вот информация из базы знаний с тремя уровнями приоритета:\n\n"
+            "\n\nВот информация из базы знаний с тремя уровнями приоритета:\n\n"
             f"{kb_text_block}\n\n"
             "ПРАВИЛА ИСПОЛЬЗОВАНИЯ БАЗЫ ЗНАНИЙ:\n\n"
             "1. ПРИОРИТЕТ 1 (Q&A):\n"
@@ -127,69 +207,26 @@ async def build_consultation_system_prompt(
         )
     else:
         kb_section = (
-            "Подходящих готовых ответов в базе знаний нет. "
-            "Отвечай на основе своих знаний, но строго с учётом ограничений ниже.\n"
+            "\n\nПодходящих готовых ответов в базе знаний нет. "
+            "Отвечай на основе своих знаний, но строго с учётом ограничений выше.\n"
         )
 
-    # Убрали проверку "клубника общая"/"малина общая" - теперь это обрабатывается в хендлере
-    variety_clarification_rule = ""
+    # 4. Словарь терминологии
+    terminology_section = await build_terminology_section()
+    if terminology_section:
+        terminology_section = "\n\n" + terminology_section
 
-    # Основной системный промт
-    system_prompt = f"""
-Ты — профессиональный агроном-консультант по ягодным культурам.
+    # Собираем все части вместе
+    parts = [base_prompt]
 
-Специализация:
-- клубника летняя (земляника садовая традиционные сорта),
-- клубника ремонтантная (земляника садовая НСД сорта),
-- малина летняя,
-- малина ремонтантная,
-- смородина (черная, красная, белая),
-- голубика,
-- жимолость,
-- крыжовник.
+    if category_prompt:
+        parts.append(category_prompt)
 
-Строгие ограничения:
-- Ты консультируешь ТОЛЬКО по ягодным растениям, посадке, уходу, подбору сортов, защите от вредителей и болезней, питанию и улучшению почвы.
-- Если вопрос пользователя не относится к ягодным растениям (например, про дом, авто, философию, финансы, овощи, цветы), ты отвечаешь КРАТКО одной фразой в духе:
-  "Я могу помочь только с консультациями по ягодным растениям и уходу за ними."
-  И ничего больше.
-- Не давай общие мотивационные фразы, не приглашай "задать ещё вопрос" и не используй шаблоны вроде
-  "если возникнут дополнительные вопросы, обращайтесь ещё" — просто давай законченный ответ.
+    parts.append(kb_section)
 
-Формат консультации:
-Ты работаешь в двухэтапном режиме:
+    if terminology_section:
+        parts.append(terminology_section)
 
-ЭТАП 1 - Уточняющие вопросы (если нужно):
-- Проанализируй вопрос пользователя и определи, какой критически важной информации не хватает для ответа.
-- Задай ТОЛЬКО те уточняющие вопросы, ответы на которые отсутствуют в исходном вопросе.
-- НЕ дублируй вопросы о том, что пользователь уже указал.
-- Если информации достаточно для базового ответа — переходи сразу к ЭТАПУ 2.
-- Все уточняющие вопросы задавай ОДНИМ сообщением, нумеруй их.
-- В конце обязательно напиши: "Пожалуйста, ответьте на вопросы одним сообщением, по пунктам."
-
-ЭТАП 2 - Финальный ответ (когда есть достаточно информации):
-- Кратко формулируешь, в чём суть проблемы или задачи.
-- Даёшь структурный план:
-  — причины или ключевые факторы,
-  — пошаговые действия (что делать сейчас, что делать позже),
-  — важные нюансы и типичные ошибки,
-  — варианты для разных условий (если актуально).
-- Пиши по существу, избегай воды и общих слов.
-
-Текущая культура: {culture}
-Тип консультации: {consultation_category}
-
-{variety_clarification_rule}
-
-{kb_section}
-
-{terminology_section}
-
-Помни:
-- Отвечай простым, понятным языком.
-- Не используй канцелярит.
-- Не добавляй фразы в стиле "если остались вопросы, задавайте" — просто завершай ответ.
-"""
-
-    # Убираем лишние пробелы по краям и возвращаем
-    return system_prompt.strip()
+    # Склеиваем и возвращаем
+    full_prompt = "\n\n".join(parts)
+    return full_prompt.strip()

@@ -84,7 +84,6 @@ async def chunks_bulk_insert(chunks: List[Dict]) -> None:
 
 async def chunks_search(
     *,
-    category: str,
     query_embedding: List[float],
     subcategory: Optional[str] = None,
     limit: int = 2,
@@ -94,11 +93,11 @@ async def chunks_search(
     Поиск похожих фрагментов документов по эмбеддингу.
 
     Фильтрация:
-        - ВСЕГДА по category
-        - ДОПОЛНИТЕЛЬНО по subcategory, если передана
+        - ТОЛЬКО по subcategory (культуре), если передана
+        - Если subcategory не передана, поиск по всем документам
 
     Возвращает список записей с полями:
-        - id, document_id, chunk_text, page_number, distance, category, subcategory
+        - id, document_id, chunk_text, page_number, distance, subcategory
     """
     pool = get_pool()
 
@@ -113,20 +112,17 @@ async def chunks_search(
                 c.document_id,
                 c.chunk_text,
                 c.page_number,
-                c.category,
                 c.subcategory,
                 c.embedding <=> $1::vector AS distance
             FROM document_chunks c
             JOIN documents d ON c.document_id = d.id
             WHERE c.is_active = TRUE
               AND d.is_active = TRUE
-              AND c.category = $2
-              AND ($3::text IS NULL OR c.subcategory = $3)
+              AND ($2::text IS NULL OR c.subcategory = $2)
             ORDER BY c.embedding <=> $1::vector
-            LIMIT $4;
+            LIMIT $3;
             """,
             vector_str,
-            category,
             subcategory,
             limit,
         )

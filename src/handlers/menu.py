@@ -14,7 +14,7 @@ from src.services.db.messages_repo import log_message                # Логи�
 from src.services.db.moderation_repo import moderation_count_pending # Подсчёт вопросов на модерации
 
 # Импортируем глобальное состояние консультации и утилиту для сборки session_id
-from src.handlers.common import CONSULTATION_STATE, build_session_id_from_message
+from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT, build_session_id_from_message
 
 # Импортируем функцию, создающую клавиатуру главного меню
 from src.keyboards.main.main_menu import get_main_keyboard, get_admin_start_keyboard
@@ -60,6 +60,10 @@ async def cmd_start(message: Message) -> None:
         first_name=first_name,
         last_name=last_name,
     )
+
+    # При команде /start закрываем все старые топики и создаём новый
+    from src.services.db.topics_repo import close_open_topics
+    await close_open_topics(user_id)
 
     topic_id = await get_or_create_open_topic(
         user_id=user_id,
@@ -115,8 +119,10 @@ async def cmd_start(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    if user is not None and user.id in CONSULTATION_STATE:
+    # Очищаем состояние и контекст консультации при /start
+    if user is not None:
         CONSULTATION_STATE.pop(user.id, None)
+        CONSULTATION_CONTEXT.pop(user.id, None)
 
 
 @router.message(F.text == "👤 Режим пользователя")
@@ -213,12 +219,30 @@ async def handle_consultation_category(callback: CallbackQuery) -> None:
     if callback.message:
         await callback.message.edit_reply_markup(reply_markup=None)
 
+    # Получаем внутренний user_id из таблицы users
+    from src.services.db.users_repo import get_or_create_user
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+    # Закрываем все открытые топики перед началом новой консультации
+    from src.services.db.topics_repo import close_open_topics
+    await close_open_topics(internal_user_id)
+
+    # Очищаем старый контекст перед началом новой консультации
+    CONSULTATION_CONTEXT.pop(user.id, None)
+
     # Специальная ветка для питания растений
     if category_code == "nutrition":
         CONSULTATION_STATE[user.id] = "waiting_nutrition_root"
+        print(f"[menu] Установлено состояние waiting_nutrition_root для user {user.id}")
         text = "Напишите свой вопрос по питанию ягодных культур."
     else:
         CONSULTATION_STATE[user.id] = "waiting_root"
+        print(f"[menu] Установлено состояние waiting_root для user {user.id}")
         text = (
             f"Вы выбрали тему: «{category_title}».\n\n"
             "Опишите, пожалуйста, ваш вопрос одним сообщением:\n"
@@ -236,8 +260,22 @@ async def handle_consultation_category(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == "consult_close")
 async def handle_close_menu(callback: CallbackQuery) -> None:
     """
-    Удаляет сообщение с меню консультаций.
+    Удаляет сообщение с меню консультаций и закрывает открытые топики.
     """
+    user = callback.from_user
+    if user:
+        # Получаем внутренний user_id
+        from src.services.db.users_repo import get_or_create_user
+        internal_user_id = await get_or_create_user(
+            telegram_user_id=user.id,
+            username=user.username,
+            first_name=user.first_name,
+            last_name=user.last_name,
+        )
+        # Закрываем все открытые топики пользователя при возврате в главное меню
+        from src.services.db.topics_repo import close_open_topics
+        await close_open_topics(internal_user_id)
+
     try:
         if callback.message:
             await callback.message.delete()

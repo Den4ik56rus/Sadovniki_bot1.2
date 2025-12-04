@@ -8,9 +8,9 @@ CREATE TABLE IF NOT EXISTS documents (
     file_hash TEXT UNIQUE NOT NULL,
     file_size_bytes INTEGER,
 
-    -- Категоризация (соответствует knowledge_base)
-    category TEXT NOT NULL,
-    subcategory TEXT,
+    -- Категоризация только по культуре (category больше не используется)
+    category TEXT DEFAULT 'общая_информация',  -- Оставлено для совместимости, но не используется
+    subcategory TEXT NOT NULL,  -- Культура растения (обязательное поле)
 
     -- Статус обработки
     uploaded_at TIMESTAMP DEFAULT NOW(),
@@ -36,22 +36,20 @@ CREATE TABLE IF NOT EXISTS document_chunks (
     -- Векторное представление для RAG
     embedding VECTOR(1536) NOT NULL,
 
-    -- Категоризация (дублируется для быстрого поиска)
-    category TEXT NOT NULL,
-    subcategory TEXT,
+    -- Категоризация только по культуре (дублируется для быстрого поиска)
+    category TEXT DEFAULT 'общая_информация',  -- Оставлено для совместимости, но не используется
+    subcategory TEXT NOT NULL,  -- Культура растения (обязательное поле)
 
     is_active BOOLEAN DEFAULT TRUE,
     created_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Индексы для производительности
-CREATE INDEX IF NOT EXISTS idx_documents_category ON documents(category);
 CREATE INDEX IF NOT EXISTS idx_documents_subcategory ON documents(subcategory);
 CREATE INDEX IF NOT EXISTS idx_documents_hash ON documents(file_hash);
 CREATE INDEX IF NOT EXISTS idx_documents_status ON documents(processing_status);
 
 CREATE INDEX IF NOT EXISTS idx_chunks_document ON document_chunks(document_id);
-CREATE INDEX IF NOT EXISTS idx_chunks_category ON document_chunks(category);
 CREATE INDEX IF NOT EXISTS idx_chunks_subcategory ON document_chunks(subcategory);
 
 -- Векторный индекс для быстрого поиска по схожести

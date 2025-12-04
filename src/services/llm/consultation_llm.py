@@ -25,24 +25,6 @@ from src.prompts.consultation_prompts import build_consultation_system_prompt  #
 from src.config import settings
 
 
-def build_nutrition_clarification_questions(root_question: str) -> str:
-    """
-    Возвращает текст уточняющих вопросов по питанию растений.
-
-    Обычная синхронная функция — БЕЗ async/await.
-    """
-    return (
-        "Чтобы подробно подсказать по питанию ваших ягодных растений, ответьте, пожалуйста, на вопросы:\n\n"
-        "1️⃣ Какая культура и сорт (если знаете)?\n"
-        "2️⃣ В каком регионе/климате вы находитесь?\n"
-        "3️⃣ Растения в открытом грунте, теплице, в контейнерах или на приподнятых грядках?\n"
-        "4️⃣ Возраст посадок (первый год, второй, старше)?\n"
-        "5️⃣ В чём вопрос по питанию: чем и как подкармливать, схема удобрений, недостаток/избыток питания и т.п.?\n"
-        "6️⃣ Есть ли сейчас видимые проблемы (бледные листья, покраснение, жёлтые края, пятна, слабый рост и т.п.)?\n\n"
-        "Пожалуйста, ответьте на все вопросы одним сообщением, по пунктам."
-    )
-
-
 def _detect_category_legacy(text: str) -> Optional[str]:
     """
     СТАРАЯ грубая классификация по ключевым словам (для совместимости).
@@ -99,7 +81,10 @@ async def ask_consultation_llm(
     session_id: str,
     consultation_category: Optional[str] = None,  # Тип консультации: 'питание растений', 'посадка и уход' и т.п.
     culture: Optional[str] = None,                # Культура: 'малина', 'голубика' и т.п. (может быть 'не определено')
-    is_first_llm_call: bool = False,              # Флаг, что это первое обращение к LLM (должен задать уточняющие вопросы)
+    default_location: str = "средняя полоса",     # Местоположение по умолчанию
+    default_growing_type: str = "открытый грунт", # Тип выращивания по умолчанию
+    is_first_llm_call: bool = False,              # DEPRECATED: больше не используется
+    skip_rag: bool = False,                       # Флаг пропуска RAG-поиска
 ) -> str:
     """
     Основной вызов LLM.
@@ -113,7 +98,8 @@ async def ask_consultation_llm(
                                 например: 'питание растений', 'посадка и уход';
         culture              — культура (если определена отдельным классификатором),
                                 например: 'малина', 'голубика', 'общая информация', 'не определено';
-        is_first_llm_call    — флаг, что это первое обращение к LLM (должен задать уточняющие вопросы).
+        is_first_llm_call    — флаг, что это первое обращение к LLM (должен задать уточняющие вопросы);
+        skip_rag             — если True, пропускаем RAG-поиск (используется на этапе уточняющих вопросов).
 
     Если consultation_category/culture не переданы, будет использоваться
     старая логика _detect_category_legacy (в основном для совместимости).
@@ -167,7 +153,13 @@ async def ask_consultation_llm(
     # 4. RAG: подтягиваем выдержки из базы знаний
     kb_snippets: List[Dict] = []
 
-    if rag_category is not None:
+    # Пропускаем RAG, если явно указано (например, на этапе уточняющих вопросов)
+    if skip_rag:
+        print(f"\n{'='*60}")
+        print(f"[RAG] Пропущен (skip_rag=True)")
+        print(f"[RAG] Причина: этап уточняющих вопросов")
+        print(f"{'='*60}\n")
+    elif rag_category is not None:
         print(f"\n{'='*60}")
         print(f"[RAG] Начинаем поиск в базе знаний")
         print(f"[RAG] Категория: {rag_category}")
@@ -185,8 +177,7 @@ async def ask_consultation_llm(
                 subcategory=rag_subcategory,
                 query_embedding=query_embedding,
                 qa_limit=20,          # Уровень 1: Q&A (увеличено в 10 раз)
-                level2_limit=20,      # Уровень 2: Специфичные документы (увеличено в 10 раз)
-                level3_limit=20,      # Уровень 3: Общие документы (увеличено в 10 раз)
+                doc_limit=30,         # Уровень 2: Документы по культуре (увеличено в 10 раз)
                 qa_distance_threshold=0.6,    # Увеличен порог для Q&A
                 doc_distance_threshold=0.75,  # Увеличен порог для документов
             )
@@ -201,12 +192,11 @@ async def ask_consultation_llm(
                     distance = snippet.get("distance", 0)
                     category = snippet.get("category", "?")
                     subcategory = snippet.get("subcategory", "?")
-                    content_preview = snippet.get("content", "")[:150]
 
                     print(f"  #{idx} [УРОВЕНЬ {priority}] [{source_type}]")
                     print(f"      Категория: {category} / Подкатегория: {subcategory}")
                     print(f"      Distance: {distance:.4f}")
-                    print(f"      Контент: {content_preview}...")
+                    print(f"      Документ загружен")
             else:
                 print(f"[RAG] ⚠️ НИЧЕГО НЕ НАЙДЕНО в базе знаний!")
                 print(f"[RAG] Возможные причины:")
@@ -224,11 +214,13 @@ async def ask_consultation_llm(
     # 5. Собираем messages для LLM
     messages: List[Dict[str, str]] = []
 
-    # Используем новый улучшенный системный промпт с обязательными уточняющими вопросами
+    # Используем новый улучшенный системный промпт со стандартными параметрами
     system_prompt = await build_consultation_system_prompt(
         culture=culture or "не определено",
         kb_snippets=kb_snippets,
         consultation_category=consultation_category or "",
+        default_location=default_location,
+        default_growing_type=default_growing_type,
     )
 
     messages.append(
@@ -252,15 +244,8 @@ async def ask_consultation_llm(
         )
 
     # Текущее сообщение (полный вопрос)
+    # ВАЖНО: is_first_llm_call больше не используется - всегда даём финальный ответ
     current_message_text = text
-
-    # Если это первое обращение к LLM - добавляем явную инструкцию задать уточняющие вопросы
-    if is_first_llm_call:
-        current_message_text = (
-            f"{text}\n\n"
-            "(Это первое обращение по данному вопросу. Пожалуйста, задай уточняющие вопросы согласно ЭТАПУ 1, "
-            "если информации недостаточно для полноценного ответа.)"
-        )
 
     messages.append(
         {

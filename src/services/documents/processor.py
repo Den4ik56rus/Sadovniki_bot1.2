@@ -32,11 +32,11 @@ from src.services.db.documents_repo import (
 from src.services.db.document_chunks_repo import chunks_bulk_insert
 
 
-# Максимальный размер файла в байтах (20 МБ)
-MAX_FILE_SIZE = 20 * 1024 * 1024
+# Максимальный размер файла в байтах (100 МБ)
+MAX_FILE_SIZE = 100 * 1024 * 1024
 
 # Минимальная длина текста для обработки
-MIN_TEXT_LENGTH = 100
+MIN_TEXT_LENGTH = 50
 
 # Размер батча для генерации embeddings
 EMBEDDING_BATCH_SIZE = 20
@@ -139,7 +139,7 @@ async def generate_embeddings_batch(texts: List[str]) -> List[List[float]]:
 
 async def process_pdf_document(
     file_path: str,
-    category: str,
+    category: Optional[str] = None,
     subcategory: Optional[str] = None,
     force_update: bool = False,
 ) -> Dict[str, any]:
@@ -149,8 +149,8 @@ async def process_pdf_document(
 
     Параметры:
         file_path: Путь к PDF-файлу
-        category: Категория консультации (например, "питание растений")
-        subcategory: Подкатегория/культура (например, "малина")
+        category: Категория консультации (УСТАРЕЛО, оставлено для совместимости)
+        subcategory: Культура растения (например, "малина общая", "клубника летняя")
         force_update: Если True, перезаписывает существующий документ
 
     Возвращает:
@@ -221,7 +221,7 @@ async def process_pdf_document(
             file_path=file_path,
             file_hash=file_hash,
             file_size_bytes=file_size,
-            category=category,
+            category=category or "общая_информация",
             subcategory=subcategory,
             processing_status="processing",
         )
@@ -272,6 +272,9 @@ async def process_pdf_document(
             "chunk_size": chunk_info["chunk_size"],
             "page_number": page_number,
         })
+
+    # Убедимся что category не None
+    category = category or "общая_информация"
 
     # 10. Генерация embeddings батчами
     try:

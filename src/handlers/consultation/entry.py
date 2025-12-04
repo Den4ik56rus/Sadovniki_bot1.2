@@ -8,6 +8,8 @@
     - для всех остальных текстов:
         * найти/создать пользователя
         * найти/создать открытую тему (topic)
+        * проверить наличие культуры в теме
+        * если это первое сообщение и культура не определена - попросить выбрать культуру
         * залогировать сообщение
         * вызвать LLM (ask_consultation_llm)
         * отправить ответ
@@ -20,28 +22,326 @@ from aiogram.types import Message
 
 # Репозитории БД
 from src.services.db.users_repo import get_or_create_user
-from src.services.db.topics_repo import get_or_create_open_topic
+from src.services.db.topics_repo import (
+    get_or_create_open_topic,
+    get_topic_culture,
+)
 from src.services.db.messages_repo import log_message
 from src.services.db.moderation_repo import moderation_add
 
 # LLM
 from src.services.llm.consultation_llm import ask_consultation_llm
+from src.services.llm.classification_llm import detect_culture_name
 
-# Утилита для session_id
-from src.handlers.common import build_session_id_from_message
+# Утилита для session_id и управление состоянием
+from src.handlers.common import (
+    build_session_id_from_message,
+    CONSULTATION_STATE,
+    CONSULTATION_CONTEXT,
+)
 
 
 router = Router()
 
 
-@router.message(F.text & ~F.text.startswith("/"))
-async def handle_text(message: Message) -> None:
+def is_clarification_question(text: str) -> bool:
     """
-    Обработка всех текстовых сообщений (кроме команд).
-    Консультационный сценарий для всех пользователей.
+    Определяет, является ли ответ LLM уточняющим вопросом.
+
+    Признаки уточняющего вопроса:
+    - Короткий ответ (< 300 символов)
+    - Содержит типичные фразы или вопросительный знак
+    """
+    return (
+        len(text) < 300 and
+        (
+            "уточните" in text.lower()
+            or "о какой культуре" in text.lower()
+            or "какая у вас" in text.lower()
+            or "?" in text
+        )
+    )
+
+
+# ==== ОБРАБОТЧИК 1: Ответ на вопрос о типе культуры (летняя/ремонтантная) ====
+
+@router.message(
+    lambda m: m.from_user is not None
+    and CONSULTATION_STATE.get(m.from_user.id) == "waiting_variety_clarification"
+)
+async def handle_variety_clarification(message: Message) -> None:
+    """
+    Обрабатывает ответ пользователя на вопрос о типе культуры.
+
+    Пользователь ответил на вопрос "Какая у вас клубника/малина: летняя или ремонтантная?"
+    Переопределяем культуру и даём финальный ответ С RAG.
+    """
+    user = message.from_user
+    if user is None:
+        return
+
+    telegram_user_id = user.id
+    variety_answer = (message.text or "").lower()
+
+    print(f"[VARIETY_CLARIFICATION] user_id={telegram_user_id}, answer={variety_answer!r}")
+
+    # Получаем сохранённый контекст
+    context = CONSULTATION_CONTEXT.get(telegram_user_id, {})
+    if not context:
+        print(f"[VARIETY_CLARIFICATION] WARNING: No context found for user {telegram_user_id}")
+        await message.answer("Произошла ошибка. Попробуйте задать вопрос заново.")
+        return
+
+    user_id = context["user_id"]
+    topic_id = context["topic_id"]
+    session_id = context["session_id"]
+    root_question = context["root_question"]
+    old_culture = context["culture"]
+
+    # Определяем новую культуру на основе ответа
+    if "ремонтант" in variety_answer or "нсд" in variety_answer:
+        if old_culture == "клубника общая":
+            new_culture = "клубника ремонтантная"
+        else:  # малина общая
+            new_culture = "малина ремонтантная"
+    elif "летн" in variety_answer or "обычн" in variety_answer or "традицион" in variety_answer or "июньск" in variety_answer:
+        if old_culture == "клубника общая":
+            new_culture = "клубника летняя"
+        else:  # малина общая
+            new_culture = "малина летняя"
+    else:
+        # Не удалось распознать - пробуем классификатор
+        combined_text = f"{root_question} {variety_answer}"
+        new_culture = await detect_culture_name(combined_text)
+        print(f"[VARIETY_CLARIFICATION] Failed to parse answer, re-classified: {new_culture!r}")
+
+    print(f"[VARIETY_CLARIFICATION] Refined culture: {old_culture!r} -> {new_culture!r}")
+
+    # Обновляем культуру в БД
+    from src.services.db.topics_repo import set_topic_culture
+    await set_topic_culture(topic_id, new_culture)
+
+    # Логируем ответ пользователя
+    await log_message(
+        user_id=user_id,
+        direction="user",
+        text=variety_answer,
+        session_id=session_id,
+        topic_id=topic_id,
+    )
+
+    # Формируем полный вопрос (корневой + ответ)
+    full_question = f"{root_question} ({variety_answer})"
+
+    # Показываем статус ожидания
+    status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+
+    # Вызываем LLM с финальным ответом и RAG
+    try:
+        reply_text = await ask_consultation_llm(
+            user_id=user_id,
+            telegram_user_id=telegram_user_id,
+            text=full_question,
+            session_id=session_id,
+            consultation_category="общая консультация",
+            culture=new_culture,
+            skip_rag=False,  # С RAG для финального ответа!
+        )
+    except Exception as e:
+        print(f"ERROR in ask_consultation_llm: {e}")
+        reply_text = (
+            "Сейчас не получается обработать запрос через модель. "
+            "Попробуйте ещё раз чуть позже."
+        )
+    finally:
+        try:
+            await status_message.delete()
+        except Exception:
+            pass
+
+    # Отправляем ответ
+    await message.answer(reply_text)
+
+    # Логируем ответ бота
+    await log_message(
+        user_id=user_id,
+        direction="bot",
+        text=reply_text,
+        session_id=session_id,
+        topic_id=topic_id,
+    )
+
+    # Добавляем в очередь модерации
+    try:
+        await moderation_add(
+            user_id=user_id,
+            topic_id=topic_id,
+            question=full_question,
+            answer=reply_text,
+            category_guess=None,
+        )
+    except Exception as e:
+        print(f"ERROR in moderation_add: {e}")
+
+    # Очищаем состояние
+    CONSULTATION_STATE.pop(telegram_user_id, None)
+    CONSULTATION_CONTEXT.pop(telegram_user_id, None)
+
+
+# ==== ОБРАБОТЧИК 2: Ответ на уточняющие вопросы LLM ====
+
+@router.message(
+    lambda m: m.from_user is not None
+    and CONSULTATION_STATE.get(m.from_user.id) == "waiting_clarification_answer"
+)
+async def handle_clarification_answer(message: Message) -> None:
+    """
+    Обрабатывает ответ пользователя на уточняющие вопросы LLM.
+
+    LLM спросил "О какой культуре речь?" и пользователь ответил.
+    Переопределяем культуру и решаем, что делать дальше.
+    """
+    user = message.from_user
+    if user is None:
+        return
+
+    telegram_user_id = user.id
+    clarification_answer = message.text or ""
+
+    print(f"[CLARIFICATION_ANSWER] user_id={telegram_user_id}, answer={clarification_answer!r}")
+
+    # Получаем сохранённый контекст
+    context = CONSULTATION_CONTEXT.get(telegram_user_id, {})
+    if not context:
+        print(f"[CLARIFICATION_ANSWER] WARNING: No context found for user {telegram_user_id}")
+        await message.answer("Произошла ошибка. Попробуйте задать вопрос заново.")
+        return
+
+    user_id = context["user_id"]
+    topic_id = context["topic_id"]
+    session_id = context["session_id"]
+    root_question = context["root_question"]
+
+    # Логируем ответ пользователя
+    await log_message(
+        user_id=user_id,
+        direction="user",
+        text=clarification_answer,
+        session_id=session_id,
+        topic_id=topic_id,
+    )
+
+    # Переопределяем культуру на основе комбинированного текста
+    combined_text = f"{root_question} {clarification_answer}"
+    new_culture = await detect_culture_name(combined_text)
+    print(f"[CLARIFICATION_ANSWER] Re-classified culture: {new_culture!r}")
+
+    # Обновляем культуру в БД
+    from src.services.db.topics_repo import set_topic_culture
+    await set_topic_culture(topic_id, new_culture)
+
+    # Формируем полный вопрос
+    full_question = f"{root_question} {clarification_answer}"
+
+    # Проверяем новую культуру и действуем соответственно
+
+    # Если культура всё ещё неясна - запрашиваем снова (но это редко)
+    if new_culture in ("не определено", "общая информация"):
+        print(f"[CLARIFICATION_ANSWER] Still vague, asking again")
+        await message.answer("Уточните, пожалуйста, о какой конкретно культуре идёт речь?")
+        # Оставляем состояние без изменений
+        return
+
+    # Если культура общая (клубника общая / малина общая) - спрашиваем тип
+    elif new_culture in ("клубника общая", "малина общая"):
+        print(f"[CLARIFICATION_ANSWER] General culture, asking variety")
+
+        if new_culture == "клубника общая":
+            variety_question = "Какая у вас клубника: летняя (июньская) или ремонтантная (НСД)?"
+        else:  # малина общая
+            variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
+
+        # Обновляем контекст и состояние
+        CONSULTATION_STATE[telegram_user_id] = "waiting_variety_clarification"
+        CONSULTATION_CONTEXT[telegram_user_id]["culture"] = new_culture
+        CONSULTATION_CONTEXT[telegram_user_id]["root_question"] = full_question
+
+        await message.answer(variety_question)
+        return
+
+    # Культура конкретна - даём финальный ответ с RAG
+    else:
+        print(f"[CLARIFICATION_ANSWER] Specific culture, final answer WITH RAG")
+
+        status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+
+        try:
+            reply_text = await ask_consultation_llm(
+                user_id=user_id,
+                telegram_user_id=telegram_user_id,
+                text=full_question,
+                session_id=session_id,
+                consultation_category="общая консультация",
+                culture=new_culture,
+                skip_rag=False,  # С RAG для финального ответа!
+            )
+        except Exception as e:
+            print(f"ERROR in ask_consultation_llm: {e}")
+            reply_text = (
+                "Сейчас не получается обработать запрос через модель. "
+                "Попробуйте ещё раз чуть позже."
+            )
+        finally:
+            try:
+                await status_message.delete()
+            except Exception:
+                pass
+
+        # Отправляем ответ
+        await message.answer(reply_text)
+
+        # Логируем ответ бота
+        await log_message(
+            user_id=user_id,
+            direction="bot",
+            text=reply_text,
+            session_id=session_id,
+            topic_id=topic_id,
+        )
+
+        # Добавляем в очередь модерации
+        try:
+            await moderation_add(
+                user_id=user_id,
+                topic_id=topic_id,
+                question=full_question,
+                answer=reply_text,
+                category_guess=None,
+            )
+        except Exception as e:
+            print(f"ERROR in moderation_add: {e}")
+
+        # Очищаем состояние
+        CONSULTATION_STATE.pop(telegram_user_id, None)
+        CONSULTATION_CONTEXT.pop(telegram_user_id, None)
+
+
+# ==== ОБРАБОТЧИК 3: Корневой обработчик (без активного состояния) ====
+
+@router.message(F.text & ~F.text.startswith("/"))
+async def handle_consultation_root(message: Message) -> None:
+    """
+    Обработка текстовых сообщений без активного состояния.
+    Это начальная точка входа для консультаций.
+
+    Логика:
+    1. Определяем культуру
+    2. CASE 1: Культура неясна (не определено / общая информация) → уточняющие вопросы БЕЗ RAG
+    3. CASE 2: Культура общая (клубника общая / малина общая) → запрос типа (летняя/ремонтантная)
+    4. CASE 3: Культура конкретна → финальный ответ С RAG
     """
 
-    print("DEBUG: handle_text получил сообщение:", message.text)
+    print("DEBUG: handle_consultation_root получил сообщение:", message.text)
 
     user = message.from_user
     session_id = build_session_id_from_message(message)
@@ -73,6 +373,26 @@ async def handle_text(message: Message) -> None:
 
     user_text: str = message.text or ""
 
+    # КРИТИЧНО: Проверяем статус, message_count и culture ДО логирования сообщения!
+    from src.services.db.topics_repo import get_topic_message_count, get_topic_status, set_topic_culture
+    message_count_before = await get_topic_message_count(topic_id)
+    topic_status = await get_topic_status(topic_id)
+    culture = await get_topic_culture(topic_id)
+
+    print(f"[entry] ДО логирования: topic_id={topic_id}, message_count={message_count_before}, status={topic_status}, culture={culture!r}")
+
+    # Это followup только если:
+    # 1. Топик открыт (не закрыт кнопкой "Новая тема")
+    # 2. Культура уже определена
+    # 3. Нет активного состояния ожидания (бот уже дал финальный ответ)
+    # 4. В топике УЖЕ ЕСТЬ сообщения пользователя (message_count_before > 0)
+    is_followup = (
+        topic_status == "open"
+        and culture is not None
+        and telegram_user_id not in CONSULTATION_STATE
+        and message_count_before > 0
+    )
+
     # Логируем сообщение пользователя
     await log_message(
         user_id=user_id,
@@ -82,32 +402,140 @@ async def handle_text(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    # Показываем статус "печатает" и отправляем сообщение ожидания
-    status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+    # Если это уточняющий вопрос в рамках темы, где бот уже дал ответ - используем сохранённую культуру
+    # Если это первое сообщение или начало новой консультации - переопределяем культуру
+    if is_followup:
+        print(f"[CULTURE] Это уточняющий вопрос в рамках темы (count_before={message_count_before}, status={topic_status}), используем сохранённую культуру: {culture}")
+    else:
+        # Переопределяем культуру для нового вопроса
+        print(f"[CULTURE] Это новый вопрос (count_before={message_count_before}, status={topic_status}), переопределяем культуру")
+        detected_culture = await detect_culture_name(user_text)
+        if detected_culture:
+            await set_topic_culture(topic_id, detected_culture)
+            culture = detected_culture
+            print(f"[CULTURE] Автоматически определена культура: {culture}")
+        else:
+            await set_topic_culture(topic_id, "не определено")
+            culture = "не определено"
+            print(f"[CULTURE] Культура не определена, сохранено: {culture}")
 
-    # Вызов LLM с защитой
-    try:
-        reply_text: str = await ask_consultation_llm(
-            user_id=user_id,
-            telegram_user_id=telegram_user_id,
-            text=user_text,
-            session_id=session_id,
-        )
-    except Exception as e:
-        print(f"ERROR in ask_consultation_llm: {e}")
-        reply_text = (
-            "Сейчас не получается обработать запрос через модель. "
-            "Попробуйте ещё раз чуть позже."
-        )
-    finally:
-        # Удаляем сообщение ожидания
+    # ==== ГИБРИДНЫЙ ПОТОК: 3 варианта в зависимости от культуры ====
+
+    print(f"[HYBRID_FLOW] culture={culture!r}")
+
+    # CASE 1: Культура неясна → уточняющие вопросы БЕЗ RAG
+    if culture in ("не определено", "общая информация"):
+        print(f"[HYBRID_FLOW] CASE 1: Vague culture - asking clarification WITHOUT RAG")
+
+        status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+
         try:
-            await status_message.delete()
-        except Exception:
-            pass
+            reply_text: str = await ask_consultation_llm(
+                user_id=user_id,
+                telegram_user_id=telegram_user_id,
+                text=user_text,
+                session_id=session_id,
+                consultation_category="общая консультация",
+                culture=culture,
+                skip_rag=True,  # БЕЗ RAG для уточняющих вопросов!
+            )
+        except Exception as e:
+            print(f"ERROR in ask_consultation_llm: {e}")
+            reply_text = (
+                "Сейчас не получается обработать запрос через модель. "
+                "Попробуйте ещё раз чуть позже."
+            )
+        finally:
+            try:
+                await status_message.delete()
+            except Exception:
+                pass
 
-    # Ответ пользователю
-    await message.answer(reply_text)
+        # Отправляем ответ (уточняющий вопрос или финальный ответ)
+        await message.answer(reply_text)
+
+        # Если LLM задал уточняющий вопрос - переводим в состояние ожидания ответа
+        if is_clarification_question(reply_text):
+            print(f"[HYBRID_FLOW] LLM asked clarification question, setting state")
+            CONSULTATION_STATE[telegram_user_id] = "waiting_clarification_answer"
+            CONSULTATION_CONTEXT[telegram_user_id] = {
+                "category": "общая консультация",
+                "root_question": user_text,
+                "culture": culture,
+                "user_id": user_id,
+                "topic_id": topic_id,
+                "session_id": session_id,
+                "telegram_user_id": telegram_user_id,
+            }
+
+            # Логируем только ответ бота (уточняющий вопрос)
+            await log_message(
+                user_id=user_id,
+                direction="bot",
+                text=reply_text,
+                session_id=session_id,
+                topic_id=topic_id,
+            )
+
+            # НЕ добавляем в moderation для уточняющих вопросов
+            # Завершаем обработку - ждём ответа пользователя
+            return
+
+        # Если это был финальный ответ (не уточняющий вопрос) - продолжаем логирование ниже
+
+    # CASE 2: Культура общая (клубника общая / малина общая) → запрос типа
+    elif culture in ("клубника общая", "малина общая"):
+        print(f"[HYBRID_FLOW] CASE 2: General culture - asking variety")
+
+        if culture == "клубника общая":
+            variety_question = "Какая у вас клубника: летняя (июньская) или ремонтантная (НСД)?"
+        else:  # малина общая
+            variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
+
+        # Сохраняем контекст и переводим в состояние ожидания ответа
+        CONSULTATION_STATE[telegram_user_id] = "waiting_variety_clarification"
+        CONSULTATION_CONTEXT[telegram_user_id] = {
+            "category": "общая консультация",
+            "root_question": user_text,
+            "culture": culture,
+            "user_id": user_id,
+            "topic_id": topic_id,
+            "session_id": session_id,
+            "telegram_user_id": telegram_user_id,
+        }
+
+        await message.answer(variety_question)
+        return  # Не логируем ответ бота здесь, т.к. это системный вопрос
+
+    # CASE 3: Культура конкретна → финальный ответ С RAG
+    else:
+        print(f"[HYBRID_FLOW] CASE 3: Specific culture - final answer WITH RAG")
+
+        status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+
+        try:
+            reply_text: str = await ask_consultation_llm(
+                user_id=user_id,
+                telegram_user_id=telegram_user_id,
+                text=user_text,
+                session_id=session_id,
+                consultation_category="общая консультация",
+                culture=culture,
+                skip_rag=False,  # С RAG для финального ответа!
+            )
+        except Exception as e:
+            print(f"ERROR in ask_consultation_llm: {e}")
+            reply_text = (
+                "Сейчас не получается обработать запрос через модель. "
+                "Попробуйте ещё раз чуть позже."
+            )
+        finally:
+            try:
+                await status_message.delete()
+            except Exception:
+                pass
+
+        await message.answer(reply_text)
 
     # Логируем ответ бота
     await log_message(

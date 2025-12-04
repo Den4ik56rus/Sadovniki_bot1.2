@@ -22,14 +22,14 @@ CONSULTATION_MENU_INLINE_KB = InlineKeyboardMarkup(
             InlineKeyboardButton(
                 text="Посадка и уход",
                 callback_data="consult_category:plant_care",
-                
+
             ),
         ],
         [
             InlineKeyboardButton(
                 text="Улучшение почвы",
                 callback_data="consult_category:soil",
-                
+
             ),
             InlineKeyboardButton(
                 text="Другая тема",
@@ -44,3 +44,29 @@ CONSULTATION_MENU_INLINE_KB = InlineKeyboardMarkup(
         ],
     ]
 )
+
+
+# Клавиатура после получения ответа по питанию растений
+def get_nutrition_followup_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔄 Вопрос по новой теме",
+                    callback_data="nutrition_new_topic",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="✏️ Заменить параметры",
+                    callback_data="nutrition_replace_params",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="📋 Получить детальный план подкормок",
+                    callback_data="nutrition_detailed_plan",
+                ),
+            ],
+        ]
+    )

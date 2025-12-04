@@ -6,16 +6,15 @@
 
 Структура папок:
     data/documents/
-        <категория>/
-            <культура>/
-                *.pdf
+        <культура>/
+            *.pdf
 
 Пример:
-    data/documents/питание_растений/малина/guide.pdf
+    data/documents/малина_общая/guide.pdf
 
 Использование:
     python scripts/import_documents.py
-    python scripts/import_documents.py --category="питание растений"
+    python scripts/import_documents.py --subcategory="малина общая"
     python scripts/import_documents.py --force-update
 """
 
@@ -38,30 +37,19 @@ from src.services.documents.processor import process_pdf_document
 DOCUMENTS_DIR = project_root / "data" / "documents"
 
 
-# Маппинг названий папок на корректные категории
-CATEGORY_MAPPING = {
-    "питание_растений": "питание растений",
-    "посадка_и_уход": "посадка и уход",
-    "защита_растений": "защита растений",
-    "улучшение_почвы": "улучшение почвы",
-    "подбор_сорта": "подбор сорта/места",
-    "другая_тема": "другая тема",
-}
-
-
-# Маппинг названий папок подкатегорий на корректные subcategory
+# Маппинг названий папок культур на корректные subcategory
 SUBCATEGORY_MAPPING = {
     # Малина (общая и специфичные типы)
-    "малина общая": "малина общая",
+    "малина_общая": "малина общая",
     "малина_летняя": "малина летняя",
     "малина_ремонтантная": "малина ремонтантная",
 
     # Клубника (общая и специфичные типы)
-    "клубника общая": "клубника общая",
+    "клубника_общая": "клубника общая",
     "клубника_летняя": "клубника летняя",
     "клубника_ремонтантная": "клубника ремонтантная",
 
-    # Остальные культуры (без специфичных типов)
+    # Остальные культуры
     "голубика": "голубика",
     "смородина": "смородина",
     "жимолость": "жимолость",
@@ -73,22 +61,15 @@ SUBCATEGORY_MAPPING = {
 }
 
 
-def normalize_category(folder_name: str) -> Optional[str]:
-    """
-    Преобразует название папки в корректную категорию.
-    """
-    return CATEGORY_MAPPING.get(folder_name)
-
-
 def normalize_subcategory(folder_name: str) -> str:
     """
     Преобразует название папки культуры в корректную подкатегорию.
 
     Примеры:
-        малина общая -> малина общая
+        малина_общая -> малина общая
         малина_летняя -> малина летняя
         малина_ремонтантная -> малина ремонтантная
-        клубника общая -> клубника общая
+        клубника_общая -> клубника общая
         клубника_ремонтантная -> клубника ремонтантная
         голубика -> голубика
         общая_информация -> общая информация
@@ -103,7 +84,7 @@ def normalize_subcategory(folder_name: str) -> str:
 
 def scan_documents_directory(
     base_dir: Path,
-    filter_category: Optional[str] = None,
+    filter_subcategory: Optional[str] = None,
 ) -> List[Dict]:
     """
     Сканирует структуру папок и возвращает список PDF-файлов для импорта.
@@ -112,7 +93,6 @@ def scan_documents_directory(
         [
             {
                 "file_path": Path,
-                "category": str,
                 "subcategory": str,
             },
             ...
@@ -124,44 +104,40 @@ def scan_documents_directory(
 
     documents = []
 
-    # Проходим по категориям (папки первого уровня)
-    for category_dir in base_dir.iterdir():
-        if not category_dir.is_dir():
+    # Проходим по культурам (папки первого уровня)
+    for subcategory_dir in base_dir.iterdir():
+        if not subcategory_dir.is_dir():
             continue
 
-        category_folder_name = category_dir.name
-        category = normalize_category(category_folder_name)
+        subcategory_folder_name = subcategory_dir.name
 
-        if category is None:
-            print(f"Пропускаем неизвестную категорию: {category_folder_name}")
+        # Пропускаем служебные папки
+        if subcategory_folder_name.startswith('.'):
             continue
 
-        # Фильтр по категории, если задан
-        if filter_category and category != filter_category:
+        subcategory = normalize_subcategory(subcategory_folder_name)
+
+        # Проверяем, что культура есть в маппинге
+        if subcategory_folder_name not in SUBCATEGORY_MAPPING:
+            print(f"Пропускаем неизвестную культуру: {subcategory_folder_name}")
             continue
 
-        # Проходим по культурам (папки второго уровня)
-        for subcategory_dir in category_dir.iterdir():
-            if not subcategory_dir.is_dir():
-                continue
+        # Фильтр по культуре, если задан
+        if filter_subcategory and subcategory != filter_subcategory:
+            continue
 
-            subcategory_folder_name = subcategory_dir.name
-            subcategory = normalize_subcategory(subcategory_folder_name)
-
-            # Проходим по PDF-файлам
-            for pdf_file in subcategory_dir.glob("*.pdf"):
-                documents.append({
-                    "file_path": pdf_file,
-                    "category": category,
-                    "subcategory": subcategory,
-                })
+        # Проходим по PDF-файлам
+        for pdf_file in subcategory_dir.glob("*.pdf"):
+            documents.append({
+                "file_path": pdf_file,
+                "subcategory": subcategory,
+            })
 
     return documents
 
 
 async def import_document(
     file_path: Path,
-    category: str,
     subcategory: str,
     force_update: bool = False,
 ) -> Dict:
@@ -170,12 +146,12 @@ async def import_document(
     """
     print(f"\n{'='*80}")
     print(f"Обработка: {file_path.name}")
-    print(f"Категория: {category} / {subcategory}")
+    print(f"Культура: {subcategory}")
     print(f"{'='*80}")
 
     result = await process_pdf_document(
         file_path=str(file_path),
-        category=category,
+        category="общая_информация",  # Дефолтное значение для совместимости
         subcategory=subcategory,
         force_update=force_update,
     )
@@ -198,9 +174,9 @@ async def main():
         description="Импорт PDF-документов в базу знаний"
     )
     parser.add_argument(
-        "--category",
+        "--subcategory",
         type=str,
-        help="Фильтр по категории (например, 'питание растений')",
+        help="Фильтр по культуре (например, 'малина общая')",
         default=None,
     )
     parser.add_argument(
@@ -214,8 +190,8 @@ async def main():
     print("ИМПОРТ ДОКУМЕНТОВ В БАЗУ ЗНАНИЙ")
     print("="*80)
     print(f"Директория: {DOCUMENTS_DIR}")
-    if args.category:
-        print(f"Фильтр по категории: {args.category}")
+    if args.subcategory:
+        print(f"Фильтр по культуре: {args.subcategory}")
     if args.force_update:
         print("Режим: перезапись существующих документов")
     print("="*80 + "\n")
@@ -233,7 +209,7 @@ async def main():
     print("Сканирование директории документов...")
     documents = scan_documents_directory(
         DOCUMENTS_DIR,
-        filter_category=args.category,
+        filter_subcategory=args.subcategory,
     )
 
     if not documents:
@@ -252,7 +228,6 @@ async def main():
 
         result = await import_document(
             file_path=doc_info["file_path"],
-            category=doc_info["category"],
             subcategory=doc_info["subcategory"],
             force_update=args.force_update,
         )

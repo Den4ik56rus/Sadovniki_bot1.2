@@ -38,13 +38,21 @@ from src.handlers.common import (
 )
 
 from src.services.db.users_repo import get_or_create_user
-from src.services.db.topics_repo import get_or_create_open_topic
+from src.services.db.topics_repo import (
+    get_or_create_open_topic,
+    get_topic_culture,
+    set_topic_culture,
+)
 from src.services.db.messages_repo import log_message
 from src.services.db.moderation_repo import moderation_add
 
 from src.services.llm.consultation_llm import ask_consultation_llm
 from src.services.llm.classification_llm import detect_culture_name
-from src.services.llm.question_builder_llm import build_full_question  # Сборка полного вопроса через LLM
+
+from src.keyboards.consultation.common import get_nutrition_followup_keyboard
+
+from aiogram import F
+from aiogram.types import CallbackQuery
 
 router = Router()
 
@@ -86,13 +94,25 @@ async def handle_nutrition_root(message: Message) -> None:
     )
 
     # Ищем/создаём открытую "тему" диалога
+    # Новая тема создана уже при выборе категории консультации через close_open_topics()
     topic_id = await get_or_create_open_topic(
         user_id=user_id,
         session_id=session_id,
     )
+    print(f"[nutrition] topic_id={topic_id}, user_id={user_id}")
 
     # Корневой вопрос пользователя
     root_question = message.text or ""
+
+    # КРИТИЧНО: Проверяем message_count и culture ДО логирования сообщения!
+    from src.services.db.topics_repo import get_topic_message_count
+    message_count_before = await get_topic_message_count(topic_id)
+    culture = await get_topic_culture(topic_id)
+
+    print(f"[nutrition] ДО логирования: topic_id={topic_id}, message_count={message_count_before}, culture={culture!r}")
+
+    # Определяем: это первое сообщение в топике?
+    is_first_message = (message_count_before == 0)
 
     # Логируем корневой вопрос
     await log_message(
@@ -103,8 +123,22 @@ async def handle_nutrition_root(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    # Определяем культуру из корневого вопроса
-    culture = await detect_culture_name(root_question)
+    # Если это первое сообщение в топике - переопределяем культуру
+    # Даже если культура есть (это означает, что топик был создан заново после закрытия старого)
+    if is_first_message:
+        print(f"[nutrition] Это первое сообщение (count_before={message_count_before}), переопределяем культуру (было: {culture!r})")
+        detected_culture = await detect_culture_name(root_question)
+        if detected_culture and detected_culture != "не определено":
+            await set_topic_culture(topic_id, detected_culture)
+            culture = detected_culture
+            print(f"[CULTURE] Автоматически определена культура: {culture}")
+        else:
+            await set_topic_culture(topic_id, "не определено")
+            culture = "не определено"
+            print(f"[CULTURE] Культура не определена, сохранено: {culture}")
+    else:
+        print(f"[nutrition] Продолжение диалога (count_before={message_count_before}), используем сохраненную культуру: {culture!r}")
+
     print(f"[nutrition] STEP1 culture={culture!r}")
 
     # Сохраняем контекст консультации в памяти процесса
@@ -130,11 +164,16 @@ async def handle_nutrition_root(message: Message) -> None:
         CONSULTATION_STATE[user.id] = "waiting_variety_clarification"
         print(f"[nutrition] STEP1 done, state -> waiting_variety_clarification, user_id={user.id}")
     else:
-        # Вызываем LLM для получения ответа или уточняющих вопросов
+        # Вызываем LLM для получения ответа
         base_category = "питание растений"
 
-        # Показываем сообщение ожидания (формируются уточняющие вопросы)
-        status_message = await message.answer("⏳ Подождите...")
+        # Определяем, нужен ли RAG
+        # Если культура конкретная (не "общая информация" и не "не определено") - используем RAG сразу
+        # Если культура неопределённая - сначала без RAG (для уточняющих вопросов)
+        use_rag = culture not in ("общая информация", "не определено", None)
+
+        # Показываем сообщение ожидания
+        status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
         try:
             answer_text = await ask_consultation_llm(
@@ -144,7 +183,9 @@ async def handle_nutrition_root(message: Message) -> None:
                 session_id=session_id,
                 consultation_category=base_category,
                 culture=culture,
-                is_first_llm_call=True,  # Это первое обращение к LLM - должен задать уточняющие вопросы
+                default_location="средняя полоса",
+                default_growing_type="открытый грунт",
+                skip_rag=not use_rag,  # Используем RAG только если культура определена
             )
         finally:
             # Удаляем сообщение ожидания
@@ -153,7 +194,36 @@ async def handle_nutrition_root(message: Message) -> None:
             except Exception:
                 pass
 
-        await message.answer(answer_text)
+        # Проверяем, является ли ответ уточняющим вопросом (только если RAG не использовался)
+        if not use_rag:
+            is_clarification = (
+                len(answer_text) < 300  # Короткий ответ
+                and (
+                    "уточните" in answer_text.lower()
+                    or "о какой культуре" in answer_text.lower()
+                    or "какая у вас" in answer_text.lower()
+                    or "?" in answer_text
+                )
+            )
+        else:
+            # Если использовался RAG - это финальный ответ
+            is_clarification = False
+
+        # Отправляем ответ (с кнопками только если это финальный ответ)
+        if is_clarification:
+            await message.answer(answer_text)
+            # Переводим в состояние ожидания ответа на уточняющий вопрос
+            CONSULTATION_STATE[user.id] = "waiting_nutrition_clarification"
+            print(f"[nutrition] STEP1 done, LLM asking for clarification, state -> waiting_nutrition_clarification")
+        else:
+            await message.answer(answer_text, reply_markup=get_nutrition_followup_keyboard())
+
+            # Сохраняем полный вопрос в контекст для кнопок
+            CONSULTATION_CONTEXT[user.id]["full_question"] = root_question
+
+            # Очищаем состояние ожидания (контекст сохраняем для кнопок)
+            CONSULTATION_STATE.pop(user.id, None)
+            print(f"[nutrition] STEP1 done, showing followup buttons, use_rag={use_rag}")
 
         # Логируем ответ бота
         await log_message(
@@ -164,15 +234,8 @@ async def handle_nutrition_root(message: Message) -> None:
             topic_id=topic_id,
         )
 
-        # Проверяем, задал ли LLM уточняющие вопросы
-        # Эвристика: если в ответе есть фраза "ответьте на вопросы" - это уточняющие вопросы
-        if "ответьте на" in answer_text.lower() or "уточните" in answer_text.lower():
-            # LLM задал уточняющие вопросы - ждем ответа
-            CONSULTATION_STATE[user.id] = "waiting_nutrition_details"
-            print(f"[nutrition] STEP1 LLM asked clarification questions, state -> waiting_nutrition_details")
-        else:
-            # LLM дал финальный ответ - завершаем консультацию
-            # Формируем category_guess для moderation
+        # Формируем category_guess для moderation (только если финальный ответ)
+        if not is_clarification:
             if culture and culture != "не определено":
                 category_guess = f"{base_category} / {culture}"
             else:
@@ -186,10 +249,138 @@ async def handle_nutrition_root(message: Message) -> None:
                 category_guess=category_guess,
             )
 
-            # Очищаем состояние
-            CONSULTATION_STATE.pop(user.id, None)
-            CONSULTATION_CONTEXT.pop(user.id, None)
-            print(f"[nutrition] STEP1 LLM gave final answer, consultation completed")
+
+# ==== ЭТАП 1.5: ответ на уточняющий вопрос LLM ====
+
+
+@router.message(
+    lambda m: m.from_user is not None
+    and CONSULTATION_STATE.get(m.from_user.id) == "waiting_nutrition_clarification"
+)
+async def handle_nutrition_clarification(message: Message) -> None:
+    """
+    Обрабатывает ответ на уточняющий вопрос LLM.
+    """
+
+    user = message.from_user
+    if user is None:
+        return
+
+    print(f"[nutrition] STEP1.5 (clarification) enter, telegram_user_id={user.id}")
+
+    ctx = CONSULTATION_CONTEXT.get(user.id)
+    if not ctx:
+        print(f"[nutrition] STEP1.5 no context for user_id={user.id}, reset state")
+        CONSULTATION_STATE.pop(user.id, None)
+        return
+
+    root_question: str = ctx.get("root_question", "")
+    user_id: int = ctx.get("user_id")
+    topic_id: int = ctx.get("topic_id")
+    session_id: str = ctx.get("session_id", "")
+    telegram_user_id: int = ctx.get("telegram_user_id", user.id)
+
+    # Дополнительная проверка валидности контекста
+    if not all([user_id, topic_id, root_question]):
+        print(f"[nutrition] STEP1.5 invalid context for user_id={user.id}, reset state and context")
+        CONSULTATION_STATE.pop(user.id, None)
+        CONSULTATION_CONTEXT.pop(user.id, None)
+        return
+
+    # Ответ пользователя на уточняющий вопрос
+    clarification_answer = message.text or ""
+
+    # Логируем ответ пользователя
+    await log_message(
+        user_id=user_id,
+        direction="user",
+        text=clarification_answer,
+        session_id=session_id,
+        topic_id=topic_id,
+    )
+
+    # Переопределяем культуру на основе ответа
+    combined_text = root_question + "\n" + clarification_answer
+    culture = await detect_culture_name(combined_text)
+    print(f"[nutrition] STEP1.5 re-classified culture: {ctx.get('culture')!r} -> {culture!r}")
+
+    # Обновляем культуру в БД и контексте
+    await set_topic_culture(topic_id, culture)
+    ctx["culture"] = culture
+    CONSULTATION_CONTEXT[user.id] = ctx
+
+    # Проверяем, нужно ли уточнять тип культуры
+    if culture in ("клубника общая", "малина общая"):
+        # Задаем вопрос о типе культуры
+        if culture == "клубника общая":
+            variety_question = "Какая у вас клубника: летняя (июньская) или ремонтантная (НСД)?"
+        else:  # малина общая
+            variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
+
+        await message.answer(variety_question)
+        CONSULTATION_STATE[user.id] = "waiting_variety_clarification"
+        print(f"[nutrition] STEP1.5 done, state -> waiting_variety_clarification")
+        return
+
+    # Вызываем LLM для финального ответа с RAG
+    base_category = ctx.get("category", "питание растений")
+    combined_question = root_question + "\n\n" + clarification_answer
+
+    # Показываем сообщение ожидания
+    status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+
+    try:
+        answer_text = await ask_consultation_llm(
+            user_id=user_id,
+            telegram_user_id=telegram_user_id,
+            text=combined_question,
+            session_id=session_id,
+            consultation_category=base_category,
+            culture=culture,
+            default_location="средняя полоса",
+            default_growing_type="открытый грунт",
+            skip_rag=False,  # Теперь используем RAG для финального ответа
+        )
+    finally:
+        # Удаляем сообщение ожидания
+        try:
+            await status_message.delete()
+        except Exception:
+            pass
+
+    # Отправляем ответ с кнопками
+    await message.answer(answer_text, reply_markup=get_nutrition_followup_keyboard())
+
+    # Логируем ответ бота
+    await log_message(
+        user_id=user_id,
+        direction="bot",
+        text=answer_text,
+        session_id=session_id,
+        topic_id=topic_id,
+    )
+
+    # Формируем category_guess для moderation
+    if culture and culture != "не определено":
+        category_guess = f"{base_category} / {culture}"
+    else:
+        category_guess = base_category
+
+    await moderation_add(
+        user_id=user_id,
+        topic_id=topic_id,
+        question=combined_question,
+        answer=answer_text,
+        category_guess=category_guess,
+    )
+
+    # Сохраняем полный вопрос в контекст для кнопок
+    ctx["full_question"] = combined_question
+    CONSULTATION_CONTEXT[user.id] = ctx
+
+    # Очищаем состояние (контекст сохраняем для кнопок)
+    CONSULTATION_STATE.pop(user.id, None)
+    print(f"[nutrition] STEP1.5 done, showing followup buttons")
 
 
 # ==== ЭТАП 2: уточнение типа культуры (для клубники/малины общей) ====
@@ -216,11 +407,19 @@ async def handle_variety_clarification(message: Message) -> None:
         CONSULTATION_STATE.pop(user.id, None)
         return
 
+    # Проверяем, что контекст содержит все необходимые поля
     root_question: str = ctx.get("root_question", "")
     old_culture: str = ctx.get("culture", "")
     user_id: int = ctx.get("user_id")
     topic_id: int = ctx.get("topic_id")
     session_id: str = ctx.get("session_id", "")
+
+    # Дополнительная проверка валидности контекста
+    if not all([user_id, topic_id, old_culture]):
+        print(f"[nutrition] STEP2 (variety) invalid context for user_id={user.id}, reset state and context")
+        CONSULTATION_STATE.pop(user.id, None)
+        CONSULTATION_CONTEXT.pop(user.id, None)
+        return
 
     # Ответ пользователя о типе культуры
     variety_answer = message.text or ""
@@ -234,21 +433,48 @@ async def handle_variety_clarification(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    # Переопределяем культуру на основе ответа
-    culture = await detect_culture_name(root_question + "\n" + variety_answer)
+    # Определяем тип культуры на основе ответа пользователя
+    variety_answer_lower = variety_answer.lower()
+
+    # Определяем, какой тип указал пользователь
+    if old_culture == "клубника общая":
+        if "ремонтант" in variety_answer_lower or "нсд" in variety_answer_lower or "nsd" in variety_answer_lower:
+            culture = "клубника ремонтантная"
+        elif "летн" in variety_answer_lower or "июньск" in variety_answer_lower or "обычн" in variety_answer_lower or "традицион" in variety_answer_lower:
+            culture = "клубника летняя"
+        else:
+            # Если не смогли определить - пробуем через классификатор с контекстом
+            culture = await detect_culture_name(f"клубника {variety_answer}")
+            if culture == "общая информация" or culture == "не определено":
+                culture = old_culture  # Оставляем как есть
+    elif old_culture == "малина общая":
+        if "ремонтант" in variety_answer_lower or "нсд" in variety_answer_lower or "nsd" in variety_answer_lower:
+            culture = "малина ремонтантная"
+        elif "летн" in variety_answer_lower or "обычн" in variety_answer_lower or "традицион" in variety_answer_lower:
+            culture = "малина летняя"
+        else:
+            # Если не смогли определить - пробуем через классификатор с контекстом
+            culture = await detect_culture_name(f"малина {variety_answer}")
+            if culture == "общая информация" or culture == "не определено":
+                culture = old_culture  # Оставляем как есть
+    else:
+        # Если это не клубника/малина общая - используем классификатор
+        culture = await detect_culture_name(root_question + "\n" + variety_answer)
+
     print(f"[nutrition] STEP2 (variety) re-classified culture: {old_culture!r} -> {culture!r}")
 
-    # Обновляем контекст с новой культурой
+    # Обновляем культуру в БД и контексте
+    await set_topic_culture(topic_id, culture)
     ctx["culture"] = culture
     ctx["variety_answer"] = variety_answer
     CONSULTATION_CONTEXT[user.id] = ctx
 
-    # Вызываем LLM с уточненной культурой
+    # Вызываем LLM с уточненной культурой для финального ответа
     base_category = ctx.get("category", "питание растений")
     combined_question = root_question + "\n\nТип культуры: " + variety_answer
 
-    # Показываем сообщение ожидания (формируются уточняющие вопросы)
-    status_message = await message.answer("⏳ Подождите...")
+    # Показываем сообщение ожидания
+    status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
     try:
         answer_text = await ask_consultation_llm(
@@ -258,7 +484,9 @@ async def handle_variety_clarification(message: Message) -> None:
             session_id=session_id,
             consultation_category=base_category,
             culture=culture,
-            is_first_llm_call=True,  # Указываем, что это первое обращение к LLM - он должен задать уточняющие вопросы
+            default_location="средняя полоса",
+            default_growing_type="открытый грунт",
+            skip_rag=False,  # Используем RAG для финального ответа
         )
     finally:
         # Удаляем сообщение ожидания
@@ -267,7 +495,8 @@ async def handle_variety_clarification(message: Message) -> None:
         except Exception:
             pass
 
-    await message.answer(answer_text)
+    # Отправляем ответ с кнопками
+    await message.answer(answer_text, reply_markup=get_nutrition_followup_keyboard())
 
     # Логируем ответ бота
     await log_message(
@@ -278,154 +507,275 @@ async def handle_variety_clarification(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    # Проверяем, задал ли LLM уточняющие вопросы
-    if "ответьте на" in answer_text.lower() or "уточните" in answer_text.lower():
-        # LLM задал уточняющие вопросы - ждем ответа
-        CONSULTATION_STATE[user.id] = "waiting_nutrition_details"
-        print(f"[nutrition] STEP2 (variety) LLM asked clarification questions, state -> waiting_nutrition_details")
+    # Формируем category_guess для moderation
+    if culture and culture != "не определено":
+        category_guess = f"{base_category} / {culture}"
     else:
-        # LLM дал финальный ответ - завершаем консультацию
-        if culture and culture != "не определено":
-            category_guess = f"{base_category} / {culture}"
-        else:
-            category_guess = base_category
+        category_guess = base_category
 
-        await moderation_add(
-            user_id=user_id,
-            topic_id=topic_id,
-            question=combined_question,
-            answer=answer_text,
-            category_guess=category_guess,
-        )
+    await moderation_add(
+        user_id=user_id,
+        topic_id=topic_id,
+        question=combined_question,
+        answer=answer_text,
+        category_guess=category_guess,
+    )
 
-        # Очищаем состояние
-        CONSULTATION_STATE.pop(user.id, None)
-        CONSULTATION_CONTEXT.pop(user.id, None)
-        print(f"[nutrition] STEP2 (variety) LLM gave final answer, consultation completed")
+    # Сохраняем полный вопрос в контекст для кнопок
+    ctx["full_question"] = combined_question
+    CONSULTATION_CONTEXT[user.id] = ctx
+
+    # Очищаем состояние (контекст сохраняем для кнопок)
+    CONSULTATION_STATE.pop(user.id, None)
+    print(f"[nutrition] STEP2 (variety) done, showing followup buttons")
 
 
-# ==== ЭТАП 3: ответы на уточняющие вопросы по питанию ====
+# ==== Обработчики кнопок после получения ответа ====
+
+
+@router.callback_query(F.data == "nutrition_new_topic")
+async def handle_nutrition_new_topic(callback: CallbackQuery) -> None:
+    """
+    Обработчик кнопки "Вопрос по новой теме".
+    Закрывает текущий топик, очищает контекст и возвращает пользователя к выбору категории консультации.
+    """
+    user = callback.from_user
+    if user is None:
+        return
+
+    print(f"[nutrition_new_topic] Нажата кнопка 'Новая тема' для user {user.id}")
+
+    # Получаем внутренний user_id
+    from src.services.db.users_repo import get_or_create_user
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+    # Закрываем все открытые топики пользователя
+    from src.services.db.topics_repo import close_open_topics
+    await close_open_topics(internal_user_id)
+    print(f"[nutrition_new_topic] Закрыты все топики для internal_user_id={internal_user_id} (telegram_user_id={user.id})")
+
+    # Очищаем контекст и состояние
+    CONSULTATION_STATE.pop(user.id, None)
+    CONSULTATION_CONTEXT.pop(user.id, None)
+
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Выберите новую тему консультации")
+
+    # Импортируем клавиатуру меню консультаций
+    from src.keyboards.consultation.common import CONSULTATION_MENU_INLINE_KB
+
+    await callback.message.answer(
+        "Выберите тему консультации:",
+        reply_markup=CONSULTATION_MENU_INLINE_KB
+    )
+
+
+@router.callback_query(F.data == "nutrition_replace_params")
+async def handle_nutrition_replace_params(callback: CallbackQuery) -> None:
+    """
+    Обработчик кнопки "Заменить параметры".
+    Позволяет пользователю указать новые параметры (местоположение, тип выращивания).
+    """
+    user = callback.from_user
+    if user is None:
+        return
+
+    ctx = CONSULTATION_CONTEXT.get(user.id)
+    if not ctx:
+        await callback.answer("Контекст консультации утерян", show_alert=True)
+        return
+
+    # Устанавливаем состояние ожидания новых параметров
+    CONSULTATION_STATE[user.id] = "waiting_param_replacement"
+
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Укажите новые параметры")
+
+    await callback.message.answer(
+        "Укажите ваши параметры:\n"
+        "Например: 'Теплица, Урал' или 'Южный регион, открытый грунт'\n\n"
+        "Или задайте вопрос заново с другими условиями."
+    )
 
 
 @router.message(
     lambda m: m.from_user is not None
-    and CONSULTATION_STATE.get(m.from_user.id) == "waiting_nutrition_details"
+    and CONSULTATION_STATE.get(m.from_user.id) == "waiting_param_replacement"
 )
-async def handle_nutrition_details(message: Message) -> None:
+async def handle_param_replacement(message: Message) -> None:
     """
-    Обрабатывает ответы на уточняющие вопросы по питанию растений.
+    Обрабатывает ввод новых параметров пользователем.
     """
-
     user = message.from_user
     if user is None:
         return
 
-    print(f"[nutrition] STEP3 enter, telegram_user_id={user.id}")
-
     ctx = CONSULTATION_CONTEXT.get(user.id)
     if not ctx:
-        print(f"[nutrition] STEP3 no context for user_id={user.id}, reset state")
+        await message.answer("Контекст консультации утерян")
         CONSULTATION_STATE.pop(user.id, None)
         return
 
-    root_question: str = ctx.get("root_question", "")
-    culture: str = ctx.get("culture", "не определено")  # Берем УЖЕ определенную культуру
-    user_id: int = ctx.get("user_id")
-    topic_id: int = ctx.get("topic_id")
-    session_id: str = ctx.get("session_id", "")
-    telegram_user_id: int = ctx.get("telegram_user_id", user.id)
+    # Извлекаем параметры из текста пользователя
+    text_lower = (message.text or "").lower()
 
-    # Ответ пользователя на уточняющие вопросы по питанию
-    details_text = message.text or ""
+    # По умолчанию используем стандартные значения
+    location = "средняя полоса"
+    growing_type = "открытый грунт"
 
-    # Если был промежуточный ответ о типе культуры - включаем его в детали
-    variety_answer: str = ctx.get("variety_answer", "")
-    if variety_answer:
-        details_text = variety_answer + "\n" + details_text
+    # Парсим местоположение
+    if "урал" in text_lower or "сибир" in text_lower:
+        location = "Урал/Сибирь"
+    elif "юг" in text_lower or "южн" in text_lower:
+        location = "южные регионы"
+    elif "север" in text_lower or "северн" in text_lower:
+        location = "северные регионы"
+    elif "дальн" in text_lower and "восток" in text_lower:
+        location = "Дальний Восток"
+    elif "подмосков" in text_lower or "москв" in text_lower:
+        location = "Подмосковье"
+    elif "петербург" in text_lower or "ленинград" in text_lower:
+        location = "Санкт-Петербург"
 
-    print(f"[nutrition] STEP3 using culture={culture!r}")
+    # Парсим тип выращивания
+    if "теплиц" in text_lower:
+        growing_type = "теплица"
+    elif "контейнер" in text_lower or "горшк" in text_lower or "кашпо" in text_lower:
+        growing_type = "контейнерное выращивание"
+    elif "закрыт" in text_lower and "грунт" in text_lower:
+        growing_type = "закрытый грунт"
 
-    # ПОЛНЫЙ ВОПРОС строим через отдельный LLM-хелпер
-    full_question = await build_full_question(
-        root_question=root_question,
-        details_text=details_text,
-        topic="питание растений",
-    )
-    print(f"[nutrition] full_question={full_question!r}")
-
-    # Обновляем контекст консультации
-    ctx["full_question"] = full_question
-    ctx["culture"] = culture
+    # Сохраняем параметры в контексте
+    if "default_params" not in ctx:
+        ctx["default_params"] = {}
+    ctx["default_params"]["location"] = location
+    ctx["default_params"]["growing_type"] = growing_type
     CONSULTATION_CONTEXT[user.id] = ctx
 
-    # Логируем ПОЛНЫЙ ВОПРОС как сообщение пользователя
-    await log_message(
-        user_id=user_id,
-        direction="user",
-        text=full_question,
-        session_id=session_id,
-        topic_id=topic_id,
-    )
-
-    # Базовый тип консультации для этого сценария
-    base_category = ctx.get("category", "питание растений")
-
-    # То, что попадёт в moderation_queue.category_guess
-    if culture and culture != "не определено":
-        # пример: "питание растений / малина"
-        category_guess = f"{base_category} / {culture}"
-    else:
-        # просто "питание растений"
-        category_guess = base_category
-
-    print(f"[nutrition] category_guess={category_guess!r}")
-
-    # В LLM-консультацию тоже отправляем ПОЛНЫЙ ВОПРОС
-    # ВАЖНО: сюда теперь передаём:
-    #   consultation_category = 'питание растений'
-    #   culture               = детектированная культура (или 'общая информация' / 'не определено')
+    # Получаем оригинальный вопрос
+    root_question = ctx.get("root_question", "")
+    culture = ctx.get("culture", "не определено")
+    category = ctx.get("category", "питание растений")
+    user_id = ctx.get("user_id")
+    session_id = ctx.get("session_id", "")
 
     # Показываем сообщение ожидания
-    status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+    status_message = await message.answer("⏳ Подождите, формирую ответ с новыми параметрами...")
 
     try:
         answer_text = await ask_consultation_llm(
             user_id=user_id,
-            telegram_user_id=telegram_user_id,
-            text=full_question,
+            telegram_user_id=user.id,
+            text=root_question,
             session_id=session_id,
-            consultation_category=base_category,
+            consultation_category=category,
             culture=culture,
+            default_location=location,
+            default_growing_type=growing_type,
         )
     finally:
-        # Удаляем сообщение ожидания
         try:
             await status_message.delete()
         except Exception:
             pass
 
-    # Отвечаем пользователю
-    await message.answer(answer_text)
+    # Отправляем ответ с кнопками
+    await message.answer(answer_text, reply_markup=get_nutrition_followup_keyboard())
 
-    # Логируем ответ бота в messages
+    # Логируем сообщения
+    await log_message(
+        user_id=user_id,
+        direction="user",
+        text=f"Новые параметры: {location}, {growing_type}",
+        session_id=session_id,
+        topic_id=ctx.get("topic_id"),
+    )
+
     await log_message(
         user_id=user_id,
         direction="bot",
         text=answer_text,
         session_id=session_id,
-        topic_id=topic_id,
+        topic_id=ctx.get("topic_id"),
     )
 
-    # Отправляем диалог (full_question + answer) в очередь модерации
-    await moderation_add(
-        user_id=user_id,
-        topic_id=topic_id,
-        question=full_question,
-        answer=answer_text,
-        category_guess=category_guess,
-    )
-
-    # Чистим состояние и контекст для этого пользователя
+    # Очищаем состояние
     CONSULTATION_STATE.pop(user.id, None)
-    CONSULTATION_CONTEXT.pop(user.id, None)
-    print(f"[nutrition] STEP2 done, state cleared for telegram_user_id={user.id}")
+
+
+@router.callback_query(F.data == "nutrition_detailed_plan")
+async def handle_nutrition_detailed_plan(callback: CallbackQuery) -> None:
+    """
+    Обработчик кнопки "Получить детальный план подкормок".
+    Формирует детальный план подкормок на основе предыдущего контекста.
+    """
+    user = callback.from_user
+    if user is None:
+        return
+
+    ctx = CONSULTATION_CONTEXT.get(user.id)
+    if not ctx:
+        await callback.answer("Контекст консультации утерян", show_alert=True)
+        return
+
+    full_question = ctx.get("full_question", ctx.get("root_question", ""))
+    culture = ctx.get("culture", "не определено")
+    user_id = ctx.get("user_id")
+    topic_id = ctx.get("topic_id")
+    session_id = ctx.get("session_id", "")
+    telegram_user_id = ctx.get("telegram_user_id", user.id)
+
+    await callback.message.edit_reply_markup(reply_markup=None)
+    await callback.answer("Формирую детальный план подкормок...")
+
+    # Формируем запрос на детальный план
+    detailed_plan_request = (
+        f"На основе предыдущего вопроса:\n{full_question}\n\n"
+        "Составь детальный план подкормок с указанием конкретных дат, "
+        "препаратов, дозировок и способов внесения."
+    )
+
+    # Показываем сообщение ожидания
+    status_message = await callback.message.answer("⏳ Формирую детальный план...")
+
+    try:
+        detailed_plan = await ask_consultation_llm(
+            user_id=user_id,
+            telegram_user_id=telegram_user_id,
+            text=detailed_plan_request,
+            session_id=session_id,
+            consultation_category="питание растений",
+            culture=culture,
+            default_location="средняя полоса",
+            default_growing_type="открытый грунт",
+        )
+    finally:
+        try:
+            await status_message.delete()
+        except Exception:
+            pass
+
+    # Отправляем детальный план
+    await callback.message.answer(detailed_plan, reply_markup=get_nutrition_followup_keyboard())
+
+    # Логируем запрос и ответ
+    await log_message(
+        user_id=user_id,
+        direction="user",
+        text=detailed_plan_request,
+        session_id=session_id,
+        topic_id=topic_id,
+    )
+
+    await log_message(
+        user_id=user_id,
+        direction="bot",
+        text=detailed_plan,
+        session_id=session_id,
+        topic_id=topic_id,
+    )

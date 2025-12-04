@@ -1,18 +1,16 @@
 # src/services/rag/unified_retriever.py
 
 """
-Трёхуровневый поиск по базе знаний с приоритизацией.
+Двухуровневый поиск по базе знаний с приоритизацией.
 
-УРОВЕНЬ 1 (высший приоритет): Q&A пары из knowledge_base
-УРОВЕНЬ 2 (средний приоритет): Специфичные документы (малина_ремонтантная, клубника_летняя и т.п.)
-УРОВЕНЬ 3 (низкий приоритет): Общие документы (малина общая, клубника общая)
+УРОВЕНЬ 1 (высший приоритет): Q&A пары из knowledge_base (управляется через админку)
+УРОВЕНЬ 2 (средний приоритет): PDF-документы по культурам
 
-Особенность: делаем ТРИ отдельных запроса:
+Особенность: делаем ДВА отдельных запроса:
 1. Поиск в knowledge_base (Q&A пары) - УРОВЕНЬ 1
-2. Поиск в document_chunks с точной subcategory (специфичные документы) - УРОВЕНЬ 2
-3. Поиск в document_chunks с общей subcategory (общие документы) - УРОВЕНЬ 3
+2. Поиск в document_chunks по культуре (специфичные или общие) - УРОВЕНЬ 2
 
-Затем объединяем результаты с приоритетами: 1 > 2 > 3
+Затем объединяем результаты с приоритетом: 1 > 2
 """
 
 from typing import List, Dict, Any, Optional
@@ -72,35 +70,33 @@ async def retrieve_unified_snippets(
     query_embedding: List[float],
     subcategory: Optional[str] = None,
     qa_limit: int = 2,
-    level2_limit: int = 2,  # Специфичные документы
-    level3_limit: int = 2,  # Общие документы
+    doc_limit: int = 3,  # Документы (специфичные + общие)
     qa_distance_threshold: float = 0.4,
     doc_distance_threshold: float = 0.35,
 ) -> List[Dict[str, Any]]:
     """
-    Трёхуровневый поиск фрагментов с приоритизацией.
+    Двухуровневый поиск фрагментов с приоритизацией.
 
     Стратегия:
         1. УРОВЕНЬ 1: kb_search() для Q&A пар (высший приоритет)
-        2. УРОВЕНЬ 2: chunks_search() для специфичных документов (средний приоритет)
-        3. УРОВЕНЬ 3: chunks_search() для общих документов (низкий приоритет)
-        4. Объединяем результаты с сортировкой: уровень приоритета, затем distance
-        5. Применяем two-tier fallback для Q&A
+        2. УРОВЕНЬ 2: chunks_search() для документов по культуре (средний приоритет)
+            - Сначала ищем документы по точной культуре (малина ремонтантная)
+            - Если не нашли, делаем fallback на общую культуру (малина общая)
+        3. Объединяем результаты с сортировкой: уровень приоритета, затем distance
 
     Параметры:
-        category: Тип консультации
+        category: Тип консультации (СОХРАНЕНО для обратной совместимости, но не используется в chunks_search)
         query_embedding: Эмбеддинг запроса пользователя
         subcategory: Культура (опционально)
         qa_limit: Максимум Q&A фрагментов (УРОВЕНЬ 1, по умолчанию 2)
-        level2_limit: Максимум специфичных документов (УРОВЕНЬ 2, по умолчанию 2)
-        level3_limit: Максимум общих документов (УРОВЕНЬ 3, по умолчанию 2)
+        doc_limit: Максимум фрагментов документов (УРОВЕНЬ 2, по умолчанию 3)
         qa_distance_threshold: Порог схожести для Q&A (по умолчанию 0.4)
         doc_distance_threshold: Порог схожести для документов (по умолчанию 0.35)
 
     Возвращает:
         Список словарей с полями:
-            - source_type: 'qa' / 'document_specific' / 'document_general'
-            - priority_level: 1 / 2 / 3
+            - source_type: 'qa' / 'document'
+            - priority_level: 1 / 2
             - content: текст фрагмента
             - distance: расстояние до эмбеддинга запроса
             - (другие поля зависят от источника)
@@ -153,92 +149,58 @@ async def retrieve_unified_snippets(
         print(f"[retrieve_unified_snippets] УРОВЕНЬ 1 (Q&A) search error: {e}")
 
     # ============================================================
-    # УРОВЕНЬ 2: Специфичные документы (средний приоритет)
+    # УРОВЕНЬ 2: Документы по культуре (средний приоритет)
     # ============================================================
     if subcategory:
         try:
-            print(f"[УРОВЕНЬ 2] Поиск специфичных документов...")
-            print(f"  category={category}, subcategory={subcategory}, limit={level2_limit}, threshold={doc_distance_threshold}")
+            print(f"[УРОВЕНЬ 2] Поиск документов по культуре...")
+            print(f"  subcategory={subcategory}, limit={doc_limit}, threshold={doc_distance_threshold}")
 
             # Ищем документы с точной subcategory (например, "малина ремонтантная")
-            level2_rows = await chunks_search(
-                category=category,
+            doc_rows = await chunks_search(
                 subcategory=subcategory,
                 query_embedding=query_embedding,
-                limit=level2_limit,
+                limit=doc_limit,
                 distance_threshold=doc_distance_threshold,
             )
 
-            print(f"[УРОВЕНЬ 2] Найдено специфичных документов: {len(level2_rows)}")
+            print(f"[УРОВЕНЬ 2] Найдено документов (точная культура): {len(doc_rows)}")
+
+            # Fallback: если не нашли по точной культуре, ищем по общей
+            if not doc_rows:
+                general_subcategory = get_general_subcategory(subcategory)
+                if general_subcategory and general_subcategory != subcategory:
+                    print(f"[УРОВЕНЬ 2] Fallback на общую культуру: {general_subcategory}")
+                    doc_rows = await chunks_search(
+                        subcategory=general_subcategory,
+                        query_embedding=query_embedding,
+                        limit=doc_limit,
+                        distance_threshold=doc_distance_threshold,
+                    )
+                    print(f"[УРОВЕНЬ 2] Найдено документов (общая культура): {len(doc_rows)}")
 
             # Преобразуем в единый формат с УРОВНЕМ 2
-            for row in level2_rows:
+            for row in doc_rows:
                 all_snippets.append({
-                    "source_type": "document_specific",
+                    "source_type": "document",
                     "priority_level": 2,  # СРЕДНИЙ ПРИОРИТЕТ
                     "content": row["chunk_text"],
                     "distance": row["distance"],
                     "id": row["id"],
                     "document_id": row["document_id"],
                     "page_number": row.get("page_number"),
-                    "category": row["category"],
                     "subcategory": row["subcategory"],
                 })
 
         except Exception as e:
-            print(f"[retrieve_unified_snippets] УРОВЕНЬ 2 (специфичные документы) search error: {e}")
+            print(f"[retrieve_unified_snippets] УРОВЕНЬ 2 (документы) search error: {e}")
     else:
-        print(f"[УРОВЕНЬ 2] Пропущен (subcategory не указана)")
-
-    # ============================================================
-    # УРОВЕНЬ 3: Общие документы (низкий приоритет)
-    # ============================================================
-    # Определяем общую подкатегорию
-    general_subcategory = get_general_subcategory(subcategory)
-
-    print(f"[УРОВЕНЬ 3] Специфичная подкатегория: {subcategory}")
-    print(f"[УРОВЕНЬ 3] Общая подкатегория: {general_subcategory}")
-
-    # Ищем только если общая подкатегория отличается от специфичной
-    # (иначе получим дублирование с УРОВНЕМ 2)
-    if general_subcategory and general_subcategory != subcategory:
-        try:
-            print(f"[УРОВЕНЬ 3] Поиск общих документов...")
-            print(f"  category={category}, subcategory={general_subcategory}, limit={level3_limit}, threshold={doc_distance_threshold}")
-
-            level3_rows = await chunks_search(
-                category=category,
-                subcategory=general_subcategory,
-                query_embedding=query_embedding,
-                limit=level3_limit,
-                distance_threshold=doc_distance_threshold,
-            )
-
-            print(f"[УРОВЕНЬ 3] Найдено общих документов: {len(level3_rows)}")
-
-            # Преобразуем в единый формат с УРОВНЕМ 3
-            for row in level3_rows:
-                all_snippets.append({
-                    "source_type": "document_general",
-                    "priority_level": 3,  # НИЗКИЙ ПРИОРИТЕТ
-                    "content": row["chunk_text"],
-                    "distance": row["distance"],
-                    "id": row["id"],
-                    "document_id": row["document_id"],
-                    "page_number": row.get("page_number"),
-                    "category": row["category"],
-                    "subcategory": row["subcategory"],
-                })
-
-        except Exception as e:
-            print(f"[retrieve_unified_snippets] УРОВЕНЬ 3 (общие документы) search error: {e}")
-    else:
-        print(f"[УРОВЕНЬ 3] Пропущен (общая подкатегория совпадает со специфичной или отсутствует)")
+        print(f"[УРОВЕНЬ 2] Пропущен (культура не указана)")
 
     # ============================================================
     # Сортировка: по priority_level, затем по distance
     # ============================================================
-    # Сортируем: сначала по уровню приоритета (1, 2, 3), внутри уровня по distance
+    # Сортируем: сначала по уровню приоритета (1, 2), внутри уровня по distance
     all_snippets.sort(key=lambda x: (x["priority_level"], x["distance"]))
 
     return all_snippets

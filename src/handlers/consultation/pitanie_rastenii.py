@@ -49,10 +49,14 @@ from src.services.db.moderation_repo import moderation_add
 from src.services.llm.consultation_llm import ask_consultation_llm
 from src.services.llm.classification_llm import detect_culture_name
 
-# Импортируем функцию для отправки информации о счётчике
-from src.handlers.consultation.entry import send_followup_count_message, send_long_message
+# Импортируем функции для отправки информации о счётчике и проверки отказа
+from src.handlers.consultation.entry import (
+    send_followup_count_message,
+    send_long_message,
+    is_rejection_response,
+)
 
-from src.keyboards.consultation.common import get_nutrition_followup_keyboard
+from src.keyboards.consultation.common import get_followup_keyboard
 
 from aiogram import F
 from aiogram.types import CallbackQuery
@@ -198,8 +202,8 @@ async def process_nutrition_consultation(
         topic_id=topic_id,
     )
 
-    # Добавляем в moderation (только если финальный ответ)
-    if not is_clarification:
+    # Добавляем в moderation (только если финальный ответ и НЕ отказ)
+    if not is_clarification and not is_rejection_response(answer_text):
         if culture and culture != "не определено":
             category_guess = f"{base_category} / {culture}"
         else:
@@ -376,7 +380,7 @@ async def handle_nutrition_root(message: Message) -> None:
             CONSULTATION_STATE[user.id] = "waiting_nutrition_clarification"
             print(f"[nutrition] STEP1 done, LLM asking for clarification, state -> waiting_nutrition_clarification")
         else:
-            await message.answer(answer_text, reply_markup=get_nutrition_followup_keyboard())
+            await message.answer(answer_text, reply_markup=get_followup_keyboard(category))
 
             # Сохраняем полный вопрос в контекст для кнопок
             CONSULTATION_CONTEXT[user.id]["full_question"] = root_question
@@ -394,8 +398,8 @@ async def handle_nutrition_root(message: Message) -> None:
             topic_id=topic_id,
         )
 
-        # Формируем category_guess для moderation (только если финальный ответ)
-        if not is_clarification:
+        # Формируем category_guess для moderation (только если финальный ответ и НЕ отказ)
+        if not is_clarification and not is_rejection_response(answer_text):
             if culture and culture != "не определено":
                 category_guess = f"{base_category} / {culture}"
             else:
@@ -525,24 +529,25 @@ async def handle_nutrition_clarification(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    # Формируем category_guess для moderation
-    if culture and culture != "не определено":
-        category_guess = f"{base_category} / {culture}"
-    else:
-        category_guess = base_category
+    # Формируем category_guess для moderation (только если НЕ отказ)
+    if not is_rejection_response(answer_text):
+        if culture and culture != "не определено":
+            category_guess = f"{base_category} / {culture}"
+        else:
+            category_guess = base_category
 
-    await moderation_add(
-        user_id=user_id,
-        topic_id=topic_id,
-        question=combined_question,
-        answer=answer_text,
-        category_guess=category_guess,
-    )
+        await moderation_add(
+            user_id=user_id,
+            topic_id=topic_id,
+            question=combined_question,
+            answer=answer_text,
+            category_guess=category_guess,
+        )
 
-    # Отправляем информацию о количестве оставшихся вопросов
-    from src.services.db.topics_repo import get_follow_up_questions_left
-    questions_left = await get_follow_up_questions_left(topic_id)
-    await send_followup_count_message(message, questions_left, topic_id)
+        # Отправляем информацию о количестве оставшихся вопросов
+        from src.services.db.topics_repo import get_follow_up_questions_left
+        questions_left = await get_follow_up_questions_left(topic_id)
+        await send_followup_count_message(message, questions_left, topic_id)
 
     # Сохраняем полный вопрос в контекст для кнопок
     ctx["full_question"] = combined_question
@@ -677,24 +682,25 @@ async def handle_variety_clarification(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    # Формируем category_guess для moderation
-    if culture and culture != "не определено":
-        category_guess = f"{base_category} / {culture}"
-    else:
-        category_guess = base_category
+    # Формируем category_guess для moderation (только если НЕ отказ)
+    if not is_rejection_response(answer_text):
+        if culture and culture != "не определено":
+            category_guess = f"{base_category} / {culture}"
+        else:
+            category_guess = base_category
 
-    await moderation_add(
-        user_id=user_id,
-        topic_id=topic_id,
-        question=combined_question,
-        answer=answer_text,
-        category_guess=category_guess,
-    )
+        await moderation_add(
+            user_id=user_id,
+            topic_id=topic_id,
+            question=combined_question,
+            answer=answer_text,
+            category_guess=category_guess,
+        )
 
-    # Отправляем информацию о количестве оставшихся вопросов
-    from src.services.db.topics_repo import get_follow_up_questions_left
-    questions_left = await get_follow_up_questions_left(topic_id)
-    await send_followup_count_message(message, questions_left, topic_id)
+        # Отправляем информацию о количестве оставшихся вопросов
+        from src.services.db.topics_repo import get_follow_up_questions_left
+        questions_left = await get_follow_up_questions_left(topic_id)
+        await send_followup_count_message(message, questions_left, topic_id)
 
     # Сохраняем полный вопрос в контекст для кнопок
     ctx["full_question"] = combined_question
@@ -882,11 +888,21 @@ async def handle_param_replacement(message: Message) -> None:
     CONSULTATION_STATE.pop(user.id, None)
 
 
-@router.message(F.text == "📋 Детальный план подкормок")
-async def handle_nutrition_detailed_plan(message: Message) -> None:
+# Маппинг категорий на тексты запросов для детального плана
+CATEGORY_PLAN_REQUESTS = {
+    "питание растений": "Составь детальный план подкормок с указанием конкретных дат, препаратов, дозировок и способов внесения.",
+    "улучшение почвы": "Составь детальный план улучшения почвы с конкретными мероприятиями, сроками и материалами.",
+    "посадка и уход": "Составь детальный план ухода с конкретными мероприятиями по месяцам.",
+    "защита растений": "Составь детальный план защиты растений с указанием препаратов, сроков обработки и дозировок.",
+    "подбор сорта": "Составь детальный план подбора сортов с рекомендациями и критериями выбора.",
+}
+
+
+@router.message(F.text.startswith("📋 Детальный план"))
+async def handle_detailed_plan(message: Message) -> None:
     """
-    Обработчик кнопки "Получить детальный план подкормок".
-    Формирует детальный план подкормок на основе предыдущего контекста.
+    Обработчик кнопки "Детальный план" для всех категорий.
+    Формирует детальный план на основе предыдущего контекста и категории.
     """
     user = message.from_user
     if user is None:
@@ -899,16 +915,20 @@ async def handle_nutrition_detailed_plan(message: Message) -> None:
 
     full_question = ctx.get("full_question", ctx.get("root_question", ""))
     culture = ctx.get("culture", "не определено")
+    category = ctx.get("category", "питание растений")
     user_id = ctx.get("user_id")
     topic_id = ctx.get("topic_id")
     session_id = ctx.get("session_id", "")
     telegram_user_id = ctx.get("telegram_user_id", user.id)
 
+    # Получаем текст запроса для категории
+    plan_request_text = CATEGORY_PLAN_REQUESTS.get(
+        category, "Составь детальный план."
+    )
+
     # Формируем запрос на детальный план
     detailed_plan_request = (
-        f"На основе предыдущего вопроса:\n{full_question}\n\n"
-        "Составь детальный план подкормок с указанием конкретных дат, "
-        "препаратов, дозировок и способов внесения."
+        f"На основе предыдущего вопроса:\n{full_question}\n\n{plan_request_text}"
     )
 
     # Показываем сообщение ожидания
@@ -920,7 +940,7 @@ async def handle_nutrition_detailed_plan(message: Message) -> None:
             telegram_user_id=telegram_user_id,
             text=detailed_plan_request,
             session_id=session_id,
-            consultation_category="питание растений",
+            consultation_category=category,
             culture=culture,
             default_location="средняя полоса",
             default_growing_type="открытый грунт",

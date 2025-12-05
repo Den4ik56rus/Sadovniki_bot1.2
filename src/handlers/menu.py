@@ -308,11 +308,23 @@ async def handle_close_menu(callback: CallbackQuery) -> None:
 async def handle_back_to_menu(message: Message) -> None:
     """
     Обработчик кнопки "⬅️ Назад в меню" из консультации.
-    Очищает состояние консультации и возвращает пользователя в главное меню.
+    Закрывает текущий топик, очищает состояние консультации и возвращает пользователя в главное меню.
     """
     user = message.from_user
     if user is None:
         return
+
+    # Получаем внутренний user_id для закрытия топика
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+    # Закрываем текущий топик
+    from src.services.db.topics_repo import close_open_topics
+    await close_open_topics(internal_user_id)
 
     # Очистить состояние консультации
     if user.id in CONSULTATION_STATE:

@@ -38,7 +38,7 @@ from src.services.llm.consultation_llm import ask_consultation_llm
 from src.services.llm.classification_llm import detect_culture_name
 
 # Keyboards
-from src.keyboards.consultation.common import get_nutrition_followup_keyboard
+from src.keyboards.consultation.common import get_followup_keyboard
 
 # Утилита для session_id и управление состоянием
 from src.handlers.common import (
@@ -129,7 +129,12 @@ async def send_long_message(message: Message, text: str) -> None:
         await message.answer(part_text)
 
 
-async def send_followup_count_message(message: Message, questions_left: int, topic_id: int) -> None:
+async def send_followup_count_message(
+    message: Message,
+    questions_left: int,
+    topic_id: int,
+    category: str = "питание растений"
+) -> None:
     """
     Отправляет информационное сообщение о количестве оставшихся уточняющих вопросов.
 
@@ -137,6 +142,7 @@ async def send_followup_count_message(message: Message, questions_left: int, top
         message: Сообщение от пользователя
         questions_left: Количество оставшихся вопросов (0-3)
         topic_id: ID топика
+        category: Категория консультации для выбора текста кнопки
     """
     if questions_left > 0:
         # Склонение слова "вопрос"
@@ -149,15 +155,14 @@ async def send_followup_count_message(message: Message, questions_left: int, top
 
         text = f"Вы можете задать {questions_left} {word} на эту тему."
         # Показываем клавиатуру с кнопками для дополнительных действий
-        from src.keyboards.consultation.common import get_nutrition_followup_keyboard
-        await message.answer(text, reply_markup=get_nutrition_followup_keyboard())
+        await message.answer(text, reply_markup=get_followup_keyboard(category))
     else:
         # Показываем кнопку для получения дополнительных вопросов
         from src.keyboards.consultation.common import get_more_questions_keyboard
         text = "Уточняющие вопросы по этой теме исчерпаны."
         await message.answer(text, reply_markup=get_more_questions_keyboard())
 
-    print(f"[followup_count] Sent: questions_left={questions_left}, topic_id={topic_id}")
+    print(f"[followup_count] Sent: questions_left={questions_left}, topic_id={topic_id}, category={category}")
 
 
 async def get_message_context(topic_id: int, limit: int = 3) -> str:
@@ -187,6 +192,21 @@ def is_clarification_question(text: str) -> bool:
             or "какая у вас" in text.lower()
             or "?" in text
         )
+    )
+
+
+def is_rejection_response(text: str) -> bool:
+    """
+    Определяет, является ли ответ LLM отказом (вопрос не по теме ягодных).
+
+    Признаки отказа:
+    - Содержит типичные фразы отказа
+    """
+    text_lower = text.lower()
+    return (
+        "могу помочь только" in text_lower
+        or "только по ягодным" in text_lower
+        or "не относится к ягодным" in text_lower
     )
 
 
@@ -440,7 +460,7 @@ async def process_general_consultation(
         # ВАЖНО: В CASE 3 (конкретная культура) НЕ проверяем на уточняющий вопрос!
         # Культура уже определена, поэтому отправляем ответ как финальный
         # Добавляем follow-up кнопки (новый вопрос, заменить параметры, детальный план)
-        await message.answer(reply_text, reply_markup=get_nutrition_followup_keyboard())
+        await message.answer(reply_text, reply_markup=get_followup_keyboard(category))
 
     # Логируем ответ бота
     await log_message(
@@ -762,6 +782,9 @@ async def handle_consultation_root(message: Message) -> None:
         first_name = None
         last_name = None
 
+    # Проверяем, есть ли у пользователя активное состояние консультации
+    has_active_state = telegram_user_id in CONSULTATION_STATE
+
     # Пользователь
     user_id = await get_or_create_user(
         telegram_user_id=telegram_user_id,
@@ -769,6 +792,46 @@ async def handle_consultation_root(message: Message) -> None:
         first_name=first_name,
         last_name=last_name,
     )
+
+    # Проверяем, есть ли открытый топик с сообщениями (активная консультация)
+    from src.services.db.topics_repo import get_topic_message_count
+    from src.services.db.pool import get_pool
+
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        # Ищем открытый топик
+        row = await conn.fetchrow(
+            """
+            SELECT id FROM topics
+            WHERE user_id = $1 AND status = 'open'
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+
+    # Если нет активного состояния и нет открытого топика с историей — просим выбрать пункт меню
+    if not has_active_state:
+        if row is None:
+            # Нет открытого топика вообще
+            from src.keyboards.main.main_menu import get_main_keyboard
+            await message.answer(
+                "Пожалуйста, выберите пункт из меню.",
+                reply_markup=get_main_keyboard(),
+            )
+            return
+        else:
+            # Есть топик — проверяем, есть ли в нём сообщения
+            topic_id_check = row["id"]
+            msg_count = await get_topic_message_count(topic_id_check)
+            if msg_count == 0:
+                # Топик пустой — просим выбрать пункт меню
+                from src.keyboards.main.main_menu import get_main_keyboard
+                await message.answer(
+                    "Пожалуйста, выберите пункт из меню.",
+                    reply_markup=get_main_keyboard(),
+                )
+                return
 
     # Тема
     topic_id = await get_or_create_open_topic(
@@ -819,21 +882,28 @@ async def handle_consultation_root(message: Message) -> None:
         # ВАЖНО: Категория НЕ меняется для follow-up, используем сохраненную
         detected_category = saved_category or "общая консультация"
 
-        # Получаем контекст предыдущих сообщений
-        context_text = await get_message_context(topic_id, limit=3)
+        # Если культура ещё не определена - НЕ проверяем смену темы,
+        # просто продолжаем как same_topic (уточняющий вопрос)
+        if culture in ("не определено", "общая информация"):
+            print(f"[entry] Culture not yet defined - treating as same_topic, skipping topic change check")
+            topic_change = "same_topic"
+            new_culture = culture
+        else:
+            # Получаем контекст предыдущих сообщений
+            context_text = await get_message_context(topic_id, limit=3)
 
-        # Классифицируем новый вопрос ТОЛЬКО для определения культуры
-        new_category, new_culture = await detect_category_and_culture(user_text)
-        print(f"[entry] New classification: category={new_category!r}, culture={new_culture!r}")
-        print(f"[entry] BUT keeping saved category: {detected_category!r}")
+            # Классифицируем новый вопрос ТОЛЬКО для определения культуры
+            new_category, new_culture = await detect_category_and_culture(user_text)
+            print(f"[entry] New classification: category={new_category!r}, culture={new_culture!r}")
+            print(f"[entry] BUT keeping saved category: {detected_category!r}")
 
-        # Сравниваем ТОЛЬКО культуры (категория фиксирована)
-        topic_change = await compare_topics_for_change(
-            old_category=detected_category,  # Используем СОХРАНЕННУЮ категорию
-            old_culture=culture,
-            new_question=user_text,
-            context_messages=context_text,
-        )
+            # Сравниваем ТОЛЬКО культуры (категория фиксирована)
+            topic_change = await compare_topics_for_change(
+                old_category=detected_category,  # Используем СОХРАНЕННУЮ категорию
+                old_culture=culture,
+                new_question=user_text,
+                context_messages=context_text,
+            )
 
         print(f"[entry] Culture change decision: {topic_change!r}")
 
@@ -1059,7 +1129,7 @@ async def handle_consultation_root(message: Message) -> None:
     # ТОЛЬКО если это финальный ответ (не уточняющий вопрос LLM из CASE 1)
     if culture not in ("не определено", "общая информация"):
         questions_left = await get_follow_up_questions_left(topic_id)
-        await send_followup_count_message(message, questions_left, topic_id)
+        await send_followup_count_message(message, questions_left, topic_id, detected_category)
 
 
 # ===== CALLBACK ОБРАБОТЧИКИ ДЛЯ КНОПОК =====

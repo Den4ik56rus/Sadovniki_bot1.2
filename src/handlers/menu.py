@@ -302,3 +302,26 @@ async def handle_close_menu(callback: CallbackQuery) -> None:
         pass
 
     await callback.answer()
+
+
+@router.message(F.text == "⬅️ Назад в меню")
+async def handle_back_to_menu(message: Message) -> None:
+    """
+    Обработчик кнопки "⬅️ Назад в меню" из консультации.
+    Очищает состояние консультации и возвращает пользователя в главное меню.
+    """
+    user = message.from_user
+    if user is None:
+        return
+
+    # Очистить состояние консультации
+    if user.id in CONSULTATION_STATE:
+        del CONSULTATION_STATE[user.id]
+    if user.id in CONSULTATION_CONTEXT:
+        del CONSULTATION_CONTEXT[user.id]
+
+    # Вернуть главное меню
+    await message.answer(
+        "Главное меню:",
+        reply_markup=get_main_keyboard()
+    )

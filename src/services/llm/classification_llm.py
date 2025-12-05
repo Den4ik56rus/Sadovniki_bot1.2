@@ -706,3 +706,107 @@ async def detect_category_and_culture(text: str) -> tuple[str, str]:
             f"category={category!r}, culture={culture!r}"
         )
         return (category, culture)
+
+
+async def compare_topics_for_change(
+    old_category: str,
+    old_culture: str,
+    new_question: str,
+    context_messages: str = ""
+) -> str:
+    """
+    Определяет, является ли новый вопрос сменой темы относительно текущей.
+
+    Args:
+        old_category: Текущая категория (IGNORED - category is fixed for follow-ups)
+        old_culture: Текущая культура (например, "клубника летняя")
+        new_question: Новый вопрос пользователя
+        context_messages: Контекст предыдущих сообщений (опционально)
+
+    Returns:
+        "same_topic" - та же тема (уточняющий вопрос)
+        "clear_change" - явная смена темы (только если культура явно сменилась)
+        "unclear" - неопределенно (остаемся на той же теме)
+    """
+    system_prompt = f"""Ты - классификатор вопросов в консультационном боте по ягодным культурам.
+
+ТЕКУЩАЯ КУЛЬТУРА: {old_culture}
+
+КРИТИЧЕСКИ ВАЖНО:
+- Категория консультации ФИКСИРОВАНА и НЕ МЕНЯЕТСЯ для уточняющих вопросов
+- ПОЛНОСТЬЮ ИГНОРИРУЙ любые изменения категории (питание→защита, посадка→уход и т.д.)
+- Определяй смену темы ТОЛЬКО по изменению КУЛЬТУРЫ (растения)
+
+ТВОЯ ЗАДАЧА: Определить, изменилась ли КУЛЬТУРА (растение) в новом вопросе:
+
+1. SAME_TOPIC (та же культура) - если:
+   - Вопрос про ту же культуру: {old_culture}
+   - Вопрос уточняет детали или спрашивает про другой аспект
+   - Культура не упомянута явно (значит продолжаем про {old_culture})
+   - Используются слова "а если", "а как", "а когда", "еще хочу уточнить", "расскажи про..."
+   - ПРИМЕРЫ для {old_culture}:
+     * "А про вредителей расскажи" → SAME_TOPIC (культура не меняется!)
+     * "А про почву что скажешь?" → SAME_TOPIC (культура не меняется!)
+     * "Расскажи про уход" → SAME_TOPIC (культура не меняется!)
+     * "А как с болезнями?" → SAME_TOPIC (культура не меняется!)
+
+2. CLEAR_CHANGE (смена культуры) - ТОЛЬКО если:
+   - КУЛЬТУРА явно сменилась (крыжовник → малина, клубника → смородина)
+   - Вопрос начинается с "Теперь про малину", "А теперь хочу спросить про клубнику"
+   - ЯВНОЕ упоминание ДРУГОЙ культуры в вопросе
+   - ПРИМЕРЫ:
+     * "А теперь про малину расскажи" → CLEAR_CHANGE
+     * "Теперь хочу спросить про клубнику" → CLEAR_CHANGE
+
+3. UNCLEAR (неопределенно) - если:
+   - Вопрос слишком короткий или общий
+   - Не можешь точно определить, меняется ли культура
+   - В СЛУЧАЕ СОМНЕНИЯ - ВСЕГДА возвращай UNCLEAR
+
+ВАЖНЫЕ ПРИМЕРЫ:
+- Текущая культура: крыжовник
+  * "А про вредителей" → SAME_TOPIC (только уточнение аспекта, культура та же)
+  * "Расскажи про почву" → SAME_TOPIC (только уточнение аспекта, культура та же)
+  * "А теперь про малину" → CLEAR_CHANGE (явная смена культуры)
+
+ФОРМАТ ОТВЕТА: Верни ТОЛЬКО одно слово: same_topic, clear_change или unclear
+БЕЗ пояснений, БЕЗ кавычек, БЕЗ точки!"""
+
+    user_prompt = f"НОВЫЙ ВОПРОС ПОЛЬЗОВАТЕЛЯ:\n{new_question}"
+    if context_messages:
+        user_prompt += f"\n\nКОНТЕКСТ ПРЕДЫДУЩИХ СООБЩЕНИЙ:\n{context_messages}"
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    try:
+        llm_answer = await create_chat_completion(
+            messages=messages,
+            model=settings.openai_model,
+            temperature=0.0,
+        )
+
+        result = (llm_answer or "").strip().lower()
+
+        # Нормализация ответа
+        if "same" in result or result == "same_topic":
+            decision = "same_topic"
+        elif "clear" in result or result == "clear_change":
+            decision = "clear_change"
+        else:
+            decision = "unclear"
+
+        print(
+            f"[compare_topics_for_change] "
+            f"old=({old_category!r}, {old_culture!r}), "
+            f"new={new_question[:50]!r}... -> {decision!r}"
+        )
+
+        return decision
+
+    except Exception as e:
+        print(f"[compare_topics_for_change][ERROR] {e}")
+        # При ошибке возвращаем "unclear" - остаемся на той же теме
+        return "unclear"

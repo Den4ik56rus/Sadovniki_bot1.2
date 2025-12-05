@@ -171,6 +171,11 @@ async def build_consultation_system_prompt(
     # 1. Базовый промпт (общий для всех категорий)
     base_prompt = get_base_system_prompt(default_location, default_growing_type)
 
+    # 1.5. Добавляем информацию о культуре в начало промпта
+    culture_context = ""
+    if culture and culture not in ("не определено", "общая информация"):
+        culture_context = f"\n\n🌱 КОНТЕКСТ КОНСУЛЬТАЦИИ:\nТы консультируешь по культуре: {culture.upper()}\nВСЕ твои ответы должны быть в контексте {culture}.\n"
+
     # 2. Категорийный промпт (специфика категории)
     category_prompt = ""
     if consultation_category:
@@ -218,6 +223,9 @@ async def build_consultation_system_prompt(
 
     # Собираем все части вместе
     parts = [base_prompt]
+
+    if culture_context:
+        parts.append(culture_context)
 
     if category_prompt:
         parts.append(category_prompt)

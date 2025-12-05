@@ -79,3 +79,31 @@ async def get_last_messages(user_id: int, limit: int = 6) -> List[dict]:
         )
 
     return result
+
+
+async def get_recent_messages(topic_id: int, limit: int = 5) -> List[dict]:
+    """
+    Получить последние N сообщений для топика (для контекста классификации).
+
+    Args:
+        topic_id: ID топика
+        limit: Количество сообщений
+
+    Returns:
+        Список словарей с полями: direction, text, created_at
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT direction, text, created_at
+            FROM messages
+            WHERE topic_id = $1
+            ORDER BY created_at DESC
+            LIMIT $2
+            """,
+            topic_id,
+            limit,
+        )
+        # Возвращаем в хронологическом порядке (старые → новые)
+        return [dict(row) for row in reversed(rows)]

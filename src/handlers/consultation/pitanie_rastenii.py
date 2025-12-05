@@ -49,6 +49,9 @@ from src.services.db.moderation_repo import moderation_add
 from src.services.llm.consultation_llm import ask_consultation_llm
 from src.services.llm.classification_llm import detect_culture_name
 
+# Импортируем функцию для отправки информации о счётчике
+from src.handlers.consultation.entry import send_followup_count_message, send_long_message
+
 from src.keyboards.consultation.common import get_nutrition_followup_keyboard
 
 from aiogram import F
@@ -94,7 +97,9 @@ async def process_nutrition_consultation(
         session_id=session_id,
     )
 
-    # Обновляем культуру в БД
+    # Обновляем категорию и культуру в БД
+    from src.services.db.topics_repo import set_topic_category
+    await set_topic_category(topic_id, category)
     await set_topic_culture(topic_id, culture)
 
     # Логируем вопрос пользователя
@@ -173,11 +178,13 @@ async def process_nutrition_consultation(
 
     # Отправляем ответ
     if is_clarification:
-        await message.answer(answer_text)
+        await send_long_message(message, answer_text)
         CONSULTATION_STATE[telegram_user_id] = "waiting_nutrition_clarification"
         print(f"[process_nutrition] LLM asking clarification, state -> waiting_nutrition_clarification")
     else:
-        await message.answer(answer_text, reply_markup=get_nutrition_followup_keyboard())
+        await send_long_message(message, answer_text)
+        # Отправляем клавиатуру отдельным сообщением если ответ был длинным
+        # (клавиатура не поддерживается при разбивке на несколько сообщений)
         CONSULTATION_CONTEXT[telegram_user_id]["full_question"] = root_question
         CONSULTATION_STATE.pop(telegram_user_id, None)
         print(f"[process_nutrition] Showing followup buttons, use_rag={use_rag}")
@@ -205,6 +212,11 @@ async def process_nutrition_consultation(
             answer=answer_text,
             category_guess=category_guess,
         )
+
+        # Отправляем информацию о количестве оставшихся вопросов
+        from src.services.db.topics_repo import get_follow_up_questions_left
+        questions_left = await get_follow_up_questions_left(topic_id)
+        await send_followup_count_message(message, questions_left, topic_id)
 
 
 # ==== ЭТАП 1: корневой вопрос по питанию ====
@@ -397,6 +409,11 @@ async def handle_nutrition_root(message: Message) -> None:
                 category_guess=category_guess,
             )
 
+            # Отправляем информацию о количестве оставшихся вопросов
+            from src.services.db.topics_repo import get_follow_up_questions_left
+            questions_left = await get_follow_up_questions_left(topic_id)
+            await send_followup_count_message(message, questions_left, topic_id)
+
 
 # ==== ЭТАП 1.5: ответ на уточняющий вопрос LLM ====
 
@@ -496,8 +513,8 @@ async def handle_nutrition_clarification(message: Message) -> None:
         except Exception:
             pass
 
-    # Отправляем ответ с кнопками
-    await message.answer(answer_text, reply_markup=get_nutrition_followup_keyboard())
+    # Отправляем ответ
+    await send_long_message(message, answer_text)
 
     # Логируем ответ бота
     await log_message(
@@ -521,6 +538,11 @@ async def handle_nutrition_clarification(message: Message) -> None:
         answer=answer_text,
         category_guess=category_guess,
     )
+
+    # Отправляем информацию о количестве оставшихся вопросов
+    from src.services.db.topics_repo import get_follow_up_questions_left
+    questions_left = await get_follow_up_questions_left(topic_id)
+    await send_followup_count_message(message, questions_left, topic_id)
 
     # Сохраняем полный вопрос в контекст для кнопок
     ctx["full_question"] = combined_question
@@ -643,8 +665,8 @@ async def handle_variety_clarification(message: Message) -> None:
         except Exception:
             pass
 
-    # Отправляем ответ с кнопками
-    await message.answer(answer_text, reply_markup=get_nutrition_followup_keyboard())
+    # Отправляем ответ
+    await send_long_message(message, answer_text)
 
     # Логируем ответ бота
     await log_message(
@@ -669,6 +691,11 @@ async def handle_variety_clarification(message: Message) -> None:
         category_guess=category_guess,
     )
 
+    # Отправляем информацию о количестве оставшихся вопросов
+    from src.services.db.topics_repo import get_follow_up_questions_left
+    questions_left = await get_follow_up_questions_left(topic_id)
+    await send_followup_count_message(message, questions_left, topic_id)
+
     # Сохраняем полный вопрос в контекст для кнопок
     ctx["full_question"] = combined_question
     CONSULTATION_CONTEXT[user.id] = ctx
@@ -681,14 +708,14 @@ async def handle_variety_clarification(message: Message) -> None:
 # ==== Обработчики кнопок после получения ответа ====
 
 
-@router.callback_query(F.data == "nutrition_new_topic")
-async def handle_nutrition_new_topic(callback: CallbackQuery) -> None:
+@router.message(F.text == "🔄 Вопрос по новой теме")
+async def handle_nutrition_new_topic(message: Message) -> None:
     """
     Обработчик кнопки "Вопрос по новой теме".
     Закрывает текущий топик, очищает контекст и сразу просит задать новый вопрос.
     Теперь без выбора категории - категория и культура определяются автоматически.
     """
-    user = callback.from_user
+    user = message.from_user
     if user is None:
         return
 
@@ -714,10 +741,6 @@ async def handle_nutrition_new_topic(callback: CallbackQuery) -> None:
     # Устанавливаем новое состояние - ждем вопрос
     CONSULTATION_STATE[user.id] = "waiting_consultation_question"
 
-    # Убираем кнопки с предыдущего сообщения
-    await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Задайте новый вопрос")
-
     # Просим задать вопрос (без выбора категории)
     text = (
         "Опишите, пожалуйста, ваш вопрос одним сообщением:\n"
@@ -726,31 +749,28 @@ async def handle_nutrition_new_topic(callback: CallbackQuery) -> None:
         "— что именно вас волнует (питание, посадка, болезни и т.п.)."
     )
 
-    await callback.message.answer(text)
+    await message.answer(text)
 
 
-@router.callback_query(F.data == "nutrition_replace_params")
-async def handle_nutrition_replace_params(callback: CallbackQuery) -> None:
+@router.message(F.text == "✏️ Заменить параметры")
+async def handle_nutrition_replace_params(message: Message) -> None:
     """
     Обработчик кнопки "Заменить параметры".
     Позволяет пользователю указать новые параметры (местоположение, тип выращивания).
     """
-    user = callback.from_user
+    user = message.from_user
     if user is None:
         return
 
     ctx = CONSULTATION_CONTEXT.get(user.id)
     if not ctx:
-        await callback.answer("Контекст консультации утерян", show_alert=True)
+        await message.answer("Контекст консультации утерян. Пожалуйста, задайте новый вопрос.")
         return
 
     # Устанавливаем состояние ожидания новых параметров
     CONSULTATION_STATE[user.id] = "waiting_param_replacement"
 
-    await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Укажите новые параметры")
-
-    await callback.message.answer(
+    await message.answer(
         "Укажите ваши параметры:\n"
         "Например: 'Теплица, Урал' или 'Южный регион, открытый грунт'\n\n"
         "Или задайте вопрос заново с другими условиями."
@@ -838,8 +858,8 @@ async def handle_param_replacement(message: Message) -> None:
         except Exception:
             pass
 
-    # Отправляем ответ с кнопками
-    await message.answer(answer_text, reply_markup=get_nutrition_followup_keyboard())
+    # Отправляем ответ
+    await send_long_message(message, answer_text)
 
     # Логируем сообщения
     await log_message(
@@ -862,19 +882,19 @@ async def handle_param_replacement(message: Message) -> None:
     CONSULTATION_STATE.pop(user.id, None)
 
 
-@router.callback_query(F.data == "nutrition_detailed_plan")
-async def handle_nutrition_detailed_plan(callback: CallbackQuery) -> None:
+@router.message(F.text == "📋 Детальный план подкормок")
+async def handle_nutrition_detailed_plan(message: Message) -> None:
     """
     Обработчик кнопки "Получить детальный план подкормок".
     Формирует детальный план подкормок на основе предыдущего контекста.
     """
-    user = callback.from_user
+    user = message.from_user
     if user is None:
         return
 
     ctx = CONSULTATION_CONTEXT.get(user.id)
     if not ctx:
-        await callback.answer("Контекст консультации утерян", show_alert=True)
+        await message.answer("Контекст консультации утерян. Пожалуйста, задайте новый вопрос.")
         return
 
     full_question = ctx.get("full_question", ctx.get("root_question", ""))
@@ -884,9 +904,6 @@ async def handle_nutrition_detailed_plan(callback: CallbackQuery) -> None:
     session_id = ctx.get("session_id", "")
     telegram_user_id = ctx.get("telegram_user_id", user.id)
 
-    await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Формирую детальный план подкормок...")
-
     # Формируем запрос на детальный план
     detailed_plan_request = (
         f"На основе предыдущего вопроса:\n{full_question}\n\n"
@@ -895,7 +912,7 @@ async def handle_nutrition_detailed_plan(callback: CallbackQuery) -> None:
     )
 
     # Показываем сообщение ожидания
-    status_message = await callback.message.answer("⏳ Формирую детальный план...")
+    status_message = await message.answer("⏳ Формирую детальный план...")
 
     try:
         detailed_plan = await ask_consultation_llm(
@@ -915,7 +932,7 @@ async def handle_nutrition_detailed_plan(callback: CallbackQuery) -> None:
             pass
 
     # Отправляем детальный план
-    await callback.message.answer(detailed_plan, reply_markup=get_nutrition_followup_keyboard())
+    await send_long_message(message, detailed_plan)
 
     # Логируем запрос и ответ
     await log_message(

@@ -56,15 +56,15 @@ async def get_or_create_open_topic(user_id: int, session_id: str, force_new: boo
         # Если не нашли или force_new=True — создаём новую тему
         row = await conn.fetchrow(
             """
-            INSERT INTO topics (user_id, session_id, status)
-            VALUES ($1, $2, 'open')
+            INSERT INTO topics (user_id, session_id, status, follow_up_questions_left)
+            VALUES ($1, $2, 'open', 3)
             RETURNING id
             """,
             user_id,     # $1 — пользователь
             session_id,  # $2 — идентификатор сессии
         )
 
-        print(f"[get_or_create_open_topic] Создан НОВЫЙ топик: topic_id={row['id']}, user_id={user_id}")
+        print(f"[get_or_create_open_topic] Создан НОВЫЙ топик: topic_id={row['id']}, user_id={user_id}, follow_up_questions_left=3")
         # Возвращаем id новой темы
         return row["id"]
 
@@ -80,6 +80,17 @@ async def get_topic_culture(topic_id: int) -> Optional[str]:
         return row["culture"] if row else None
 
 
+async def get_topic_category(topic_id: int) -> Optional[str]:
+    """Получить категорию для темы."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT category FROM topics WHERE id = $1",
+            topic_id,
+        )
+        return row["category"] if row else None
+
+
 async def set_topic_culture(topic_id: int, culture: str) -> None:
     """Установить культуру для темы."""
     pool = get_pool()
@@ -87,6 +98,17 @@ async def set_topic_culture(topic_id: int, culture: str) -> None:
         await conn.execute(
             "UPDATE topics SET culture = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
             culture,
+            topic_id,
+        )
+
+
+async def set_topic_category(topic_id: int, category: str) -> None:
+    """Установить категорию для темы."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE topics SET category = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2",
+            category,
             topic_id,
         )
 
@@ -148,3 +170,61 @@ async def close_open_topics(user_id: int) -> None:
             user_id,
         )
         print(f"[close_open_topics] После закрытия: {count_after} открытых топиков для user_id={user_id}")
+
+
+async def get_follow_up_questions_left(topic_id: int) -> int:
+    """Получить количество оставшихся уточняющих вопросов."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT follow_up_questions_left FROM topics WHERE id = $1",
+            topic_id,
+        )
+        return row["follow_up_questions_left"] if row else 0
+
+
+async def decrement_follow_up_questions(topic_id: int) -> int:
+    """Уменьшить количество уточняющих вопросов на 1. Возвращает новое значение."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            UPDATE topics
+            SET follow_up_questions_left = GREATEST(follow_up_questions_left - 1, 0),
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            RETURNING follow_up_questions_left
+            """,
+            topic_id,
+        )
+        return row["follow_up_questions_left"] if row else 0
+
+
+async def reset_follow_up_questions(topic_id: int) -> None:
+    """Сбросить счётчик уточняющих вопросов на 3."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE topics
+            SET follow_up_questions_left = 3,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = $1
+            """,
+            topic_id,
+        )
+        print(f"[reset_follow_up_questions] Reset counter to 3 for topic_id={topic_id}")
+
+
+async def get_topic_info(topic_id: int) -> Optional[dict]:
+    """Получить полную информацию о теме."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT id, status, culture, follow_up_questions_left
+            FROM topics WHERE id = $1
+            """,
+            topic_id,
+        )
+        return dict(row) if row else None

@@ -47,6 +47,126 @@ from src.handlers.common import (
 router = Router()
 
 
+# Константа: максимальная длина сообщения в Telegram
+TELEGRAM_MAX_MESSAGE_LENGTH = 4096
+
+
+def split_long_message(text: str, max_length: int = TELEGRAM_MAX_MESSAGE_LENGTH) -> list[str]:
+    """
+    Разбивает длинное сообщение на части, не превышающие max_length.
+
+    Старается разбивать по абзацам, чтобы не разрывать смысловые блоки.
+
+    Args:
+        text: Исходный текст
+        max_length: Максимальная длина одной части (по умолчанию 4096)
+
+    Returns:
+        Список частей сообщения
+    """
+    if len(text) <= max_length:
+        return [text]
+
+    parts = []
+    current_part = ""
+
+    # Разбиваем по абзацам
+    paragraphs = text.split("\n\n")
+
+    for para in paragraphs:
+        # Если добавление этого абзаца превысит лимит
+        if len(current_part) + len(para) + 2 > max_length:  # +2 для "\n\n"
+            if current_part:
+                parts.append(current_part.strip())
+                current_part = ""
+
+            # Если сам абзац слишком длинный, разбиваем по строкам
+            if len(para) > max_length:
+                lines = para.split("\n")
+                for line in lines:
+                    if len(current_part) + len(line) + 1 > max_length:  # +1 для "\n"
+                        if current_part:
+                            parts.append(current_part.strip())
+                        current_part = line + "\n"
+                    else:
+                        current_part += line + "\n"
+            else:
+                current_part = para + "\n\n"
+        else:
+            current_part += para + "\n\n"
+
+    # Добавляем последнюю часть
+    if current_part:
+        parts.append(current_part.strip())
+
+    return parts
+
+
+async def send_long_message(message: Message, text: str) -> None:
+    """
+    Отправляет сообщение, автоматически разбивая на части если оно слишком длинное.
+
+    Args:
+        message: Сообщение от пользователя (для ответа)
+        text: Текст для отправки
+    """
+    parts = split_long_message(text)
+
+    if len(parts) > 1:
+        print(f"[send_long_message] Сообщение разбито на {len(parts)} частей")
+
+    for i, part in enumerate(parts, 1):
+        if len(parts) > 1:
+            # Добавляем номер части, если сообщение разбито
+            part_text = f"[Часть {i}/{len(parts)}]\n\n{part}"
+        else:
+            part_text = part
+
+        await message.answer(part_text)
+
+
+async def send_followup_count_message(message: Message, questions_left: int, topic_id: int) -> None:
+    """
+    Отправляет информационное сообщение о количестве оставшихся уточняющих вопросов.
+
+    Args:
+        message: Сообщение от пользователя
+        questions_left: Количество оставшихся вопросов (0-3)
+        topic_id: ID топика
+    """
+    if questions_left > 0:
+        # Склонение слова "вопрос"
+        if questions_left == 1:
+            word = "уточняющий вопрос"
+        elif questions_left in (2, 3, 4):
+            word = "уточняющих вопроса"
+        else:
+            word = "уточняющих вопросов"
+
+        text = f"Вы можете задать {questions_left} {word} на эту тему."
+        # Показываем клавиатуру с кнопками для дополнительных действий
+        from src.keyboards.consultation.common import get_nutrition_followup_keyboard
+        await message.answer(text, reply_markup=get_nutrition_followup_keyboard())
+    else:
+        # Показываем кнопку для получения дополнительных вопросов
+        from src.keyboards.consultation.common import get_more_questions_keyboard
+        text = "Уточняющие вопросы по этой теме исчерпаны."
+        await message.answer(text, reply_markup=get_more_questions_keyboard())
+
+    print(f"[followup_count] Sent: questions_left={questions_left}, topic_id={topic_id}")
+
+
+async def get_message_context(topic_id: int, limit: int = 3) -> str:
+    """Получает последние N сообщений для контекста классификации."""
+    from src.services.db.messages_repo import get_recent_messages
+    try:
+        messages = await get_recent_messages(topic_id, limit)
+        return "\n".join([f"{m['direction']}: {m['text'][:100]}" for m in messages])
+    except Exception as e:
+        print(f"[get_message_context][ERROR] {e}")
+        return ""
+
+
 def is_clarification_question(text: str) -> bool:
     """
     Определяет, является ли ответ LLM уточняющим вопросом.
@@ -208,7 +328,7 @@ async def process_general_consultation(
                 pass
 
         # Отправляем ответ (уточняющий вопрос или финальный ответ)
-        await message.answer(reply_text)
+        await send_long_message(message, reply_text)
 
         # Если LLM задал уточняющий вопрос - переводим в состояние ожидания ответа
         if is_clarification_question(reply_text):
@@ -420,7 +540,7 @@ async def handle_variety_clarification(message: Message) -> None:
             pass
 
     # Отправляем ответ
-    await message.answer(reply_text)
+    await send_long_message(message, reply_text)
 
     # Логируем ответ бота
     await log_message(
@@ -558,7 +678,7 @@ async def handle_clarification_answer(message: Message) -> None:
                 pass
 
         # Отправляем ответ
-        await message.answer(reply_text)
+        await send_long_message(message, reply_text)
 
         # Логируем ответ бота
         await log_message(
@@ -634,24 +754,115 @@ async def handle_consultation_root(message: Message) -> None:
     user_text: str = message.text or ""
 
     # КРИТИЧНО: Проверяем статус, message_count и culture ДО логирования сообщения!
-    from src.services.db.topics_repo import get_topic_message_count, get_topic_status, set_topic_culture
+    from src.services.db.topics_repo import (
+        get_topic_message_count,
+        get_topic_status,
+        set_topic_culture,
+        get_topic_category,
+        set_topic_category,
+        get_follow_up_questions_left,
+        decrement_follow_up_questions,
+        close_open_topics,
+    )
+    from src.services.llm.classification_llm import compare_topics_for_change, detect_category_and_culture
+
     message_count_before = await get_topic_message_count(topic_id)
     topic_status = await get_topic_status(topic_id)
     culture = await get_topic_culture(topic_id)
+    saved_category = await get_topic_category(topic_id)
+    questions_left = await get_follow_up_questions_left(topic_id)
 
-    print(f"[entry] ДО логирования: topic_id={topic_id}, message_count={message_count_before}, status={topic_status}, culture={culture!r}")
+    print(f"[entry] BEFORE: topic_id={topic_id}, msg_count={message_count_before}, status={topic_status}, culture={culture!r}, questions_left={questions_left}")
 
-    # Это followup только если:
-    # 1. Топик открыт (не закрыт кнопкой "Новая тема")
-    # 2. Культура уже определена
-    # 3. Нет активного состояния ожидания (бот уже дал финальный ответ)
-    # 4. В топике УЖЕ ЕСТЬ сообщения пользователя (message_count_before > 0)
-    is_followup = (
+    # Определяем, является ли это потенциальным follow-up
+    is_potential_followup = (
         topic_status == "open"
         and culture is not None
         and telegram_user_id not in CONSULTATION_STATE
         and message_count_before > 0
     )
+
+    # Переменная для отслеживания смены темы
+    topic_changed = False
+    creating_message = None
+
+    # Если это потенциальный follow-up - проверяем смену темы через LLM
+    if is_potential_followup:
+        print(f"[entry] Potential follow-up detected, checking topic change...")
+        print(f"[entry] Saved category: {saved_category!r}, saved culture: {culture!r}")
+
+        # ВАЖНО: Категория НЕ меняется для follow-up, используем сохраненную
+        detected_category = saved_category or "общая консультация"
+
+        # Получаем контекст предыдущих сообщений
+        context_text = await get_message_context(topic_id, limit=3)
+
+        # Классифицируем новый вопрос ТОЛЬКО для определения культуры
+        new_category, new_culture = await detect_category_and_culture(user_text)
+        print(f"[entry] New classification: category={new_category!r}, culture={new_culture!r}")
+        print(f"[entry] BUT keeping saved category: {detected_category!r}")
+
+        # Сравниваем ТОЛЬКО культуры (категория фиксирована)
+        topic_change = await compare_topics_for_change(
+            old_category=detected_category,  # Используем СОХРАНЕННУЮ категорию
+            old_culture=culture,
+            new_question=user_text,
+            context_messages=context_text,
+        )
+
+        print(f"[entry] Culture change decision: {topic_change!r}")
+
+        if topic_change == "clear_change":
+            # ЯВНАЯ СМЕНА КУЛЬТУРЫ - создаем новый топик С ТОЙ ЖЕ КАТЕГОРИЕЙ
+            print(f"[entry] CLEAR CULTURE CHANGE - creating new topic with same category")
+
+            # Показываем сообщение о создании новой темы
+            creating_message = await message.answer("📝 Создается новая тема консультации...")
+
+            # Закрываем старый топик
+            await close_open_topics(user_id)
+
+            # Создаем новый топик (счётчик автоматически = 3)
+            topic_id = await get_or_create_open_topic(
+                user_id=user_id,
+                session_id=session_id,
+            )
+
+            # Устанавливаем ТУ ЖЕ категорию и новую культуру
+            await set_topic_category(topic_id, detected_category)  # СОХРАНЯЕМ категорию!
+            await set_topic_culture(topic_id, new_culture)
+            culture = new_culture
+            topic_changed = True
+
+            print(f"[entry] NEW topic created: topic_id={topic_id}, category={detected_category!r}, culture={culture!r}")
+
+        elif topic_change == "same_topic":
+            # ТА ЖЕ ТЕМА - уточняющий вопрос
+            print(f"[entry] SAME TOPIC - follow-up question")
+            # Используем сохраненную категорию из топика
+            detected_category = saved_category or "общая консультация"
+
+        else:  # unclear
+            # НЕОПРЕДЕЛЕННО - остаемся на той же теме
+            print(f"[entry] UNCLEAR - staying on same topic")
+            # Используем сохраненную категорию из топика
+            detected_category = saved_category or "общая консультация"
+    else:
+        # Это первый вопрос - переопределяем культуру И категорию
+        print(f"[entry] First question or new consultation, detecting category and culture")
+        detected_category, detected_culture = await detect_category_and_culture(user_text)
+
+        # Сохраняем категорию в топике
+        await set_topic_category(topic_id, detected_category)
+
+        if detected_culture:
+            await set_topic_culture(topic_id, detected_culture)
+            culture = detected_culture
+            print(f"[entry] Detected: category={detected_category!r}, culture={culture}")
+        else:
+            await set_topic_culture(topic_id, "не определено")
+            culture = "не определено"
+            print(f"[entry] Culture not detected, saved: {culture}")
 
     # Логируем сообщение пользователя
     await log_message(
@@ -662,32 +873,22 @@ async def handle_consultation_root(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    # Если это уточняющий вопрос в рамках темы, где бот уже дал ответ - используем сохранённую культуру
-    # Если это первое сообщение или начало новой консультации - переопределяем культуру И категорию
-    if is_followup:
-        print(f"[CULTURE] Это уточняющий вопрос в рамках темы (count_before={message_count_before}, status={topic_status}), используем сохранённую культуру: {culture}")
-        # Для follow-up используем "общая консультация" как категорию
-        detected_category = "общая консультация"
-    else:
-        # Переопределяем культуру И категорию для нового вопроса
-        print(f"[CULTURE] Это новый вопрос (count_before={message_count_before}, status={topic_status}), переопределяем культуру И категорию")
-        from src.services.llm.classification_llm import detect_category_and_culture
-        detected_category, detected_culture = await detect_category_and_culture(user_text)
-        if detected_culture:
-            await set_topic_culture(topic_id, detected_culture)
-            culture = detected_culture
-            print(f"[CULTURE] Автоматически определена культура: {culture}, категория: {detected_category}")
-        else:
-            await set_topic_culture(topic_id, "не определено")
-            culture = "не определено"
-            print(f"[CULTURE] Культура не определена, сохранено: {culture}, категория: {detected_category}")
+    # ПОСЛЕ логирования: уменьшаем счётчик если это follow-up (НЕ смена темы)
+    if is_potential_followup and not topic_changed:
+        questions_left = await decrement_follow_up_questions(topic_id)
+        print(f"[entry] Decremented counter: questions_left={questions_left}")
 
     # ==== ГИБРИДНЫЙ ПОТОК: 3 варианта в зависимости от культуры ====
 
     print(f"[HYBRID_FLOW] category={detected_category!r}, culture={culture!r}")
 
     # CASE 1: Культура неясна → уточняющие вопросы БЕЗ RAG
-    if culture in ("не определено", "общая информация"):
+    # НО: для follow-up вопросов НЕ задаем уточняющие вопросы повторно
+    should_skip_clarification = is_potential_followup and not topic_changed
+    if should_skip_clarification:
+        print(f"[HYBRID_FLOW] This is a follow-up question - skipping clarification, using CASE 3")
+
+    if culture in ("не определено", "общая информация") and not should_skip_clarification:
         print(f"[HYBRID_FLOW] CASE 1: Vague culture - asking clarification WITHOUT RAG")
 
         status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
@@ -715,7 +916,7 @@ async def handle_consultation_root(message: Message) -> None:
                 pass
 
         # Отправляем ответ (уточняющий вопрос или финальный ответ)
-        await message.answer(reply_text)
+        await send_long_message(message, reply_text)
 
         # Если LLM задал уточняющий вопрос - переводим в состояние ожидания ответа
         if is_clarification_question(reply_text):
@@ -747,7 +948,8 @@ async def handle_consultation_root(message: Message) -> None:
         # Если это был финальный ответ (не уточняющий вопрос) - продолжаем логирование ниже
 
     # CASE 2: Культура общая (клубника общая / малина общая) → запрос типа
-    elif culture in ("клубника общая", "малина общая"):
+    # НО: для follow-up вопросов НЕ задаем уточняющие вопросы повторно
+    elif culture in ("клубника общая", "малина общая") and not should_skip_clarification:
         print(f"[HYBRID_FLOW] CASE 2: General culture - asking variety")
 
         if culture == "клубника общая":
@@ -798,7 +1000,14 @@ async def handle_consultation_root(message: Message) -> None:
             except Exception:
                 pass
 
-        await message.answer(reply_text)
+            # Удаляем сообщение "Создается новая тема" если оно есть
+            if creating_message:
+                try:
+                    await creating_message.delete()
+                except Exception as e:
+                    print(f"[entry] Failed to delete creating_message: {e}")
+
+        await send_long_message(message, reply_text)
 
     # Логируем ответ бота
     await log_message(
@@ -820,3 +1029,100 @@ async def handle_consultation_root(message: Message) -> None:
         )
     except Exception as e:
         print(f"ERROR in moderation_add: {e}")
+
+    # Отправляем информацию о количестве оставшихся вопросов
+    # ТОЛЬКО если это финальный ответ (не уточняющий вопрос LLM из CASE 1)
+    if culture not in ("не определено", "общая информация"):
+        questions_left = await get_follow_up_questions_left(topic_id)
+        await send_followup_count_message(message, questions_left, topic_id)
+
+
+# ===== CALLBACK ОБРАБОТЧИКИ ДЛЯ КНОПОК =====
+
+from aiogram.types import CallbackQuery
+
+@router.callback_query(F.data == "get_more_followup_questions")
+async def handle_get_more_questions(callback: CallbackQuery) -> None:
+    """Обработчик кнопки "Получить еще 3 уточняющих вопроса"."""
+    if callback.from_user is None:
+        await callback.answer("Ошибка: пользователь не определен")
+        return
+
+    telegram_user_id = callback.from_user.id
+
+    # Получаем внутренний user_id
+    user_id = await get_or_create_user(
+        telegram_user_id=telegram_user_id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+    )
+
+    # Получаем session_id из callback.message
+    if callback.message is None:
+        await callback.answer("Ошибка: сообщение не найдено")
+        return
+
+    session_id = build_session_id_from_message(callback.message)
+
+    # Получаем топик
+    from src.services.db.topics_repo import reset_follow_up_questions
+    topic_id = await get_or_create_open_topic(user_id=user_id, session_id=session_id)
+
+    # Сбрасываем счётчик
+    await reset_follow_up_questions(topic_id)
+    questions_left = await get_follow_up_questions_left(topic_id)
+
+    print(f"[get_more_questions] Reset: user={telegram_user_id}, topic={topic_id}, left={questions_left}")
+
+    # Подтверждение
+    await callback.answer("✅ Вам доступно еще 3 уточняющих вопроса!")
+
+    # Обновляем сообщение
+    if callback.message:
+        try:
+            await callback.message.edit_text(
+                f"{callback.message.text}\n\n✅ Получено еще 3 уточняющих вопроса."
+            )
+        except Exception as e:
+            print(f"[get_more_questions] Failed to edit: {e}")
+
+
+@router.callback_query(F.data == "new_consultation_topic")
+async def handle_new_topic_callback(callback: CallbackQuery) -> None:
+    """Обработчик кнопки "Новая тема консультации"."""
+    if callback.from_user is None:
+        await callback.answer("Ошибка: пользователь не определен")
+        return
+
+    telegram_user_id = callback.from_user.id
+
+    # Получаем user_id
+    user_id = await get_or_create_user(
+        telegram_user_id=telegram_user_id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+    )
+
+    # Закрываем все топики
+    from src.services.db.topics_repo import close_open_topics
+    await close_open_topics(user_id)
+
+    # Очищаем контекст и состояние
+    CONSULTATION_CONTEXT.pop(telegram_user_id, None)
+    CONSULTATION_STATE[telegram_user_id] = "waiting_consultation_question"
+
+    # Запрос нового вопроса
+    text = (
+        "Опишите, пожалуйста, ваш вопрос одним сообщением:\n"
+        "— какая культура (и сорт, если знаете);\n"
+        "— в каком регионе/климате вы находитесь;\n"
+        "— что именно вас волнует (питание, посадка, болезни и т.п.)."
+    )
+
+    if callback.message:
+        await callback.message.answer(text)
+
+    await callback.answer("✅ Начинаем новую тему")
+    print(f"[new_topic_callback] New topic for user {telegram_user_id}")

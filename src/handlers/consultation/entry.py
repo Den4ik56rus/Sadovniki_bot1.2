@@ -28,6 +28,10 @@ from src.services.db.topics_repo import (
 )
 from src.services.db.messages_repo import log_message
 from src.services.db.moderation_repo import moderation_add
+from src.services.db.tokens_repo import has_sufficient_tokens, deduct_tokens, get_token_balance
+
+# Прайсы токенов
+from src.pricing import COST_NEW_TOPIC, COST_ADDITIONAL_QUESTIONS
 
 # LLM
 from src.services.llm.consultation_llm import ask_consultation_llm
@@ -223,11 +227,32 @@ async def handle_consultation_question_unified(message: Message) -> None:
         last_name=user.last_name,
     )
 
+    # Проверяем баланс токенов
+    if not await has_sufficient_tokens(internal_user_id, COST_NEW_TOPIC):
+        balance = await get_token_balance(internal_user_id)
+        await message.answer(
+            f"У вас недостаточно токенов для консультации.\n\n"
+            f"Стоимость: {COST_NEW_TOPIC} токен\n"
+            f"Ваш баланс: {balance} токенов\n\n"
+            f"Для пополнения обратитесь к администратору."
+        )
+        # Сбрасываем состояние ожидания
+        CONSULTATION_STATE.pop(telegram_user_id, None)
+        return
+
     # Автоматически определяем категорию + культуру
     from src.services.llm.classification_llm import detect_category_and_culture
     category, culture = await detect_category_and_culture(question_text)
 
     print(f"[unified_entry] Detected category={category!r}, culture={culture!r}")
+
+    # Списываем токен за консультацию
+    await deduct_tokens(
+        internal_user_id,
+        COST_NEW_TOPIC,
+        "new_topic",
+        f"Консультация: {category}"
+    )
 
     # Маршрутизация на основе категории
     if category == "питание растений":
@@ -1058,6 +1083,26 @@ async def handle_get_more_questions(callback: CallbackQuery) -> None:
         last_name=callback.from_user.last_name,
     )
 
+    # Проверяем баланс токенов
+    if not await has_sufficient_tokens(user_id, COST_ADDITIONAL_QUESTIONS):
+        balance = await get_token_balance(user_id)
+        await callback.answer(
+            f"Недостаточно токенов! Нужно: {COST_ADDITIONAL_QUESTIONS}, у вас: {balance}",
+            show_alert=True
+        )
+        return
+
+    # Списываем токен
+    success = await deduct_tokens(
+        user_id,
+        COST_ADDITIONAL_QUESTIONS,
+        "buy_questions",
+        "3 дополнительных вопроса"
+    )
+    if not success:
+        await callback.answer("Ошибка списания токенов", show_alert=True)
+        return
+
     # Получаем session_id из callback.message
     if callback.message is None:
         await callback.answer("Ошибка: сообщение не найдено")
@@ -1076,7 +1121,7 @@ async def handle_get_more_questions(callback: CallbackQuery) -> None:
     print(f"[get_more_questions] Reset: user={telegram_user_id}, topic={topic_id}, left={questions_left}")
 
     # Подтверждение
-    await callback.answer("✅ Вам доступно еще 3 уточняющих вопроса!")
+    await callback.answer(f"✅ Получено 3 вопроса за {COST_ADDITIONAL_QUESTIONS} токен!")
 
     # Обновляем сообщение
     if callback.message:

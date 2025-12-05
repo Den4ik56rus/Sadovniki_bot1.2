@@ -61,6 +61,7 @@ CREATE TABLE IF NOT EXISTS users (
     username TEXT,
     first_name TEXT,
     last_name TEXT,
+    token_balance INTEGER DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -73,11 +74,13 @@ CREATE INDEX IF NOT EXISTS idx_users_telegram_id ON users(telegram_user_id);
 - `telegram_user_id` — Telegram ID пользователя (уникальный)
 - `username` — @никнейм пользователя (может быть NULL)
 - `first_name` / `last_name` — имя и фамилия из Telegram
+- `token_balance` — баланс токенов пользователя (по умолчанию 0)
 - `created_at` / `updated_at` — временные метки
 
 **Операции:**
 - Создание/поиск: `get_or_create_user()` в [users_repo.py](../../src/services/db/users_repo.py)
 - Подсчёт: `count_all_users()` для статистики админ-панели
+- Работа с токенами: см. [tokens_repo.py](../../src/services/db/tokens_repo.py)
 
 ---
 
@@ -149,6 +152,43 @@ CREATE INDEX IF NOT EXISTS idx_messages_topic ON messages(topic_id);
 **Операции:**
 - Логирование сообщения: `log_message()` в [messages_repo.py](../../src/services/db/messages_repo.py)
 - Получение истории: `get_topic_messages()` для контекста LLM
+
+---
+
+#### Таблица `token_transactions`
+
+Хранит историю операций с токенами пользователей.
+
+```sql
+CREATE TABLE IF NOT EXISTS token_transactions (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    amount INTEGER NOT NULL,
+    operation_type TEXT NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_token_transactions_user_id ON token_transactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_token_transactions_created_at ON token_transactions(created_at);
+```
+
+**Описание полей:**
+- `id` — идентификатор транзакции
+- `user_id` — ссылка на `users.id`
+- `amount` — сумма операции (положительное = пополнение, отрицательное = списание)
+- `operation_type` — тип операции: `'admin_credit'`, `'new_topic'`, `'buy_questions'`
+- `description` — описание операции
+- `created_at` — время операции
+
+**Операции:**
+- Списание токенов: `deduct_tokens()` в [tokens_repo.py](../../src/services/db/tokens_repo.py)
+- Начисление токенов: `add_tokens()` (для администратора)
+- Проверка баланса: `get_token_balance()`, `has_sufficient_tokens()`
+
+**Стоимость операций (из [config.py](../../src/config.py)):**
+- Новая консультация: 1 токен
+- Покупка 3 доп. вопросов: 1 токен
 
 ---
 
@@ -623,6 +663,7 @@ if __name__ == "__main__":
 | Репозиторий | Таблица | Ответственность |
 |-------------|---------|-----------------|
 | [users_repo.py](../../src/services/db/users_repo.py) | `users` | Создание/поиск пользователей |
+| [tokens_repo.py](../../src/services/db/tokens_repo.py) | `users`, `token_transactions` | Работа с токенами |
 | [topics_repo.py](../../src/services/db/topics_repo.py) | `topics` | Управление сессиями диалогов |
 | [messages_repo.py](../../src/services/db/messages_repo.py) | `messages` | Логирование сообщений |
 | [kb_repo.py](../../src/services/db/kb_repo.py) | `knowledge_base` | Векторный поиск в базе знаний |
@@ -971,6 +1012,8 @@ def _normalize_embedding(embedding: List[float]) -> List[float]:
 - [db/schema_topics.sql](../../db/schema_topics.sql) — Таблица topics
 - [db/schema_documents.sql](../../db/schema_documents.sql) — Таблицы documents и document_chunks
 - [db/schema_terminology.sql](../../db/schema_terminology.sql) — Таблица terminology
+- [db/schema_05_follow_up_questions.sql](../../db/schema_05_follow_up_questions.sql) — Счётчик уточняющих вопросов
+- [db/schema_06_tokens.sql](../../db/schema_06_tokens.sql) — Система токенов (token_balance, token_transactions)
 
 ### Пул подключений
 
@@ -980,6 +1023,7 @@ def _normalize_embedding(embedding: List[float]) -> List[float]:
 ### Репозитории
 
 - [src/services/db/users_repo.py](../../src/services/db/users_repo.py) — Операции с users
+- [src/services/db/tokens_repo.py](../../src/services/db/tokens_repo.py) — Операции с токенами (users.token_balance, token_transactions)
 - [src/services/db/topics_repo.py](../../src/services/db/topics_repo.py) — Операции с topics
 - [src/services/db/messages_repo.py](../../src/services/db/messages_repo.py) — Операции с messages
 - [src/services/db/kb_repo.py](../../src/services/db/kb_repo.py) — Векторный поиск в knowledge_base
@@ -990,7 +1034,7 @@ def _normalize_embedding(embedding: List[float]) -> List[float]:
 
 ### Конфигурация
 
-- [src/config.py](../../src/config.py) — Настройки подключения к БД
+- [src/config.py](../../src/config.py) — Настройки подключения к БД и стоимость операций в токенах
 - [docker-compose.yml](../../docker-compose.yml) — PostgreSQL + pgvector в Docker
 
 ---

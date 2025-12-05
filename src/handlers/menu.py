@@ -325,3 +325,48 @@ async def handle_back_to_menu(message: Message) -> None:
         "Главное меню:",
         reply_markup=get_main_keyboard()
     )
+
+
+@router.message(F.text == "👤 Мой профиль")
+async def handle_profile(message: Message) -> None:
+    """
+    Обработчик кнопки "Мой профиль".
+    Показывает баланс токенов и статистику пользователя.
+    """
+    user = message.from_user
+    if user is None:
+        return
+
+    # Получаем внутренний user_id
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+    # Получаем баланс токенов
+    from src.services.db.tokens_repo import get_token_balance
+    balance = await get_token_balance(internal_user_id)
+
+    # Получаем количество консультаций
+    from src.services.db.pool import get_pool
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        topics_count = await conn.fetchval(
+            "SELECT COUNT(*) FROM topics WHERE user_id = $1",
+            internal_user_id,
+        )
+
+    # Формируем текст профиля
+    profile_text = (
+        f"<b>👤 Ваш профиль</b>\n\n"
+        f"🪙 Баланс токенов: <b>{balance}</b>\n"
+        f"📊 Консультаций: <b>{topics_count}</b>\n\n"
+        f"<b>Стоимость операций:</b>\n"
+        f"• Новая консультация: 1 токен\n"
+        f"• 3 дополнительных вопроса: 1 токен\n\n"
+        f"Для пополнения баланса обратитесь к администратору."
+    )
+
+    await message.answer(profile_text, parse_mode="HTML")

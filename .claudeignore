@@ -1,0 +1,80 @@
+# Dependencies and virtual environments
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
+.coverage
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Environment variables and secrets
+.env
+.env.local
+.env.*.local
+
+# IDE and editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Docker volumes and data
+postgres_data/
+
+# Database dumps
+*.sql.gz
+*.dump
+
+# Documentation (already summarized in main docs)
+CHANGELOG_TOPICS.md
+CLASSIFICATION_TEST_RESULTS.md
+COMPREHENSIVE_OVERVIEW.md
+TESTING_GUIDE.md
+TEST_RESULTS_SUMMARY.md
+DOCUMENTATION_COMPLETE.md
+DOCUMENTATION_STATUS.md
+
+# PDF and binary documents (RAG data files)
+data/documents/**/*.pdf
+data/documents/**/*.doc
+data/documents/**/*.docx
+*.pdf
+*.doc
+*.docx
+
+# Images and media
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+*.ico
+
+# Large generated files
+*.jsonl
+*.parquet
+
+# Git
+.git/
+.gitignore
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# OS files
+Thumbs.db

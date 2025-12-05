@@ -150,12 +150,12 @@ def _keyword_fallback(raw_text: str) -> str:
     if "крыжовник" in text:
         candidates.add("крыжовник")
 
-    # Ежевика
-    if "ежевик" in text:
+    # Ежевика (с учетом возможных опечаток)
+    if "ежевик" in text or "ежив" in text or "ежов" in text:
         candidates.add("ежевика")
 
     # Особый случай: НСД/ремонтантная/летняя БЕЗ упоминания культуры
-    has_culture_word = any(word in text for word in ["клубник", "земляник", "малин", "смородин", "голубик", "жимолост", "крыжовник", "ежевик"])
+    has_culture_word = any(word in text for word in ["клубник", "земляник", "малин", "смородин", "голубик", "жимолост", "крыжовник", "ежевик", "ежив", "ежов"])
     if not has_culture_word:
         if any(word in text for word in ["ремонтант", "нсд", "nsd", "летн", "обычн", "традицион"]):
             # Если есть типовые слова, но нет культуры - общая информация
@@ -429,3 +429,280 @@ async def detect_culture_name(text: str) -> str:
             f"-> keyword_fallback={fallback_culture!r}"
         )
         return fallback_culture
+
+
+def _keyword_category_fallback(raw_text: str) -> str:
+    """
+    Определяет категорию консультации по ключевым словам.
+
+    Returns:
+        Название категории или "не определена"
+    """
+    if not raw_text:
+        return "не определена"
+
+    text = raw_text.lower()
+
+    # Питание растений
+    nutrition_keywords = [
+        "подкорм", "питан", "удобрен", "азот", "калий", "фосфор",
+        "npk", "макроэлемент", "микроэлемент", "комплексн",
+        "минеральн", "органик", "компост", "навоз", "перегной",
+        "подкормить", "кормить", "кормл", "внос"
+    ]
+    if any(kw in text for kw in nutrition_keywords):
+        return "питание растений"
+
+    # Защита растений
+    protection_keywords = [
+        "вредител", "болез", "тля", "паутин", "клещ", "долгоносик",
+        "гриб", "пятн", "мучнист", "серая гниль", "фитофтор",
+        "обработ", "опрыск", "защит", "борьб", "лечен", "инсектицид",
+        "фунгицид", "препарат"
+    ]
+    if any(kw in text for kw in protection_keywords):
+        return "защита растений"
+
+    # Посадка и уход
+    planting_keywords = [
+        "посад", "пересад", "саж", "высад", "полив", "мульч",
+        "обрез", "формиров", "укрыт", "зим", "уход", "агротехник",
+        "схем", "расстоян", "глубин", "когда сажать", "как сажать",
+        "размножен", "черенк", "делен"
+    ]
+    if any(kw in text for kw in planting_keywords):
+        return "посадка и уход"
+
+    # Улучшение почвы
+    soil_keywords = [
+        "почв", "грунт", "кислот", "ph", "известков", "раскисл",
+        "структур почв", "дренаж", "песок", "торф", "глин",
+        "плодородие", "улучш", "подготовк почв"
+    ]
+    if any(kw in text for kw in soil_keywords):
+        return "улучшение почвы"
+
+    # Подбор сорта
+    variety_keywords = [
+        "сорт", "какой лучше", "что выбрать", "порекоменду",
+        "посовету", "для региона", "для климата", "морозостойк",
+        "зимостойк", "урожайн", "вкус"
+    ]
+    if any(kw in text for kw in variety_keywords):
+        return "подбор сорта"
+
+    return "не определена"
+
+
+async def detect_category_and_culture(text: str) -> tuple[str, str]:
+    """
+    Определяет КАТЕГОРИЮ консультации И КУЛЬТУРУ из текста вопроса.
+
+    Использует единый вызов LLM для определения обоих параметров,
+    с fallback на keyword-based классификацию.
+
+    Args:
+        text: Текст вопроса пользователя
+
+    Returns:
+        tuple[category, culture] where:
+        - category: "питание растений", "посадка и уход", "защита растений",
+                   "улучшение почвы", "подбор сорта", "другая тема" или "не определена"
+        - culture: "клубника летняя", "малина общая", "не определено", etc.
+    """
+    import json
+
+    raw_text = text or ""
+
+    # Категории для промпта
+    categories = [
+        "питание растений",
+        "посадка и уход",
+        "защита растений",
+        "улучшение почвы",
+        "подбор сорта",
+        "другая тема"
+    ]
+
+    # Культуры из БД
+    db_cultures: List[str] = await kb_get_distinct_subcategories(limit=200)
+    specials = ["общая информация", "не определено"]
+
+    if db_cultures:
+        cultures_for_prompt = [*db_cultures, *specials]
+    else:
+        cultures_for_prompt = specials
+
+    categories_str = "\n".join(f"   - {cat}" for cat in categories)
+    cultures_str = "\n".join(f"   - {cult}" for cult in cultures_for_prompt[:30])  # Первые 30 для экономии токенов
+
+    system_prompt = (
+        "Ты агроном-консультант и классификатор вопросов по ягодным культурам.\n"
+        "Твоя задача: определить КАТЕГОРИЮ консультации И КУЛЬТУРУ из вопроса пользователя.\n\n"
+        "КАТЕГОРИИ КОНСУЛЬТАЦИЙ:\n"
+        f"{categories_str}\n\n"
+        "КУЛЬТУРЫ (примеры):\n"
+        f"{cultures_str}\n"
+        "   - клубника общая / клубника летняя / клубника ремонтантная\n"
+        "   - малина общая / малина летняя / малина ремонтантная\n"
+        "   - голубика, ежевика, смородина, жимолость, крыжовник\n"
+        "   - общая информация (если про несколько культур)\n"
+        "   - не определено (если культура неясна)\n\n"
+        "ПРАВИЛА КАТЕГОРИЙ:\n"
+        "1. 'питание растений' - вопросы про удобрения, подкормки, питание\n"
+        "2. 'посадка и уход' - посадка, пересадка, полив, обрезка, мульчирование\n"
+        "3. 'защита растений' - болезни, вредители, обработки, лечение\n"
+        "4. 'улучшение почвы' - pH, кислотность, структура почвы, дренаж\n"
+        "5. 'подбор сорта' - какой сорт выбрать, рекомендации по сортам\n"
+        "6. 'другая тема' - всё остальное\n\n"
+        "ПРАВИЛА КУЛЬТУР:\n"
+        "1. Для клубники и малины различай типы:\n"
+        "   - 'летняя'/'обычная'/'традиционная'/'июньская' → летняя\n"
+        "   - 'ремонтантная'/'НСД'/'NSD' → ремонтантная\n"
+        "   - Если тип не указан → 'клубника общая' или 'малина общая'\n"
+        "2. Сорта:\n"
+        "   - Альбион, Сан Андреас → клубника ремонтантная\n"
+        "   - Полка, Хоней → клубника летняя\n"
+        "   - Химбо Топ, Полька → малина ремонтантная\n"
+        "   - Патриция, Гусар → малина летняя\n"
+        "3. ВАЖНО: Учитывай возможные опечатки в названиях культур:\n"
+        "   - 'еживику', 'ежовика' → ежевика\n"
+        "   - 'малену', 'малену' → малина\n"
+        "   - 'клубнику', 'клупнику' → клубника\n"
+        "   Если похоже на название культуры, исправь опечатку и верни правильное название.\n"
+        "4. Если культура явно названа (даже с опечаткой) → возвращай конкретную культуру\n"
+        "5. Если несколько культур → 'общая информация'\n"
+        "6. Если культура неясна → 'не определено'\n\n"
+        "ФОРМАТ ОТВЕТА:\n"
+        "Верни ТОЛЬКО JSON в формате:\n"
+        '{"category": "название категории", "culture": "название культуры"}\n\n'
+        "БЕЗ комментариев, БЕЗ дополнительного текста!"
+    )
+
+    messages = [
+        {
+            "role": "system",
+            "content": system_prompt,
+        },
+        {
+            "role": "user",
+            "content": f"Вопрос: {raw_text}",
+        },
+    ]
+
+    try:
+        llm_answer = await create_chat_completion(
+            messages=messages,
+            model=settings.openai_model,
+            temperature=0.0,
+        )
+
+        raw = (llm_answer or "").strip()
+        if not raw:
+            print(f"[detect_category_and_culture][EMPTY] text={raw_text!r}")
+            category = _keyword_category_fallback(raw_text)
+            culture = _keyword_fallback(raw_text)
+            print(
+                f"[detect_category_and_culture][FALLBACK] "
+                f"category={category!r}, culture={culture!r}"
+            )
+            return (category, culture)
+
+        # Пытаемся распарсить JSON
+        try:
+            # Очищаем от markdown блоков если есть
+            json_str = raw
+            if "```json" in json_str:
+                json_str = json_str.split("```json")[1].split("```")[0].strip()
+            elif "```" in json_str:
+                json_str = json_str.split("```")[1].split("```")[0].strip()
+
+            data = json.loads(json_str)
+            category_raw = data.get("category", "").strip().lower()
+            culture_raw = data.get("culture", "").strip().lower()
+
+            # Нормализуем категорию
+            category_mapping = {
+                "питание растений": "питание растений",
+                "посадка и уход": "посадка и уход",
+                "защита растений": "защита растений",
+                "улучшение почвы": "улучшение почвы",
+                "подбор сорта": "подбор сорта",
+                "подбор сортов": "подбор сорта",
+                "другая тема": "другая тема",
+            }
+
+            category = category_mapping.get(category_raw, "не определена")
+
+            # Нормализуем культуру (используем существующую логику)
+            culture = _cleanup_llm_answer(culture_raw)
+
+            # Применяем маппинг культур (копируем из detect_culture_name)
+            culture_mapping: Dict[str, str] = {
+                "клубника ремонтантная": "клубника ремонтантная",
+                "клубника летняя": "клубника летняя",
+                "клубника обычная": "клубника летняя",
+                "клубника общая": "клубника общая",
+                "клубника": "клубника общая",
+                "земляника": "клубника общая",
+                "малина ремонтантная": "малина ремонтантная",
+                "малина летняя": "малина летняя",
+                "малина обычная": "малина летняя",
+                "малина общая": "малина общая",
+                "малина": "малина общая",
+                "смородина": "смородина",
+                "голубика": "голубика",
+                "жимолость": "жимолость",
+                "крыжовник": "крыжовник",
+                "ежевика": "ежевика",
+                "общая информация": "общая информация",
+                "не определено": "не определено",
+            }
+
+            for key, value in culture_mapping.items():
+                if key in culture:
+                    culture = value
+                    break
+
+            # Проверяем keyword fallback для валидации или override
+            keyword_culture = _keyword_fallback(raw_text)
+
+            # Если culture не нашлась в маппинге или неопределена, используем keyword
+            if culture in ("общая информация", "не определено", ""):
+                if keyword_culture not in ("не определено", "общая информация"):
+                    print(f"[detect_category_and_culture][KEYWORD_OVERRIDE_VAGUE] "
+                          f"LLM={culture!r} -> keyword={keyword_culture!r}")
+                    culture = keyword_culture
+            # Если keyword нашел КОНКРЕТНУЮ культуру, а LLM вернул другую - предпочитаем keyword
+            elif keyword_culture not in ("не определено", "общая информация", culture):
+                print(f"[detect_category_and_culture][KEYWORD_CORRECTION] "
+                      f"LLM={culture!r} -> keyword={keyword_culture!r} (возможно опечатка)")
+                culture = keyword_culture
+
+            print(
+                f"[detect_category_and_culture][SUCCESS] text={raw_text!r} "
+                f"-> category={category!r}, culture={culture!r}"
+            )
+
+            return (category, culture)
+
+        except json.JSONDecodeError as je:
+            print(f"[detect_category_and_culture][JSON_ERROR] {je} | raw={raw!r}")
+            # Fallback на keyword detection
+            category = _keyword_category_fallback(raw_text)
+            culture = _keyword_fallback(raw_text)
+            print(
+                f"[detect_category_and_culture][KEYWORD_FALLBACK] "
+                f"category={category!r}, culture={culture!r}"
+            )
+            return (category, culture)
+
+    except Exception as e:
+        print(f"[detect_category_and_culture][ERROR] {e} | text={raw_text!r}")
+        category = _keyword_category_fallback(raw_text)
+        culture = _keyword_fallback(raw_text)
+        print(
+            f"[detect_category_and_culture][ERROR_FALLBACK] "
+            f"category={category!r}, culture={culture!r}"
+        )
+        return (category, culture)

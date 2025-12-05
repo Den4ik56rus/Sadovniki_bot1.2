@@ -59,6 +59,154 @@ router = Router()
 print("[nutrition] router imported")
 
 
+# ==== НОВАЯ ФУНКЦИЯ: Обработка консультации по питанию (для унифицированного entry) ====
+
+async def process_nutrition_consultation(
+    message: Message,
+    user_id: int,
+    category: str,
+    culture: str,
+    root_question: str,
+) -> None:
+    """
+    Обрабатывает консультацию по питанию растений.
+    Может быть вызвана из unified handler или из старого handle_nutrition_root.
+
+    Args:
+        message: Сообщение от пользователя
+        user_id: Внутренний ID пользователя из БД
+        category: Категория консультации (должна быть "питание растений")
+        culture: Определенная культура
+        root_question: Текст вопроса пользователя
+    """
+    user = message.from_user
+    if user is None:
+        return
+
+    telegram_user_id = user.id
+    session_id = build_session_id_from_message(message)
+
+    print(f"[process_nutrition] user_id={user_id}, category={category!r}, culture={culture!r}")
+
+    # Создаем или получаем топик
+    topic_id = await get_or_create_open_topic(
+        user_id=user_id,
+        session_id=session_id,
+    )
+
+    # Обновляем культуру в БД
+    await set_topic_culture(topic_id, culture)
+
+    # Логируем вопрос пользователя
+    await log_message(
+        user_id=user_id,
+        direction="user",
+        text=root_question,
+        session_id=session_id,
+        topic_id=topic_id,
+    )
+
+    # Сохраняем контекст консультации
+    CONSULTATION_CONTEXT[telegram_user_id] = {
+        "category": category,
+        "root_question": root_question,
+        "culture": culture,
+        "user_id": user_id,
+        "topic_id": topic_id,
+        "session_id": session_id,
+        "telegram_user_id": telegram_user_id,
+    }
+
+    # Проверяем, нужно ли уточнять тип культуры
+    if culture in ("клубника общая", "малина общая"):
+        # Задаем ТОЛЬКО вопрос о типе культуры
+        if culture == "клубника общая":
+            variety_question = "Какая у вас клубника: летняя (июньская) или ремонтантная (НСД)?"
+        else:  # малина общая
+            variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
+
+        await message.answer(variety_question)
+        CONSULTATION_STATE[telegram_user_id] = "waiting_variety_clarification"
+        print(f"[process_nutrition] Asking variety, state -> waiting_variety_clarification")
+        return
+
+    # Вызываем LLM для получения ответа
+    base_category = category
+
+    # Определяем, нужен ли RAG
+    use_rag = culture not in ("общая информация", "не определено", None)
+
+    # Показываем сообщение ожидания
+    status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+
+    try:
+        answer_text = await ask_consultation_llm(
+            user_id=user_id,
+            telegram_user_id=telegram_user_id,
+            text=root_question,
+            session_id=session_id,
+            consultation_category=base_category,
+            culture=culture,
+            default_location="средняя полоса",
+            default_growing_type="открытый грунт",
+            skip_rag=not use_rag,
+        )
+    finally:
+        try:
+            await status_message.delete()
+        except Exception:
+            pass
+
+    # Проверяем, является ли ответ уточняющим вопросом
+    if not use_rag:
+        is_clarification = (
+            len(answer_text) < 300
+            and (
+                "уточните" in answer_text.lower()
+                or "о какой культуре" in answer_text.lower()
+                or "какая у вас" in answer_text.lower()
+                or "?" in answer_text
+            )
+        )
+    else:
+        is_clarification = False
+
+    # Отправляем ответ
+    if is_clarification:
+        await message.answer(answer_text)
+        CONSULTATION_STATE[telegram_user_id] = "waiting_nutrition_clarification"
+        print(f"[process_nutrition] LLM asking clarification, state -> waiting_nutrition_clarification")
+    else:
+        await message.answer(answer_text, reply_markup=get_nutrition_followup_keyboard())
+        CONSULTATION_CONTEXT[telegram_user_id]["full_question"] = root_question
+        CONSULTATION_STATE.pop(telegram_user_id, None)
+        print(f"[process_nutrition] Showing followup buttons, use_rag={use_rag}")
+
+    # Логируем ответ бота
+    await log_message(
+        user_id=user_id,
+        direction="bot",
+        text=answer_text,
+        session_id=session_id,
+        topic_id=topic_id,
+    )
+
+    # Добавляем в moderation (только если финальный ответ)
+    if not is_clarification:
+        if culture and culture != "не определено":
+            category_guess = f"{base_category} / {culture}"
+        else:
+            category_guess = base_category
+
+        await moderation_add(
+            user_id=user_id,
+            topic_id=topic_id,
+            question=root_question,
+            answer=answer_text,
+            category_guess=category_guess,
+        )
+
+
 # ==== ЭТАП 1: корневой вопрос по питанию ====
 
 
@@ -537,7 +685,8 @@ async def handle_variety_clarification(message: Message) -> None:
 async def handle_nutrition_new_topic(callback: CallbackQuery) -> None:
     """
     Обработчик кнопки "Вопрос по новой теме".
-    Закрывает текущий топик, очищает контекст и возвращает пользователя к выбору категории консультации.
+    Закрывает текущий топик, очищает контекст и сразу просит задать новый вопрос.
+    Теперь без выбора категории - категория и культура определяются автоматически.
     """
     user = callback.from_user
     if user is None:
@@ -560,19 +709,24 @@ async def handle_nutrition_new_topic(callback: CallbackQuery) -> None:
     print(f"[nutrition_new_topic] Закрыты все топики для internal_user_id={internal_user_id} (telegram_user_id={user.id})")
 
     # Очищаем контекст и состояние
-    CONSULTATION_STATE.pop(user.id, None)
     CONSULTATION_CONTEXT.pop(user.id, None)
 
+    # Устанавливаем новое состояние - ждем вопрос
+    CONSULTATION_STATE[user.id] = "waiting_consultation_question"
+
+    # Убираем кнопки с предыдущего сообщения
     await callback.message.edit_reply_markup(reply_markup=None)
-    await callback.answer("Выберите новую тему консультации")
+    await callback.answer("Задайте новый вопрос")
 
-    # Импортируем клавиатуру меню консультаций
-    from src.keyboards.consultation.common import CONSULTATION_MENU_INLINE_KB
-
-    await callback.message.answer(
-        "Выберите тему консультации:",
-        reply_markup=CONSULTATION_MENU_INLINE_KB
+    # Просим задать вопрос (без выбора категории)
+    text = (
+        "Опишите, пожалуйста, ваш вопрос одним сообщением:\n"
+        "— какая культура (и сорт, если знаете);\n"
+        "— в каком регионе/климате вы находитесь;\n"
+        "— что именно вас волнует (питание, посадка, болезни и т.п.)."
     )
+
+    await callback.message.answer(text)
 
 
 @router.callback_query(F.data == "nutrition_replace_params")

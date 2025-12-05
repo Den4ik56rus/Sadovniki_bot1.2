@@ -168,22 +168,40 @@ async def handle_admin_mode(message: Message) -> None:
 async def handle_consultation_button(message: Message) -> None:
     """
     Обработка нажатия кнопки '🧑‍🌾 Консультация'.
-    Показывает инлайн-подменю из 6 направлений консультаций.
+    Теперь сразу просит вопрос без выбора категории.
+    Категория и культура определяются автоматически из текста вопроса.
     """
     user = message.from_user
-    if user is not None:
-        # фиксируем, что пользователь сейчас в ветке консультаций
-        CONSULTATION_STATE[user.id] = "waiting_category"
+    if user is None:
+        return
+
+    # Получаем внутренний user_id
+    from src.services.db.users_repo import get_or_create_user
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+    # Закрываем все открытые топики перед началом новой консультации
+    from src.services.db.topics_repo import close_open_topics
+    await close_open_topics(internal_user_id)
+
+    # Очищаем старый контекст
+    CONSULTATION_CONTEXT.pop(user.id, None)
+
+    # Устанавливаем новое состояние - ждем вопрос
+    CONSULTATION_STATE[user.id] = "waiting_consultation_question"
 
     text = (
-        "Доступны консультации по всем ягодным культурам.\n"
-        "Вы можете выбрать одну из предложенных тем или указать свою."
+        "Опишите, пожалуйста, ваш вопрос одним сообщением:\n"
+        "— какая культура (и сорт, если знаете);\n"
+        "— в каком регионе/климате вы находитесь;\n"
+        "— что именно вас волнует (питание, посадка, болезни и т.п.)."
     )
 
-    await message.answer(
-        text,
-        reply_markup=CONSULTATION_MENU_INLINE_KB,
-    )
+    await message.answer(text)
 
 
 @router.callback_query(F.data.startswith("consult_category:"))

@@ -1,0 +1,23 @@
+/* EventDots styles */
+
+.dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  margin-top: 2px;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.more {
+  font-size: 8px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-tertiary);
+  line-height: 1;
+}

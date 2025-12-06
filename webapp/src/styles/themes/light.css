@@ -1,0 +1,48 @@
+/* Light Theme */
+
+[data-theme="light"] {
+  /* Backgrounds */
+  --color-bg-primary: #FFFFFF;
+  --color-bg-secondary: #F5F5F5;
+  --color-bg-tertiary: #EEEEEE;
+  --color-bg-elevated: #FFFFFF;
+
+  /* Text */
+  --color-text-primary: #212121;
+  --color-text-secondary: #757575;
+  --color-text-tertiary: #9E9E9E;
+  --color-text-inverse: #FFFFFF;
+
+  /* Borders & Dividers */
+  --color-border: #E0E0E0;
+  --color-divider: #EEEEEE;
+
+  /* Accent */
+  --color-accent: #2196F3;
+  --color-accent-hover: #1976D2;
+  --color-accent-light: #BBDEFB;
+  --color-accent-bg: rgba(33, 150, 243, 0.1);
+
+  /* Calendar specific */
+  --color-today: #F44336;
+  --color-today-bg: rgba(244, 67, 54, 0.1);
+  --color-selected: #2196F3;
+  --color-selected-bg: rgba(33, 150, 243, 0.15);
+  --color-other-month: rgba(0, 0, 0, 0.3);
+  --color-weekend: #757575;
+
+  /* Status colors */
+  --color-success: #4CAF50;
+  --color-success-bg: rgba(76, 175, 80, 0.1);
+  --color-warning: #FF9800;
+  --color-warning-bg: rgba(255, 152, 0, 0.1);
+  --color-error: #F44336;
+  --color-error-bg: rgba(244, 67, 54, 0.1);
+
+  /* Overlay */
+  --color-overlay: rgba(0, 0, 0, 0.5);
+
+  /* Shadows (theme-aware) */
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-sheet: 0 -4px 24px rgba(0, 0, 0, 0.12);
+}

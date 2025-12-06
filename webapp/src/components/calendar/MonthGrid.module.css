@@ -1,0 +1,61 @@
+/* MonthGrid styles - Grid view с событиями */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  background-color: var(--color-bg-primary);
+  touch-action: pan-y pinch-zoom;
+  user-select: none;
+  transition: max-height var(--transition-normal), opacity var(--transition-normal);
+}
+
+/* Expanded state */
+.expanded {
+  max-height: none;
+  opacity: 1;
+}
+
+/* Collapsed state */
+.collapsed {
+  max-height: 0;
+  opacity: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* Заголовок дней недели - отдельная строка */
+.weekdaysHeader {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.weekday {
+  text-align: center;
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  padding: 4px 0;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.weekday.weekend {
+  color: var(--color-weekend);
+}
+
+/* Контейнер недель - замкнутая сетка */
+.weeksContainer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  /* Левая граница для замкнутости */
+  border-left: 1px solid var(--color-divider);
+}

@@ -1,0 +1,87 @@
+/* DayEventsPanel styles */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  background-color: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-divider);
+  overflow: hidden;
+}
+
+.header {
+  padding: var(--spacing-md);
+  background-color: var(--color-bg-primary);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.title {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  margin: 0;
+  text-transform: capitalize;
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md);
+}
+
+.eventsList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-sm);
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  min-height: 100px;
+}
+
+.emptyText {
+  font-size: var(--font-size-base);
+  color: var(--color-text-tertiary);
+}
+
+.footer {
+  padding: var(--spacing-md);
+  background-color: var(--color-bg-primary);
+  border-top: 1px solid var(--color-divider);
+}
+
+.addButton {
+  width: 100%;
+  padding: var(--spacing-md);
+  border: none;
+  background-color: var(--color-accent);
+  color: var(--color-text-inverse);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+  min-height: 48px;
+}
+
+.addButton:active {
+  background-color: var(--color-accent-hover);
+}
+
+.placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  padding: var(--spacing-xl);
+}
+
+.placeholderText {
+  font-size: var(--font-size-base);
+  color: var(--color-text-tertiary);
+  text-align: center;
+}

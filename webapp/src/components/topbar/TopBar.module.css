@@ -1,0 +1,125 @@
+/* TopBar styles - Samsung Calendar style */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background-color: var(--color-bg-primary);
+  min-height: 56px;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+}
+
+/* Левая секция: меню + месяц */
+.leftSection {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* Правая секция: поиск + число */
+.rightSection {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+/* Кнопка меню (гамбургер) */
+.menuButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background-color var(--transition-fast);
+}
+
+.menuButton:active {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* Плашка с месяцем */
+.monthPill {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  background-color: var(--color-bg-tertiary);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.monthPill:active {
+  background-color: var(--color-bg-secondary);
+}
+
+.monthText {
+  font-size: var(--font-size-lg);
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-text-primary);
+  user-select: none;
+}
+
+/* Стрелка в плашке */
+.chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-secondary);
+  transition: transform var(--transition-fast);
+}
+
+.chevronUp {
+  transform: rotate(180deg);
+}
+
+/* Кнопка поиска */
+.searchButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  background: transparent;
+  color: var(--color-text-primary);
+  cursor: pointer;
+  border-radius: var(--radius-md);
+  transition: background-color var(--transition-fast);
+}
+
+.searchButton:active {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* Число сегодня в квадрате */
+.todayNumber {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 40px;
+  height: 40px;
+  padding: 0 var(--spacing-xs);
+  border: none;
+  background-color: var(--color-bg-tertiary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+  user-select: none;
+}
+
+.todayNumber:active {
+  background-color: var(--color-bg-secondary);
+}

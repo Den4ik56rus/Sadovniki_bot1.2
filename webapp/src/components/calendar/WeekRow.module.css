@@ -1,0 +1,205 @@
+/* WeekRow styles - Строка недели с событиями */
+
+.weekRow {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  position: relative;  /* Для позиционирования overlay */
+}
+
+/* Сетка ячеек дней */
+.dayCells {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+}
+
+/* Ячейка дня - замкнутый прямоугольник */
+.dayCell {
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 2px 3px;
+  min-height: 40px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  /* Правая и нижняя граница создают сетку (левая на контейнере) */
+  border-right: 1px solid var(--color-divider);
+  border-bottom: 1px solid var(--color-divider);
+}
+
+/* Сетка ячеек растягивается */
+.dayCells {
+  flex: 1;
+}
+
+.dayCell:active {
+  background-color: var(--color-bg-tertiary);
+}
+
+/* Число дня - маленькое, в правом верхнем углу */
+.dayNumber {
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+}
+
+/* Другой месяц */
+.otherMonth .dayNumber {
+  color: var(--color-other-month);
+}
+
+/* Выходные */
+.weekend .dayNumber {
+  color: var(--color-weekend);
+}
+
+.otherMonth.weekend .dayNumber {
+  color: var(--color-other-month);
+}
+
+/* Сегодня */
+.dayNumber.today {
+  background-color: var(--color-today);
+  color: var(--color-text-inverse);
+}
+
+/* Выбранный */
+.dayNumber.selected {
+  background-color: var(--color-selected);
+  color: var(--color-text-inverse);
+}
+
+.dayNumber.today.selected {
+  background-color: var(--color-selected);
+  box-shadow: 0 0 0 1px var(--color-today);
+}
+
+/* Overlay для событий - поверх ячеек дней */
+.eventsOverlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;  /* Пропускаем клики к ячейкам дней */
+  z-index: 1;
+}
+
+/* Полоска события */
+.eventBar {
+  position: absolute;
+  pointer-events: auto;  /* Восстанавливаем клики на событие */
+  left: calc(var(--start-col) * (100% / 7) + 2px);
+  width: calc(var(--span) * (100% / 7) - 4px);
+  /* Центрируем по вертикали в ячейке */
+  top: 50%;
+  transform: translateY(-50%);
+  /* Смещение для многорядных событий */
+  margin-top: calc(var(--row, 0) * 14px);
+  height: 12px;
+  background-color: var(--event-color);
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  padding: 0 4px;
+  overflow: hidden;
+  transition: opacity var(--transition-fast), box-shadow var(--transition-fast);
+  touch-action: none;  /* Для drag на touch устройствах */
+}
+
+.eventBar:hover {
+  opacity: 0.85;
+}
+
+.eventBar:active {
+  opacity: 0.7;
+}
+
+/* Продолжение слева */
+.continuesLeft {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  left: calc(var(--start-col) * (100% / 7));
+  width: calc(var(--span) * (100% / 7) - 1px);
+}
+
+/* Продолжение справа */
+.continuesRight {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  width: calc(var(--span) * (100% / 7) - 1px);
+}
+
+.continuesLeft.continuesRight {
+  width: calc(var(--span) * (100% / 7));
+}
+
+.eventTitle {
+  font-size: 9px;
+  font-weight: var(--font-weight-medium);
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  line-height: 1;
+}
+
+/* Выделенное событие */
+.eventBarSelected {
+  z-index: 10;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  overflow: visible;  /* Чтобы handles были видны */
+}
+
+/* Перетаскиваемое событие */
+.eventBarDragging {
+  opacity: 0.8;
+  cursor: grabbing;
+  z-index: 20;
+}
+
+/* Resize handles */
+.resizeHandle {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  background: white;
+  border: 2px solid var(--event-color);
+  border-radius: 50%;
+  pointer-events: auto;
+  touch-action: none;
+  z-index: 11;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* Левая ручка - слева внизу (с отступом) */
+.resizeHandleStart {
+  left: -7px;
+  bottom: -10px;
+  cursor: w-resize;
+}
+
+/* Правая ручка - справа вверху (с отступом) */
+.resizeHandleEnd {
+  right: -7px;
+  top: -10px;
+  cursor: e-resize;
+}
+
+.resizeHandle:hover {
+  transform: scale(1.15);
+}
+
+.resizeHandle:active {
+  transform: scale(0.95);
+  background: var(--color-bg-tertiary);
+}

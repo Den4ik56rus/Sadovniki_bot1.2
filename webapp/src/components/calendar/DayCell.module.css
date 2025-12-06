@@ -1,0 +1,64 @@
+/* DayCell styles */
+
+.cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  padding: var(--spacing-xs);
+  min-height: 48px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: background-color var(--transition-fast);
+  border-radius: var(--radius-sm);
+}
+
+.cell:active {
+  background-color: var(--color-bg-tertiary);
+}
+
+.number {
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-primary);
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-full);
+}
+
+/* Другой месяц */
+.otherMonth .number {
+  color: var(--color-other-month);
+}
+
+/* Выходные */
+.weekend .number {
+  color: var(--color-weekend);
+}
+
+.otherMonth.weekend .number {
+  color: var(--color-other-month);
+}
+
+/* Сегодня */
+.today .number {
+  background-color: var(--color-today);
+  color: var(--color-text-inverse);
+}
+
+/* Выбранный день */
+.selected .number {
+  background-color: var(--color-selected);
+  color: var(--color-text-inverse);
+}
+
+/* Сегодня + Выбранный */
+.today.selected .number {
+  background-color: var(--color-selected);
+  box-shadow: 0 0 0 2px var(--color-today);
+}

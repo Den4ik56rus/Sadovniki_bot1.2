@@ -1,0 +1,48 @@
+/* Dark Theme */
+
+[data-theme="dark"] {
+  /* Backgrounds */
+  --color-bg-primary: #1E1E1E;
+  --color-bg-secondary: #2D2D2D;
+  --color-bg-tertiary: #3D3D3D;
+  --color-bg-elevated: #2D2D2D;
+
+  /* Text */
+  --color-text-primary: #FFFFFF;
+  --color-text-secondary: #AAAAAA;
+  --color-text-tertiary: #777777;
+  --color-text-inverse: #1E1E1E;
+
+  /* Borders & Dividers */
+  --color-border: #404040;
+  --color-divider: #333333;
+
+  /* Accent */
+  --color-accent: #64B5F6;
+  --color-accent-hover: #42A5F5;
+  --color-accent-light: #1E3A5F;
+  --color-accent-bg: rgba(100, 181, 246, 0.15);
+
+  /* Calendar specific */
+  --color-today: #EF5350;
+  --color-today-bg: rgba(239, 83, 80, 0.15);
+  --color-selected: #64B5F6;
+  --color-selected-bg: rgba(100, 181, 246, 0.2);
+  --color-other-month: rgba(255, 255, 255, 0.25);
+  --color-weekend: #AAAAAA;
+
+  /* Status colors */
+  --color-success: #66BB6A;
+  --color-success-bg: rgba(102, 187, 106, 0.15);
+  --color-warning: #FFB74D;
+  --color-warning-bg: rgba(255, 183, 77, 0.15);
+  --color-error: #EF5350;
+  --color-error-bg: rgba(239, 83, 80, 0.15);
+
+  /* Overlay */
+  --color-overlay: rgba(0, 0, 0, 0.7);
+
+  /* Shadows (theme-aware) */
+  --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.3);
+  --shadow-sheet: 0 -4px 24px rgba(0, 0, 0, 0.4);
+}

@@ -55,10 +55,13 @@ export function EventDetailsSheet() {
   const typeInfo = EVENT_TYPES[event.type];
   const cultureInfo = event.cultureCode ? CULTURES[event.cultureCode] : null;
 
-  // Форматируем дату и время
+  // Форматируем дату
   const startDate = parseLocalDateTime(event.startDateTime);
-  const dateStr = format(startDate, 'd MMMM yyyy', { locale: ru });
-  const timeStr = event.allDay ? 'Весь день' : format(startDate, 'HH:mm');
+  const endDate = event.endDateTime ? parseLocalDateTime(event.endDateTime) : null;
+  const startDateStr = format(startDate, 'd MMMM yyyy', { locale: ru });
+  const endDateStr = endDate ? format(endDate, 'd MMMM yyyy', { locale: ru }) : null;
+  // Показываем "до" только если endDate отличается от startDate
+  const hasEndDate = endDate && endDateStr !== startDateStr;
 
   const statusLabels: Record<string, string> = {
     planned: UI_TEXT.statusPlanned,
@@ -77,14 +80,16 @@ export function EventDetailsSheet() {
 
           <div className={styles.details}>
             <div className={styles.row}>
-              <span className={styles.label}>Дата</span>
-              <span className={styles.value}>{dateStr}</span>
+              <span className={styles.label}>{hasEndDate ? 'С' : 'Дата'}</span>
+              <span className={styles.value}>{startDateStr}</span>
             </div>
 
-            <div className={styles.row}>
-              <span className={styles.label}>Время</span>
-              <span className={styles.value}>{timeStr}</span>
-            </div>
+            {hasEndDate && (
+              <div className={styles.row}>
+                <span className={styles.label}>До</span>
+                <span className={styles.value}>{endDateStr}</span>
+              </div>
+            )}
 
             <div className={styles.row}>
               <span className={styles.label}>Тип</span>

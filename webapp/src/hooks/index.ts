@@ -13,4 +13,4 @@ export {
   hapticSelection,
 } from './useTelegramHaptic';
 export { useSwipeNavigation } from './useSwipeNavigation';
-export { useEventDragResize } from './useEventDragResize';
+export { useCalendarDrag } from './useCalendarDrag';

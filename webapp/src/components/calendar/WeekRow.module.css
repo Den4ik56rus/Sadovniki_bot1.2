@@ -19,7 +19,7 @@
   align-items: flex-start;
   justify-content: flex-end;
   padding: 2px 3px;
-  min-height: 40px;
+  min-height: 48px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -102,11 +102,11 @@
   top: 50%;
   transform: translateY(-50%);
   /* Смещение для многорядных событий */
-  margin-top: calc(var(--row, 0) * 14px);
-  height: 12px;
+  margin-top: calc(var(--row, 0) * 18px);
+  height: 16px;
   background-color: var(--event-color);
   border: none;
-  border-radius: 3px;
+  border-radius: 4px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -114,6 +114,19 @@
   overflow: hidden;
   transition: opacity var(--transition-fast), box-shadow var(--transition-fast);
   touch-action: none;  /* Для drag на touch устройствах */
+  -webkit-user-select: none;  /* Запрет выделения текста на iOS */
+  user-select: none;
+  -webkit-touch-callout: none;  /* Запрет контекстного меню на iOS */
+}
+
+/* Расширенная зона касания (минимум 44px по Apple HIG) */
+.eventBar::before {
+  content: '';
+  position: absolute;
+  top: -14px;
+  bottom: -14px;
+  left: 0;
+  right: 0;
 }
 
 .eventBar:hover {
@@ -144,7 +157,7 @@
 }
 
 .eventTitle {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: var(--font-weight-medium);
   color: white;
   white-space: nowrap;
@@ -170,33 +183,43 @@
 /* Resize handles */
 .resizeHandle {
   position: absolute;
-  width: 14px;
-  height: 14px;
+  width: 18px;
+  height: 18px;
   background: white;
   border: 2px solid var(--event-color);
   border-radius: 50%;
   pointer-events: auto;
   touch-action: none;
   z-index: 11;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
+
+/* Расширенная зона касания для handles */
+.resizeHandle::before {
+  content: '';
+  position: absolute;
+  top: -10px;
+  bottom: -10px;
+  left: -10px;
+  right: -10px;
 }
 
 /* Левая ручка - слева внизу (с отступом) */
 .resizeHandleStart {
-  left: -7px;
-  bottom: -10px;
+  left: -9px;
+  bottom: -12px;
   cursor: w-resize;
 }
 
 /* Правая ручка - справа вверху (с отступом) */
 .resizeHandleEnd {
-  right: -7px;
-  top: -10px;
+  right: -9px;
+  top: -12px;
   cursor: e-resize;
 }
 
 .resizeHandle:hover {
-  transform: scale(1.15);
+  transform: scale(1.1);
 }
 
 .resizeHandle:active {

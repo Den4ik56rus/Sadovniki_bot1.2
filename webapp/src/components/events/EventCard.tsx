@@ -1,9 +1,10 @@
 /**
  * EventCard - Карточка события в списке
- * Отображает время, заголовок и тип события
+ * Отображает даты, заголовок и тип события
  */
 
 import { format } from 'date-fns';
+import { ru } from 'date-fns/locale';
 import { parseLocalDateTime } from '@utils/dateUtils';
 import type { CalendarEvent } from '@/types/event';
 import { EVENT_TYPES } from '@constants/eventTypes';
@@ -20,10 +21,14 @@ export function EventCard({ event, onClick }: EventCardProps) {
   const cultureInfo = event.cultureCode ? CULTURES[event.cultureCode] : null;
   const color = event.color || typeInfo?.color || '#9E9E9E';
 
-  // Форматируем время
-  const time = event.allDay
-    ? 'Весь день'
-    : format(parseLocalDateTime(event.startDateTime), 'HH:mm');
+  // Форматируем даты
+  const startDate = parseLocalDateTime(event.startDateTime);
+  const endDate = event.endDateTime ? parseLocalDateTime(event.endDateTime) : null;
+  const startDateStr = format(startDate, 'd MMM', { locale: ru });
+  const endDateStr = endDate ? format(endDate, 'd MMM', { locale: ru }) : null;
+  const hasEndDate = endDate && endDateStr !== startDateStr;
+
+  const dateLabel = hasEndDate ? `${startDateStr} — ${endDateStr}` : startDateStr;
 
   return (
     <button
@@ -34,7 +39,7 @@ export function EventCard({ event, onClick }: EventCardProps) {
       <div className={styles.colorBar} />
       <div className={styles.content}>
         <div className={styles.header}>
-          <span className={styles.time}>{time}</span>
+          <span className={styles.date}>{dateLabel}</span>
           {cultureInfo && (
             <span className={styles.culture}>{cultureInfo.icon}</span>
           )}

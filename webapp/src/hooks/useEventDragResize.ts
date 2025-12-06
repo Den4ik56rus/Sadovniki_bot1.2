@@ -1,5 +1,10 @@
 /**
  * useEventDragResize - Хук для drag и resize событий в календаре
+ *
+ * Логика:
+ * - Клик без движения: выделяет событие (показывает handles)
+ * - Клик + движение: начинает drag
+ * - Клик на handle: начинает resize
  */
 
 import { useState, useCallback, useRef, useEffect } from 'react';
@@ -27,7 +32,10 @@ interface UseEventDragResizeReturn {
   handleResizePointerDown: (edge: 'start' | 'end', e: React.PointerEvent) => void;
 }
 
-type InteractionMode = 'none' | 'drag' | 'resize-start' | 'resize-end';
+// pending = ждём движения, drag/resize = активное перетаскивание
+type InteractionMode = 'none' | 'pending' | 'drag' | 'resize-start' | 'resize-end';
+
+const DRAG_THRESHOLD = 3; // Минимальное смещение для начала drag (px)
 
 export function useEventDragResize({
   event,
@@ -40,25 +48,37 @@ export function useEventDragResize({
   const selectEvent = useUIStore((state) => state.selectEvent);
   const { light, medium } = useTelegramHaptic();
 
-  // State для UI
+  // State для UI (isDragging = визуальный режим перетаскивания)
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState<'start' | 'end' | null>(null);
   const [previewStartCol, setPreviewStartCol] = useState(startCol);
   const [previewEndCol, setPreviewEndCol] = useState(endCol);
 
-  // Refs для отслеживания состояния (не вызывают ререндер)
+  // Refs для отслеживания состояния
   const modeRef = useRef<InteractionMode>('none');
   const initialX = useRef(0);
   const initialStartCol = useRef(startCol);
   const initialEndCol = useRef(endCol);
   const colWidth = useRef(0);
-  const hasMoved = useRef(false);
+  const currentPreviewStart = useRef(startCol);
+  const currentPreviewEnd = useRef(endCol);
+
+  // Синхронизация refs с state
+  useEffect(() => {
+    currentPreviewStart.current = previewStartCol;
+  }, [previewStartCol]);
+
+  useEffect(() => {
+    currentPreviewEnd.current = previewEndCol;
+  }, [previewEndCol]);
 
   // Синхронизация при изменении props
   useEffect(() => {
     if (modeRef.current === 'none') {
       setPreviewStartCol(startCol);
       setPreviewEndCol(endCol);
+      currentPreviewStart.current = startCol;
+      currentPreviewEnd.current = endCol;
     }
   }, [startCol, endCol]);
 
@@ -67,7 +87,7 @@ export function useEventDragResize({
     if (containerRef.current) {
       return containerRef.current.offsetWidth / 7;
     }
-    return 50; // fallback
+    return 50;
   }, [containerRef]);
 
   // Конвертация колонки в дату
@@ -78,10 +98,13 @@ export function useEventDragResize({
 
   // Сохранение изменений в store
   const saveChanges = useCallback((newStartCol: number, newEndCol: number) => {
+    if (newStartCol === startCol && newEndCol === endCol) {
+      return;
+    }
+
     const newStartDate = colToDate(newStartCol);
     const newEndDate = colToDate(newEndCol);
 
-    // Извлекаем время из оригинального события
     const originalStart = parseLocalDateTime(event.startDateTime);
     const originalEnd = event.endDateTime ? parseLocalDateTime(event.endDateTime) : null;
 
@@ -101,27 +124,36 @@ export function useEventDragResize({
     });
 
     medium();
-  }, [event, colToDate, updateEvent, medium]);
+  }, [event, startCol, endCol, colToDate, updateEvent, medium]);
 
-  // Обработчик движения указателя
-  const handlePointerMove = useCallback((e: PointerEvent) => {
+  // Refs для handlers
+  const handlersRef = useRef({
+    onMove: (_e: PointerEvent) => {},
+    onUp: () => {},
+  });
+
+  // Обработчик движения
+  handlersRef.current.onMove = (e: PointerEvent) => {
     const deltaX = e.clientX - initialX.current;
-    const deltaCols = Math.round(deltaX / colWidth.current);
-
-    // Отмечаем что было движение
-    if (Math.abs(deltaX) > 5) {
-      hasMoved.current = true;
-    }
-
     const mode = modeRef.current;
 
-    if (mode === 'drag') {
-      // Drag: двигаем обе границы
+    // Если pending, проверяем threshold для начала drag
+    if (mode === 'pending') {
+      if (Math.abs(deltaX) >= DRAG_THRESHOLD) {
+        modeRef.current = 'drag';
+        setIsDragging(true);
+      } else {
+        return;
+      }
+    }
+
+    const deltaCols = Math.round(deltaX / colWidth.current);
+
+    if (modeRef.current === 'drag') {
       const eventSpan = initialEndCol.current - initialStartCol.current;
       let newStart = initialStartCol.current + deltaCols;
       let newEnd = newStart + eventSpan;
 
-      // Ограничиваем пределами недели
       if (newStart < 0) {
         newStart = 0;
         newEnd = eventSpan;
@@ -134,73 +166,68 @@ export function useEventDragResize({
       setPreviewStartCol(newStart);
       setPreviewEndCol(newEnd);
     } else if (mode === 'resize-start') {
-      // Resize start: двигаем левую границу
       let newStart = initialStartCol.current + deltaCols;
       newStart = Math.max(0, Math.min(newStart, initialEndCol.current));
       setPreviewStartCol(newStart);
     } else if (mode === 'resize-end') {
-      // Resize end: двигаем правую границу
       let newEnd = initialEndCol.current + deltaCols;
       newEnd = Math.max(initialStartCol.current, Math.min(6, newEnd));
       setPreviewEndCol(newEnd);
     }
-  }, []);
+  };
 
-  // Обработчик отпускания указателя
-  const handlePointerUp = useCallback(() => {
+  // Обработчик отпускания
+  handlersRef.current.onUp = () => {
     const mode = modeRef.current;
 
-    // Убираем слушатели
-    document.removeEventListener('pointermove', handlePointerMove);
-    document.removeEventListener('pointerup', handlePointerUp);
+    document.removeEventListener('pointermove', globalMoveHandler);
+    document.removeEventListener('pointerup', globalUpHandler);
+    document.removeEventListener('pointercancel', globalUpHandler);
 
-    if (mode !== 'none' && hasMoved.current) {
-      // Получаем текущие preview значения
-      setPreviewStartCol((prevStart) => {
-        setPreviewEndCol((prevEnd) => {
-          // Сохраняем изменения если позиция изменилась
-          if (prevStart !== startCol || prevEnd !== endCol) {
-            saveChanges(prevStart, prevEnd);
-          }
-          return prevEnd;
-        });
-        return prevStart;
-      });
+    // Сохраняем изменения только если был реальный drag/resize
+    if (mode === 'drag' || mode === 'resize-start' || mode === 'resize-end') {
+      saveChanges(currentPreviewStart.current, currentPreviewEnd.current);
     }
+    // При pending (клик без движения) — событие уже выделено, ничего не делаем
 
-    // Сбрасываем состояние
     modeRef.current = 'none';
-    hasMoved.current = false;
     setIsDragging(false);
     setIsResizing(null);
-  }, [startCol, endCol, saveChanges, handlePointerMove]);
+  };
 
-  // Начало drag
+  const globalMoveHandler = useCallback((e: PointerEvent) => {
+    handlersRef.current.onMove(e);
+  }, []);
+
+  const globalUpHandler = useCallback(() => {
+    handlersRef.current.onUp();
+  }, []);
+
+  // Клик на событие — выделяем и готовимся к drag
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     e.stopPropagation();
+    e.preventDefault(); // Предотвращает выделение текста на iOS
 
-    // Выделяем событие
+    // Выделяем событие сразу
     selectEvent(event.id);
     light();
 
-    // Инициализация
+    // Инициализация для возможного drag
     initialX.current = e.clientX;
     initialStartCol.current = startCol;
     initialEndCol.current = endCol;
     colWidth.current = getColWidth();
-    hasMoved.current = false;
-    modeRef.current = 'drag';
+    modeRef.current = 'pending'; // Ждём движения
 
-    setIsDragging(true);
     setPreviewStartCol(startCol);
     setPreviewEndCol(endCol);
 
-    // Добавляем слушатели на document
-    document.addEventListener('pointermove', handlePointerMove);
-    document.addEventListener('pointerup', handlePointerUp);
-  }, [event.id, startCol, endCol, getColWidth, selectEvent, light, handlePointerMove, handlePointerUp]);
+    document.addEventListener('pointermove', globalMoveHandler);
+    document.addEventListener('pointerup', globalUpHandler);
+    document.addEventListener('pointercancel', globalUpHandler);
+  }, [event.id, startCol, endCol, getColWidth, selectEvent, light, globalMoveHandler, globalUpHandler]);
 
-  // Начало resize
+  // Клик на resize handle
   const handleResizePointerDown = useCallback((edge: 'start' | 'end', e: React.PointerEvent) => {
     e.stopPropagation();
     e.preventDefault();
@@ -211,24 +238,25 @@ export function useEventDragResize({
     initialStartCol.current = startCol;
     initialEndCol.current = endCol;
     colWidth.current = getColWidth();
-    hasMoved.current = false;
     modeRef.current = edge === 'start' ? 'resize-start' : 'resize-end';
 
     setIsResizing(edge);
     setPreviewStartCol(startCol);
     setPreviewEndCol(endCol);
 
-    document.addEventListener('pointermove', handlePointerMove);
-    document.addEventListener('pointerup', handlePointerUp);
-  }, [startCol, endCol, getColWidth, light, handlePointerMove, handlePointerUp]);
+    document.addEventListener('pointermove', globalMoveHandler);
+    document.addEventListener('pointerup', globalUpHandler);
+    document.addEventListener('pointercancel', globalUpHandler);
+  }, [startCol, endCol, getColWidth, light, globalMoveHandler, globalUpHandler]);
 
-  // Cleanup при размонтировании
+  // Cleanup
   useEffect(() => {
     return () => {
-      document.removeEventListener('pointermove', handlePointerMove);
-      document.removeEventListener('pointerup', handlePointerUp);
+      document.removeEventListener('pointermove', globalMoveHandler);
+      document.removeEventListener('pointerup', globalUpHandler);
+      document.removeEventListener('pointercancel', globalUpHandler);
     };
-  }, [handlePointerMove, handlePointerUp]);
+  }, [globalMoveHandler, globalUpHandler]);
 
   return {
     isDragging,

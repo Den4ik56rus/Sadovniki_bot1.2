@@ -3,41 +3,120 @@
  * Отображает дни в виде сетки с событиями
  */
 
-import { useRef } from 'react';
 import { getDate, isWeekend, isSameMonth, isToday, isSameDay } from 'date-fns';
 import { useCalendarStore } from '@store/calendarStore';
 import { useUIStore } from '@store/uiStore';
 import { useTelegramHaptic } from '@hooks/useTelegramHaptic';
-import { useEventDragResize } from '@hooks/useEventDragResize';
 import type { CalendarEvent } from '@/types/event';
 import { getWeekEvents, getEventColor, type PositionedEvent } from '@utils/eventLayoutUtils';
 import styles from './WeekRow.module.css';
 
+// Типы для drag state (из useCalendarDrag)
+interface DragState {
+  eventId: string | null;
+  isDragging: boolean;
+  isResizing: 'start' | 'end' | null;
+  previewStartDate: Date | null;
+  previewEndDate: Date | null;
+}
+
 interface WeekRowProps {
   weekDays: Date[];
   events: CalendarEvent[];
+  dragState: DragState;
+  onEventPointerDown: (event: CalendarEvent, e: React.PointerEvent) => void;
+  onResizePointerDown: (event: CalendarEvent, edge: 'start' | 'end', e: React.PointerEvent) => void;
+  getEventPreview: (eventId: string) => { startDate: Date; endDate: Date } | null;
 }
 
-export function WeekRow({ weekDays, events }: WeekRowProps) {
+export function WeekRow({
+  weekDays,
+  events,
+  dragState,
+  onEventPointerDown,
+  onResizePointerDown,
+  getEventPreview,
+}: WeekRowProps) {
   const { currentDate, selectedDate, setSelectedDate } = useCalendarStore();
   const { selectedEventId, selectEvent } = useUIStore();
   const openEventDetails = useUIStore((state) => state.openEventDetails);
   const { light } = useTelegramHaptic();
-  const overlayRef = useRef<HTMLDivElement>(null);
 
-  // Позиционируем события
+  // Позиционируем события для этой недели
   const positionedEvents = getWeekEvents(weekDays, events);
+
+  // Проверяем, нужно ли показать перетаскиваемое событие в этой неделе
+  // (если оно перетаскивается сюда из другой недели)
+  const draggedEventInThisWeek = (() => {
+    if (!dragState.eventId || !dragState.isDragging || !dragState.previewStartDate) {
+      return null;
+    }
+
+    // Уже есть в positionedEvents?
+    if (positionedEvents.some(pe => pe.event.id === dragState.eventId)) {
+      return null;
+    }
+
+    // Проверяем попадает ли preview в эту неделю
+    const weekStart = weekDays[0];
+    const weekEnd = weekDays[6];
+    const previewStart = dragState.previewStartDate;
+    const previewEnd = dragState.previewEndDate || previewStart;
+
+    if (previewStart <= weekEnd && previewEnd >= weekStart) {
+      // Событие попадает в эту неделю - найдём его в events
+      const event = events.find(e => e.id === dragState.eventId);
+      if (event) {
+        return event;
+      }
+    }
+
+    return null;
+  })();
 
   const handleDayClick = (day: Date) => {
     light();
     setSelectedDate(day);
-    // Снимаем выделение с события при клике на день
     selectEvent(null);
   };
 
   const handleEventClick = (event: CalendarEvent) => {
     light();
     openEventDetails(event.id);
+  };
+
+  // Вычисляем позицию для перетаскиваемого события из другой недели
+  const getDraggedEventPosition = (event: CalendarEvent): PositionedEvent | null => {
+    if (!dragState.previewStartDate) return null;
+
+    const weekStart = weekDays[0];
+    const weekEnd = weekDays[6];
+    const previewStart = dragState.previewStartDate;
+    const previewEnd = dragState.previewEndDate || previewStart;
+
+    let startCol = weekDays.findIndex(d => isSameDay(d, previewStart));
+    let endCol = weekDays.findIndex(d => isSameDay(d, previewEnd));
+
+    // Если начало до этой недели
+    if (startCol === -1 && previewStart < weekStart) {
+      startCol = 0;
+    }
+    // Если конец после этой недели
+    if (endCol === -1 && previewEnd > weekEnd) {
+      endCol = 6;
+    }
+
+    if (startCol === -1) startCol = 0;
+    if (endCol === -1) endCol = 6;
+
+    return {
+      event,
+      startCol,
+      endCol,
+      row: 0,
+      continuesFromPrev: previewStart < weekStart,
+      continuesToNext: previewEnd > weekEnd,
+    };
   };
 
   return (
@@ -75,60 +154,121 @@ export function WeekRow({ weekDays, events }: WeekRowProps) {
         })}
       </div>
 
-      {/* Overlay событий - поверх ячеек дней */}
-      {positionedEvents.length > 0 && (
-        <div className={styles.eventsOverlay} ref={overlayRef}>
+      {/* Overlay событий */}
+      {(positionedEvents.length > 0 || draggedEventInThisWeek) && (
+        <div className={styles.eventsOverlay}>
           {positionedEvents.map((pe) => (
             <EventBar
               key={pe.event.id}
               positioned={pe}
               weekDays={weekDays}
-              containerRef={overlayRef}
               isSelected={selectedEventId === pe.event.id}
+              isDragging={dragState.eventId === pe.event.id && dragState.isDragging}
+              isResizing={dragState.eventId === pe.event.id ? dragState.isResizing : null}
               onEventClick={handleEventClick}
+              onPointerDown={onEventPointerDown}
+              onResizePointerDown={onResizePointerDown}
+              getEventPreview={getEventPreview}
             />
           ))}
+          {/* Перетаскиваемое событие из другой недели */}
+          {draggedEventInThisWeek && (() => {
+            const draggedPosition = getDraggedEventPosition(draggedEventInThisWeek);
+            if (!draggedPosition) return null;
+            return (
+              <EventBar
+                key={`dragged-${draggedEventInThisWeek.id}`}
+                positioned={draggedPosition}
+                weekDays={weekDays}
+                isSelected={selectedEventId === draggedEventInThisWeek.id}
+                isDragging={true}
+                isResizing={null}
+                onEventClick={handleEventClick}
+                onPointerDown={onEventPointerDown}
+                onResizePointerDown={onResizePointerDown}
+                getEventPreview={getEventPreview}
+              />
+            );
+          })()}
         </div>
       )}
     </div>
   );
 }
 
-// Компонент события (полоска)
+// Компонент события
 interface EventBarProps {
   positioned: PositionedEvent;
   weekDays: Date[];
-  containerRef: React.RefObject<HTMLDivElement | null>;
   isSelected: boolean;
+  isDragging: boolean;
+  isResizing: 'start' | 'end' | null;
   onEventClick: (event: CalendarEvent) => void;
+  onPointerDown: (event: CalendarEvent, e: React.PointerEvent) => void;
+  onResizePointerDown: (event: CalendarEvent, edge: 'start' | 'end', e: React.PointerEvent) => void;
+  getEventPreview: (eventId: string) => { startDate: Date; endDate: Date } | null;
 }
 
-function EventBar({ positioned, weekDays, containerRef, isSelected, onEventClick }: EventBarProps) {
+function EventBar({
+  positioned,
+  weekDays,
+  isSelected,
+  isDragging,
+  isResizing,
+  onEventClick,
+  onPointerDown,
+  onResizePointerDown,
+  getEventPreview,
+}: EventBarProps) {
   const { event, startCol, endCol, row, continuesFromPrev, continuesToNext } = positioned;
   const color = getEventColor(event);
 
-  // Хук для drag/resize
-  const {
-    isDragging,
-    isResizing,
-    previewStartCol,
-    previewEndCol,
-    handlePointerDown,
-    handleResizePointerDown,
-  } = useEventDragResize({
-    event,
-    startCol,
-    endCol,
-    weekDays,
-    containerRef,
-  });
+  // Проверяем есть ли preview для этого события
+  const preview = getEventPreview(event.id);
 
-  // Используем preview позиции при drag/resize
-  const displayStartCol = isDragging || isResizing ? previewStartCol : startCol;
-  const displayEndCol = isDragging || isResizing ? previewEndCol : endCol;
+  // Вычисляем колонки с учётом preview
+  let displayStartCol = startCol;
+  let displayEndCol = endCol;
+
+  if (preview && (isDragging || isResizing)) {
+    // Находим колонки для preview дат в этой неделе
+    const previewStartIdx = weekDays.findIndex(d => isSameDay(d, preview.startDate));
+    const previewEndIdx = weekDays.findIndex(d => isSameDay(d, preview.endDate));
+
+    // Событие может быть частично или полностью вне этой недели
+    if (previewStartIdx !== -1 || previewEndIdx !== -1) {
+      displayStartCol = previewStartIdx !== -1 ? previewStartIdx : 0;
+      displayEndCol = previewEndIdx !== -1 ? previewEndIdx : 6;
+
+      // Если обе даты вне недели, не показываем
+      if (previewStartIdx === -1 && previewEndIdx === -1) {
+        // Проверяем, попадает ли неделя между start и end
+        const weekStart = weekDays[0];
+        const weekEnd = weekDays[6];
+        if (preview.startDate <= weekEnd && preview.endDate >= weekStart) {
+          displayStartCol = 0;
+          displayEndCol = 6;
+        } else {
+          return null; // Событие не в этой неделе
+        }
+      }
+    } else {
+      // Preview полностью вне этой недели - проверяем попадает ли неделя внутрь
+      const weekStart = weekDays[0];
+      const weekEnd = weekDays[6];
+      if (preview.startDate <= weekEnd && preview.endDate >= weekStart) {
+        displayStartCol = preview.startDate > weekStart ? weekDays.findIndex(d => isSameDay(d, preview.startDate)) : 0;
+        displayEndCol = preview.endDate < weekEnd ? weekDays.findIndex(d => isSameDay(d, preview.endDate)) : 6;
+        if (displayStartCol === -1) displayStartCol = 0;
+        if (displayEndCol === -1) displayEndCol = 6;
+      } else {
+        return null;
+      }
+    }
+  }
+
   const span = displayEndCol - displayStartCol + 1;
 
-  // CSS переменные для позиционирования
   const style: React.CSSProperties = {
     '--start-col': displayStartCol,
     '--span': span,
@@ -144,7 +284,6 @@ function EventBar({ positioned, weekDays, containerRef, isSelected, onEventClick
     isDragging && styles.eventBarDragging,
   ].filter(Boolean).join(' ');
 
-  // Обработчик двойного клика для открытия деталей
   const handleDoubleClick = () => {
     onEventClick(event);
   };
@@ -153,24 +292,22 @@ function EventBar({ positioned, weekDays, containerRef, isSelected, onEventClick
     <div
       className={classes}
       style={style}
-      onPointerDown={handlePointerDown}
+      onPointerDown={(e) => onPointerDown(event, e)}
       onDoubleClick={handleDoubleClick}
       title={event.title}
     >
       <span className={styles.eventTitle}>{event.title}</span>
 
-      {/* Resize handles - показываем только для выделенного события */}
+      {/* Resize handles */}
       {isSelected && !isDragging && (
         <>
-          {/* Левая ручка (начало) */}
           <div
             className={`${styles.resizeHandle} ${styles.resizeHandleStart}`}
-            onPointerDown={(e) => handleResizePointerDown('start', e)}
+            onPointerDown={(e) => onResizePointerDown(event, 'start', e)}
           />
-          {/* Правая ручка (конец) */}
           <div
             className={`${styles.resizeHandle} ${styles.resizeHandleEnd}`}
-            onPointerDown={(e) => handleResizePointerDown('end', e)}
+            onPointerDown={(e) => onResizePointerDown(event, 'end', e)}
           />
         </>
       )}

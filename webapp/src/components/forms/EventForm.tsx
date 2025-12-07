@@ -96,7 +96,7 @@ export function EventForm() {
   }, isEventFormOpen);
 
   // Обработчик сохранения
-  const onSubmit = useCallback((data: EventFormValues) => {
+  const onSubmit = useCallback(async (data: EventFormValues) => {
     try {
       const startDateTime = data.allDay
         ? `${data.startDate}T00:00:00`
@@ -109,7 +109,7 @@ export function EventForm() {
         : null;
 
       if (isEdit && editingEventId) {
-        updateEvent(editingEventId, {
+        await updateEvent(editingEventId, {
           title: data.title,
           startDateTime,
           endDateTime,
@@ -120,7 +120,7 @@ export function EventForm() {
           description: data.description,
         });
       } else {
-        addEvent({
+        await addEvent({
           title: data.title,
           startDateTime,
           endDateTime,
@@ -135,7 +135,8 @@ export function EventForm() {
 
       success();
       closeEventForm();
-    } catch {
+    } catch (err) {
+      console.error('Failed to save event:', err);
       hapticError();
     }
   }, [isEdit, editingEventId, updateEvent, addEvent, success, closeEventForm, hapticError]);

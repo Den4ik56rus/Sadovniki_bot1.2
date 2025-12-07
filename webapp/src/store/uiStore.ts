@@ -17,6 +17,11 @@ interface UIStore {
   theme: Theme;
   initialFormDate: Date | null;  // Дата для предзаполнения формы
 
+  // Plantings page state
+  isPlantingsPageOpen: boolean;
+  isPlantingFormOpen: boolean;
+  editingPlantingId: string | null;
+
   // Event interaction (drag/resize)
   selectedEventId: string | null;
 
@@ -30,6 +35,12 @@ interface UIStore {
 
   openEventDetails: (eventId: string) => void;
   closeEventDetails: () => void;
+
+  // Plantings page actions
+  openPlantingsPage: () => void;
+  closePlantingsPage: () => void;
+  openPlantingForm: (plantingId?: string) => void;
+  closePlantingForm: () => void;
 
   setTheme: (theme: Theme) => void;
 
@@ -61,6 +72,11 @@ export const useUIStore = create<UIStore>((set) => ({
   theme: 'light',
   initialFormDate: null,
   selectedEventId: null,
+
+  // Plantings page state
+  isPlantingsPageOpen: false,
+  isPlantingFormOpen: false,
+  editingPlantingId: null,
 
   // Side Menu
   openSideMenu: () => set({ isSideMenuOpen: true }),
@@ -96,6 +112,33 @@ export const useUIStore = create<UIStore>((set) => ({
       viewingEventId: null,
     }),
 
+  // Plantings Page
+  openPlantingsPage: () =>
+    set({
+      isPlantingsPageOpen: true,
+      isSideMenuOpen: false,  // Close side menu when opening plantings page
+    }),
+
+  closePlantingsPage: () =>
+    set({
+      isPlantingsPageOpen: false,
+      isPlantingFormOpen: false,
+      editingPlantingId: null,
+    }),
+
+  // Planting Form
+  openPlantingForm: (plantingId) =>
+    set({
+      isPlantingFormOpen: true,
+      editingPlantingId: plantingId || null,
+    }),
+
+  closePlantingForm: () =>
+    set({
+      isPlantingFormOpen: false,
+      editingPlantingId: null,
+    }),
+
   // Theme
   setTheme: (theme) => set({ theme }),
 
@@ -118,8 +161,11 @@ export const useUIStore = create<UIStore>((set) => ({
       isEventFormOpen: false,
       isEventDetailsOpen: false,
       isSearchOpen: false,
+      isPlantingsPageOpen: false,
+      isPlantingFormOpen: false,
       editingEventId: null,
       viewingEventId: null,
+      editingPlantingId: null,
       initialFormDate: null,
       selectedEventId: null,
     }),
@@ -129,6 +175,18 @@ export const useUIStore = create<UIStore>((set) => ({
  * Helper: Check if any modal is open
  */
 export function useAnyModalOpen() {
-  const { isSideMenuOpen, isEventFormOpen, isEventDetailsOpen } = useUIStore();
-  return isSideMenuOpen || isEventFormOpen || isEventDetailsOpen;
+  const {
+    isSideMenuOpen,
+    isEventFormOpen,
+    isEventDetailsOpen,
+    isPlantingsPageOpen,
+    isPlantingFormOpen,
+  } = useUIStore();
+  return (
+    isSideMenuOpen ||
+    isEventFormOpen ||
+    isEventDetailsOpen ||
+    isPlantingsPageOpen ||
+    isPlantingFormOpen
+  );
 }

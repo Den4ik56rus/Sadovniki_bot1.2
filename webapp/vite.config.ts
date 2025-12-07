@@ -1,5 +1,6 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
+import svgr from 'vite-plugin-svgr'
 import path from 'path'
 
 // https://vite.dev/config/
@@ -7,7 +8,13 @@ export default defineConfig({
   // Base path для GitHub Pages (имя репозитория)
   // При деплое на свой домен можно изменить на '/'
   base: process.env.GITHUB_ACTIONS ? '/Sadovniki_bot1.2/' : '/',
-  plugins: [react()],
+  plugins: [
+    react(),
+    svgr({
+      // Использование ?react для импорта SVG как React компонентов
+      include: '**/*.svg?react',
+    }),
+  ],
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
@@ -18,6 +25,7 @@ export default defineConfig({
       '@utils': path.resolve(__dirname, './src/utils'),
       '@constants': path.resolve(__dirname, './src/constants'),
       '@services': path.resolve(__dirname, './src/services'),
+      '@assets': path.resolve(__dirname, './src/assets'),
     },
   },
   server: {

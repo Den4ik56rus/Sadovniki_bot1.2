@@ -8,10 +8,12 @@ import { useTelegram } from '@hooks/useTelegram';
 import { useTelegramTheme } from '@hooks/useTelegramTheme';
 import { useEventsSync } from '@hooks/useEventsSync';
 import { useUIStore } from '@store/uiStore';
+import { usePlantingsStore } from '@store/plantingsStore';
 import { CalendarLayout } from '@components/layout';
 import { SideMenu } from '@components/menu';
 import { EventDetailsSheet } from '@components/sheets';
 import { EventForm } from '@components/forms';
+import { PlantingsPage, PlantingForm } from '@components/plantings';
 import styles from './App.module.css';
 
 function App() {
@@ -24,8 +26,16 @@ function App() {
   // Синхронизация событий с сервером (только в Telegram WebApp)
   useEventsSync();
 
+  // Загрузка посадок пользователя при старте
+  const fetchPlantings = usePlantingsStore((state) => state.fetchPlantings);
+  useEffect(() => {
+    fetchPlantings();
+  }, [fetchPlantings]);
+
   // UI state
   const theme = useUIStore((state) => state.theme);
+  const isPlantingsPageOpen = useUIStore((state) => state.isPlantingsPageOpen);
+  const isPlantingFormOpen = useUIStore((state) => state.isPlantingFormOpen);
 
   // Применяем тему к document
   useEffect(() => {
@@ -38,6 +48,8 @@ function App() {
       <SideMenu />
       <EventDetailsSheet />
       <EventForm />
+      {isPlantingsPageOpen && <PlantingsPage />}
+      {isPlantingFormOpen && <PlantingForm />}
     </div>
   );
 }

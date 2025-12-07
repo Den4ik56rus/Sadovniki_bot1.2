@@ -2,7 +2,14 @@
  * API Service - Взаимодействие с backend
  */
 
-import type { CalendarEvent, EventStatus } from '@/types';
+import type {
+  CalendarEvent,
+  EventStatus,
+  UserPlanting,
+  CreatePlantingData,
+  UpdatePlantingData,
+  Region,
+} from '@/types';
 
 const API_BASE = import.meta.env.VITE_API_URL || '';
 
@@ -126,6 +133,70 @@ class ApiService {
     return this.request<CalendarEvent>(`/api/events/${id}/status`, {
       method: 'PATCH',
       body: JSON.stringify({ status }),
+    });
+  }
+
+  // ============== Plantings API ==============
+
+  /**
+   * Получить все посадки пользователя
+   */
+  async getPlantings(): Promise<UserPlanting[]> {
+    return this.request<UserPlanting[]>('/api/plantings');
+  }
+
+  /**
+   * Получить посадку по ID
+   */
+  async getPlanting(id: string): Promise<UserPlanting> {
+    return this.request<UserPlanting>(`/api/plantings/${id}`);
+  }
+
+  /**
+   * Создать посадку
+   */
+  async createPlanting(data: CreatePlantingData): Promise<UserPlanting> {
+    return this.request<UserPlanting>('/api/plantings', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Обновить посадку
+   */
+  async updatePlanting(id: string, data: UpdatePlantingData): Promise<UserPlanting> {
+    return this.request<UserPlanting>(`/api/plantings/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  /**
+   * Удалить посадку
+   */
+  async deletePlanting(id: string): Promise<void> {
+    return this.request<void>(`/api/plantings/${id}`, {
+      method: 'DELETE',
+    });
+  }
+
+  // ============== User Settings API ==============
+
+  /**
+   * Получить регион пользователя
+   */
+  async getRegion(): Promise<{ region: Region | null }> {
+    return this.request<{ region: Region | null }>('/api/user/region');
+  }
+
+  /**
+   * Обновить регион пользователя
+   */
+  async updateRegion(region: Region): Promise<{ region: Region }> {
+    return this.request<{ region: Region }>('/api/user/region', {
+      method: 'PUT',
+      body: JSON.stringify({ region }),
     });
   }
 }

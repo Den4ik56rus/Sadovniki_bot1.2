@@ -1,0 +1,263 @@
+/**
+ * PlantingForm Styles
+ */
+
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: calc(var(--z-modal) + 1);
+  background: var(--color-bg-primary);
+  animation: slideUp 0.25s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--spacing-md);
+  border-bottom: 1px solid var(--color-divider);
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin: 0;
+}
+
+.cancelButton,
+.saveButton {
+  border: none;
+  background: transparent;
+  font-size: 16px;
+  cursor: pointer;
+  padding: var(--spacing-xs) var(--spacing-sm);
+}
+
+.cancelButton {
+  color: var(--color-text-secondary);
+}
+
+.saveButton {
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.saveButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Content */
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-lg);
+}
+
+/* Field */
+.field {
+  margin-bottom: var(--spacing-lg);
+}
+
+.label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  margin-bottom: var(--spacing-sm);
+}
+
+/* Select */
+.selectWrapper {
+  position: relative;
+}
+
+.select {
+  width: 100%;
+  padding: var(--spacing-md);
+  padding-right: 40px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: 16px;
+  appearance: none;
+  cursor: pointer;
+}
+
+.select:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.selectIcon {
+  position: absolute;
+  right: var(--spacing-md);
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--color-text-secondary);
+}
+
+/* Date Row */
+.dateRow {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.dateField {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--spacing-xs);
+}
+
+.dateLabel {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}
+
+.dateSeparator {
+  color: var(--color-text-secondary);
+  padding-top: 20px;
+}
+
+.dateInput {
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: 15px;
+}
+
+.dateInput:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+/* iOS date input fix */
+.dateInput::-webkit-date-and-time-value {
+  text-align: left;
+}
+
+/* Custom Culture Dropdown */
+.cultureDropdown {
+  position: relative;
+}
+
+.cultureButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  padding-right: 40px;
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: 16px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.cultureButton:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.cultureButtonPlaceholder {
+  color: var(--color-text-tertiary);
+}
+
+.cultureButtonIcon {
+  flex-shrink: 0;
+}
+
+.cultureButtonLabel {
+  flex: 1;
+}
+
+.cultureButtonChevron {
+  position: absolute;
+  right: var(--spacing-md);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-secondary);
+  transition: transform var(--transition-fast);
+}
+
+.cultureButtonChevronOpen {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.cultureDropdownList {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-divider);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  max-height: 280px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: var(--spacing-xs) 0;
+}
+
+.cultureOption {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+}
+
+.cultureOption:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.cultureOption:active {
+  background-color: var(--color-bg-tertiary);
+}
+
+.cultureOptionSelected {
+  background-color: var(--color-accent-light);
+}
+
+.cultureOptionIcon {
+  flex-shrink: 0;
+}
+
+.cultureOptionLabel {
+  font-size: 16px;
+  color: var(--color-text-primary);
+}

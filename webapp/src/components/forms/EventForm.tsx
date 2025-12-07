@@ -11,19 +11,22 @@ import { parseLocalDateTime } from '@utils/dateUtils';
 import { useUIStore } from '@store/uiStore';
 import { useEventsStore } from '@store/eventsStore';
 import { useCalendarStore } from '@store/calendarStore';
+import { usePlantingsStore } from '@store/plantingsStore';
 import { useTelegramBackButton } from '@hooks/useTelegramBackButton';
 import { useTelegramMainButton } from '@hooks/useTelegramMainButton';
 import { useTelegramHaptic } from '@hooks/useTelegramHaptic';
 import { eventFormSchema, type EventFormValues, type EventFormInput } from '@/types/eventSchema';
 import { EVENT_TYPES } from '@constants/eventTypes';
-import { CULTURES } from '@constants/cultures';
+import { getCultureCode, getPlantingLabel, getCultureIcon } from '@constants/plantingCultures';
 import { UI_TEXT } from '@constants/ui';
 import styles from './EventForm.module.css';
+import type { UserPlanting } from '@/types/planting';
 
 export function EventForm() {
   const { isEventFormOpen, editingEventId, closeEventForm } = useUIStore();
   const { events, addEvent, updateEvent } = useEventsStore();
   const selectedDate = useCalendarStore((state) => state.selectedDate);
+  const plantings = usePlantingsStore((state) => state.plantings);
   const { medium, success, error: hapticError } = useTelegramHaptic();
 
   const editingEvent = editingEventId ? events[editingEventId] : null;
@@ -313,11 +316,17 @@ export function EventForm() {
             render={({ field }) => (
               <select {...field} value={field.value || ''} className={styles.select}>
                 <option value="">Не выбрано</option>
-                {Object.entries(CULTURES).map(([key, info]) => (
-                  <option key={key} value={key}>
-                    {info.icon} {info.label}
+                {plantings.length > 0 ? (
+                  plantings.map((planting: UserPlanting) => (
+                    <option key={planting.id} value={getCultureCode(planting)}>
+                      {getCultureIcon(planting.cultureType)} {getPlantingLabel(planting)}
+                    </option>
+                  ))
+                ) : (
+                  <option value="" disabled>
+                    Сначала добавьте посадки
                   </option>
-                ))}
+                )}
               </select>
             )}
           />

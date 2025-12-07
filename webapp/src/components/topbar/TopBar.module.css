@@ -5,7 +5,7 @@
   align-items: center;
   justify-content: space-between;
   padding: var(--spacing-sm) var(--spacing-md);
-  background-color: var(--color-bg-primary);
+  background-color: var(--color-bg-secondary);
   min-height: 56px;
   position: sticky;
   top: 0;
@@ -35,7 +35,7 @@
   height: 44px;
   border: none;
   background: transparent;
-  color: var(--color-text-primary);
+  color: var(--color-text-secondary);
   cursor: pointer;
   border-radius: var(--radius-md);
   transition: background-color var(--transition-fast);
@@ -45,28 +45,28 @@
   background-color: var(--color-bg-tertiary);
 }
 
-/* Плашка с месяцем */
+/* Плашка с месяцем - iOS стиль без фона */
 .monthPill {
   display: flex;
   align-items: center;
-  gap: var(--spacing-xs);
-  padding: var(--spacing-sm) var(--spacing-md);
+  gap: 4px;
+  padding: var(--spacing-xs) 0;
   border: none;
-  background-color: var(--color-bg-tertiary);
-  border-radius: var(--radius-lg);
+  background: transparent;
   cursor: pointer;
-  transition: background-color var(--transition-fast);
+  transition: opacity var(--transition-fast);
 }
 
 .monthPill:active {
-  background-color: var(--color-bg-secondary);
+  opacity: 0.6;
 }
 
 .monthText {
-  font-size: var(--font-size-lg);
+  font-size: 22px;
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
   user-select: none;
+  letter-spacing: -0.3px;
 }
 
 /* Стрелка в плашке */

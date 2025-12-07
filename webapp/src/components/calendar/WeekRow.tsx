@@ -3,12 +3,14 @@
  * Отображает дни в виде сетки с событиями
  */
 
-import { getDate, isWeekend, isSameMonth, isToday, isSameDay } from 'date-fns';
+import { getDate, getMonth, isWeekend, isSameMonth, isToday, isSameDay, format } from 'date-fns';
+import { parseLocalDateTime } from '@utils/dateUtils';
 import { useCalendarStore } from '@store/calendarStore';
 import { useUIStore } from '@store/uiStore';
 import { useTelegramHaptic } from '@hooks/useTelegramHaptic';
 import type { CalendarEvent } from '@/types/event';
 import { getWeekEvents, getEventColor, type PositionedEvent } from '@utils/eventLayoutUtils';
+import { MONTHS_FULL } from '@constants/ui';
 import styles from './WeekRow.module.css';
 
 // Типы для drag state (из useCalendarDrag)
@@ -125,6 +127,8 @@ export function WeekRow({
       <div className={styles.dayCells}>
         {weekDays.map((day) => {
           const dayNum = getDate(day);
+          const isFirstOfMonth = dayNum === 1;
+          const monthName = isFirstOfMonth ? MONTHS_FULL[getMonth(day)] : null;
           const isCurrentMonth = isSameMonth(day, currentDate);
           const isTodayDay = isToday(day);
           const isSelected = selectedDate ? isSameDay(day, selectedDate) : false;
@@ -148,7 +152,14 @@ export function WeekRow({
               className={cellClasses}
               onClick={() => handleDayClick(day)}
             >
-              <span className={numberClasses}>{dayNum}</span>
+              {isFirstOfMonth ? (
+                <span className={styles.monthLabel}>
+                  <span className={numberClasses}>{dayNum}</span>
+                  <span className={styles.monthName}>{monthName}</span>
+                </span>
+              ) : (
+                <span className={numberClasses}>{dayNum}</span>
+              )}
             </button>
           );
         })}
@@ -223,6 +234,11 @@ function EventBar({
   const { event, startCol, endCol, row, continuesFromPrev, continuesToNext } = positioned;
   const color = getEventColor(event);
 
+  // Время события (если не allDay)
+  const timeLabel = !event.allDay
+    ? format(parseLocalDateTime(event.startDateTime), 'HH:mm')
+    : null;
+
   // Проверяем есть ли preview для этого события
   const preview = getEventPreview(event.id);
 
@@ -296,6 +312,7 @@ function EventBar({
       onDoubleClick={handleDoubleClick}
       title={event.title}
     >
+      {timeLabel && <span className={styles.eventTime}>{timeLabel}</span>}
       <span className={styles.eventTitle}>{event.title}</span>
 
       {/* Resize handles */}

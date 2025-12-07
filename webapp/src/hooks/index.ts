@@ -14,3 +14,5 @@ export {
 } from './useTelegramHaptic';
 export { useSwipeNavigation } from './useSwipeNavigation';
 export { useCalendarDrag } from './useCalendarDrag';
+export { useFilteredEvents, useFilteredEventsRecord } from './useFilteredEvents';
+export { useEventsSync } from './useEventsSync';

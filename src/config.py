@@ -74,6 +74,26 @@ class Settings(BaseSettings):
         description="Telegram user IDs администраторов (через запятую)",
     )
 
+    # --- API сервер ---
+    api_host: str = Field(
+        "0.0.0.0",
+        description="Хост API сервера",
+    )
+    api_port: int = Field(
+        8080,
+        description="Порт API сервера",
+    )
+
+    # --- WebApp ---
+    webapp_url: str = Field(
+        "",
+        description="URL WebApp на GitHub Pages (например: https://username.github.io/repo/)",
+    )
+    webapp_origin: str = Field(
+        "*",
+        description="Разрешённый origin для CORS (например: https://username.github.io)",
+    )
+
     # Общая конфигурация pydantic-settings
     model_config = SettingsConfigDict(
         env_file=".env",             # брать переменные ещё и из файла .env в корне проекта

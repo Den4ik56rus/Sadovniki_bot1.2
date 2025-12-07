@@ -5,7 +5,10 @@ from aiogram import Router, F                  # Router — для группи�
 # Импортируем фильтр для команды /start
 from aiogram.filters import CommandStart       # CommandStart — срабатывает на /start
 # Импортируем типы сообщений и callback-запросов
-from aiogram.types import Message, CallbackQuery  # Message — входящее сообщение, CallbackQuery — нажатие инлайн-кнопки
+from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo  # Message — входящее сообщение, CallbackQuery — нажатие инлайн-кнопки
+
+# Импортируем конфиг для WebApp URL
+from src.config import settings
 
 # Импортируем функции работы с БД: пользователи, темы, логи сообщений
 from src.services.db.users_repo import get_or_create_user, count_all_users  # Создание/поиск пользователя по telegram_user_id
@@ -382,3 +385,39 @@ async def handle_profile(message: Message) -> None:
     )
 
     await message.answer(profile_text, parse_mode="HTML")
+
+
+@router.message(F.text == "📅 План сезона")
+async def handle_season_plan(message: Message) -> None:
+    """
+    Обработчик кнопки "📅 План сезона".
+    Открывает WebApp календаря в Telegram.
+    """
+    user = message.from_user
+    if user is None:
+        return
+
+    # Проверяем, настроен ли URL WebApp
+    if not settings.webapp_url:
+        await message.answer(
+            "Календарь работ временно недоступен.\n"
+            "Обратитесь к администратору."
+        )
+        return
+
+    # Создаём inline-кнопку с WebApp
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📅 Открыть календарь",
+                    web_app=WebAppInfo(url=settings.webapp_url)
+                )
+            ]
+        ]
+    )
+
+    await message.answer(
+        "Нажмите кнопку ниже, чтобы открыть календарь работ:",
+        reply_markup=keyboard
+    )

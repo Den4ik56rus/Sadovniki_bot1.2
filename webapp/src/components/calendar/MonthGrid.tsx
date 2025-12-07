@@ -3,21 +3,53 @@
  * Grid view с многодневными событиями (стиль Apple Calendar)
  */
 
-import { useRef, useMemo } from 'react';
+import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
 import { useCalendarStore } from '@store/calendarStore';
-import { useEventsStore } from '@store/eventsStore';
 import { useUIStore } from '@store/uiStore';
-import { useCalendarDrag } from '@hooks/useCalendarDrag';
+import { useCalendarDrag, useFilteredEvents, useSwipeNavigation, hapticImpact } from '@hooks/index';
 import { generateCalendarGrid } from '@utils/dateUtils';
 import { WEEKDAYS_SHORT } from '@constants/ui';
 import { WeekRow } from './WeekRow';
 import styles from './MonthGrid.module.css';
 
 export function MonthGrid() {
-  const { currentDate } = useCalendarStore();
-  const events = useEventsStore((state) => state.events);
+  const { currentDate, slideDirection, clearSlideDirection, goToNextMonth, goToPrevMonth } = useCalendarStore();
+  const filteredEvents = useFilteredEvents();
   const isCalendarExpanded = useUIStore((state) => state.isCalendarExpanded);
   const weeksContainerRef = useRef<HTMLDivElement>(null);
+  const [isAnimating, setIsAnimating] = useState(false);
+
+  // Обработчики свайпа
+  const handleSwipeLeft = useCallback(() => {
+    if (isAnimating) return;
+    hapticImpact('light');
+    goToNextMonth();
+  }, [isAnimating, goToNextMonth]);
+
+  const handleSwipeRight = useCallback(() => {
+    if (isAnimating) return;
+    hapticImpact('light');
+    goToPrevMonth();
+  }, [isAnimating, goToPrevMonth]);
+
+  const swipeHandlers = useSwipeNavigation({
+    onSwipeLeft: handleSwipeLeft,
+    onSwipeRight: handleSwipeRight,
+    threshold: 50,
+    enabled: isCalendarExpanded && !isAnimating,
+  });
+
+  // Запускаем анимацию при изменении направления
+  useEffect(() => {
+    if (slideDirection) {
+      setIsAnimating(true);
+      const timer = setTimeout(() => {
+        setIsAnimating(false);
+        clearSlideDirection();
+      }, 300);
+      return () => clearTimeout(timer);
+    }
+  }, [slideDirection, clearSlideDirection]);
 
   // Генерируем сетку календаря
   const weeks = generateCalendarGrid(currentDate, 1);
@@ -25,8 +57,8 @@ export function MonthGrid() {
   // Все дни в flat array для drag
   const allDays = useMemo(() => weeks.flat(), [weeks]);
 
-  // Все события как массив
-  const allEvents = Object.values(events);
+  // Отфильтрованные события
+  const allEvents = filteredEvents;
 
   // Хук для drag по всему календарю
   const { dragState, handleEventPointerDown, handleResizePointerDown, getEventPreview } = useCalendarDrag({
@@ -34,9 +66,16 @@ export function MonthGrid() {
     allDays,
   });
 
+  // Определяем класс анимации
+  const getAnimationClass = () => {
+    if (!slideDirection || !isAnimating) return '';
+    return slideDirection === 'left' ? styles.slideLeft : styles.slideRight;
+  };
+
   return (
     <div
       className={`${styles.container} ${isCalendarExpanded ? styles.expanded : styles.collapsed}`}
+      {...swipeHandlers}
     >
       <div className={styles.content}>
         {/* Заголовок с днями недели */}
@@ -51,8 +90,12 @@ export function MonthGrid() {
           ))}
         </div>
 
-        {/* Сетка недель */}
-        <div className={styles.weeksContainer} ref={weeksContainerRef}>
+        {/* Сетка недель с анимацией */}
+        <div
+          key={currentDate.toISOString()}
+          className={`${styles.weeksContainer} ${getAnimationClass()}`}
+          ref={weeksContainerRef}
+        >
           {weeks.map((week, weekIndex) => (
             <WeekRow
               key={weekIndex}

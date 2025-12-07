@@ -4,6 +4,9 @@ import path from 'path'
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Base path для GitHub Pages (имя репозитория)
+  // При деплое на свой домен можно изменить на '/'
+  base: process.env.GITHUB_ACTIONS ? '/Sadovniki_bot1.2/' : '/',
   plugins: [react()],
   resolve: {
     alias: {

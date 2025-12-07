@@ -3,13 +3,14 @@
  * Показывает детали выбранного события или список событий дня
  */
 
+import { useMemo } from 'react';
 import { format } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { formatDateForInput, parseLocalDateTime } from '@utils/dateUtils';
 import { useCalendarStore } from '@store/calendarStore';
 import { useEventsStore } from '@store/eventsStore';
 import { useUIStore } from '@store/uiStore';
-import { useTelegramHaptic } from '@hooks/useTelegramHaptic';
+import { useTelegramHaptic, useFilteredEvents } from '@hooks/index';
 import { EVENT_TYPES } from '@constants/eventTypes';
 import { CULTURES } from '@constants/cultures';
 import { UI_TEXT } from '@constants/ui';
@@ -19,27 +20,29 @@ import styles from './DayEventsPanel.module.css';
 export function DayEventsPanel() {
   const selectedDate = useCalendarStore((state) => state.selectedDate);
   const allEvents = useEventsStore((state) => state.events);
+  const filteredEvents = useFilteredEvents();
   const deleteEvent = useEventsStore((state) => state.deleteEvent);
   const { openEventForm, selectedEventId, selectEvent } = useUIStore();
   const { light, medium, heavy, success } = useTelegramHaptic();
 
-  // Получаем события для выбранной даты (включая многодневные)
-  const dayEvents = selectedDate
-    ? Object.values(allEvents)
-        .filter((event) => {
-          const selectedStr = formatDateForInput(selectedDate);
-          const startStr = event.startDateTime.slice(0, 10);
-          const endStr = event.endDateTime?.slice(0, 10) || startStr;
-          // Событие попадает в день если: start <= selected <= end
-          return startStr <= selectedStr && selectedStr <= endStr;
-        })
-        .sort((a, b) => {
-          // Сначала события на весь день, потом по времени
-          if (a.allDay && !b.allDay) return -1;
-          if (!a.allDay && b.allDay) return 1;
-          return a.startDateTime.localeCompare(b.startDateTime);
-        })
-    : [];
+  // Получаем отфильтрованные события для выбранной даты (включая многодневные)
+  const dayEvents = useMemo(() => {
+    if (!selectedDate) return [];
+    const selectedStr = formatDateForInput(selectedDate);
+    return filteredEvents
+      .filter((event) => {
+        const startStr = event.startDateTime.slice(0, 10);
+        const endStr = event.endDateTime?.slice(0, 10) || startStr;
+        // Событие попадает в день если: start <= selected <= end
+        return startStr <= selectedStr && selectedStr <= endStr;
+      })
+      .sort((a, b) => {
+        // Сначала события на весь день, потом по времени
+        if (a.allDay && !b.allDay) return -1;
+        if (!a.allDay && b.allDay) return 1;
+        return a.startDateTime.localeCompare(b.startDateTime);
+      });
+  }, [selectedDate, filteredEvents]);
 
   // Выбранное событие
   const selectedEvent = selectedEventId ? allEvents[selectedEventId] : null;

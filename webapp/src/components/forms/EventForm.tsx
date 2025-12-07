@@ -224,39 +224,67 @@ export function EventForm() {
           />
         </div>
 
-        {/* Start Date */}
-        <div className={styles.field}>
-          <label className={styles.label}>{UI_TEXT.fieldDate}</label>
-          <Controller
-            name="startDate"
-            control={control}
-            render={({ field }) => (
-              <input
-                {...field}
-                type="date"
-                className={styles.input}
-              />
-            )}
-          />
-        </div>
-
-        {/* Start Time */}
-        {!allDay && (
-          <div className={styles.field}>
-            <label className={styles.label}>{UI_TEXT.fieldTime}</label>
+        {/* Date Range Section */}
+        <div className={styles.dateSection}>
+          {/* Start Date/Time */}
+          <div className={styles.dateRow}>
+            <span className={styles.dateLabel}>С</span>
             <Controller
-              name="startTime"
+              name="startDate"
               control={control}
               render={({ field }) => (
                 <input
                   {...field}
-                  type="time"
-                  className={styles.input}
+                  type="date"
+                  className={styles.dateInput}
                 />
               )}
             />
+            {!allDay && (
+              <Controller
+                name="startTime"
+                control={control}
+                render={({ field }) => (
+                  <input
+                    {...field}
+                    type="time"
+                    className={styles.timeInput}
+                  />
+                )}
+              />
+            )}
           </div>
-        )}
+
+          {/* End Date/Time */}
+          <div className={styles.dateRow}>
+            <span className={styles.dateLabel}>До</span>
+            <Controller
+              name="endDate"
+              control={control}
+              render={({ field }) => (
+                <input
+                  {...field}
+                  type="date"
+                  className={styles.dateInput}
+                  placeholder="Не указано"
+                />
+              )}
+            />
+            {!allDay && (
+              <Controller
+                name="endTime"
+                control={control}
+                render={({ field }) => (
+                  <input
+                    {...field}
+                    type="time"
+                    className={styles.timeInput}
+                  />
+                )}
+              />
+            )}
+          </div>
+        </div>
 
         {/* Type */}
         <div className={styles.field}>

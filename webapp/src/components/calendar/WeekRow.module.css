@@ -39,11 +39,11 @@
 
 /* Число дня - маленькое, в правом верхнем углу */
 .dayNumber {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
-  width: 18px;
-  height: 18px;
+  width: 14px;
+  height: 14px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -81,6 +81,21 @@
   box-shadow: 0 0 0 1px var(--color-today);
 }
 
+/* Первый день месяца */
+.monthLabel {
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: baseline;
+  gap: 2px;
+}
+
+.monthName {
+  font-size: 9px;
+  font-weight: var(--font-weight-bold);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+}
+
 /* Overlay для событий - поверх ячеек дней */
 .eventsOverlay {
   position: absolute;
@@ -92,25 +107,24 @@
   z-index: 1;
 }
 
-/* Полоска события */
+/* Полоска события - стиль Google Calendar */
 .eventBar {
   position: absolute;
   pointer-events: auto;  /* Восстанавливаем клики на событие */
-  left: calc(var(--start-col) * (100% / 7) + 2px);
-  width: calc(var(--span) * (100% / 7) - 4px);
-  /* Центрируем по вертикали в ячейке */
-  top: 50%;
-  transform: translateY(-50%);
-  /* Смещение для многорядных событий */
-  margin-top: calc(var(--row, 0) * 18px);
-  height: 16px;
-  background-color: var(--event-color);
+  left: calc(var(--start-col) * (100% / 7) + 1px);
+  width: calc(var(--span) * (100% / 7) - 8px);
+  /* Позиционируем сверху, под цифрами */
+  top: calc(18px + var(--row, 0) * 14px);
+  height: 12px;
+  /* Светлый фон с цветной полоской слева */
+  background-color: color-mix(in srgb, var(--event-color) 15%, white);
   border: none;
-  border-radius: 4px;
+  border-left: 3px solid var(--event-color);
+  border-radius: 2px;
   cursor: pointer;
   display: flex;
   align-items: center;
-  padding: 0 4px;
+  padding: 0 3px;
   overflow: hidden;
   transition: opacity var(--transition-fast), box-shadow var(--transition-fast);
   touch-action: none;  /* Для drag на touch устройствах */
@@ -142,7 +156,7 @@
   border-top-left-radius: 0;
   border-bottom-left-radius: 0;
   left: calc(var(--start-col) * (100% / 7));
-  width: calc(var(--span) * (100% / 7) - 1px);
+  width: calc(var(--span) * (100% / 7) - 7px);
 }
 
 /* Продолжение справа */
@@ -156,10 +170,18 @@
   width: calc(var(--span) * (100% / 7));
 }
 
-.eventTitle {
-  font-size: 10px;
+.eventTime {
+  font-size: 8px;
   font-weight: var(--font-weight-medium);
-  color: white;
+  color: var(--event-color);
+  margin-right: 2px;
+  flex-shrink: 0;
+}
+
+.eventTitle {
+  font-size: 9px;
+  font-weight: var(--font-weight-medium);
+  color: var(--event-color);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -183,15 +205,15 @@
 /* Resize handles */
 .resizeHandle {
   position: absolute;
-  width: 18px;
-  height: 18px;
+  width: 12px;
+  height: 12px;
   background: white;
-  border: 2px solid var(--event-color);
+  border: 1px solid var(--event-color);
   border-radius: 50%;
   pointer-events: auto;
   touch-action: none;
   z-index: 11;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
 }
 
 /* Расширенная зона касания для handles */
@@ -206,15 +228,15 @@
 
 /* Левая ручка - слева внизу (с отступом) */
 .resizeHandleStart {
-  left: -9px;
-  bottom: -12px;
+  left: -6px;
+  bottom: -8px;
   cursor: w-resize;
 }
 
 /* Правая ручка - справа вверху (с отступом) */
 .resizeHandleEnd {
-  right: -9px;
-  top: -12px;
+  right: -6px;
+  top: -8px;
   cursor: e-resize;
 }
 

@@ -21,6 +21,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - **Update existing doc** in `docs/features/` or `docs/architecture/`
    - **Create new doc** only if explicitly requested (avoid ephemeral docs)
    - Update `DOCUMENTATION_STATUS.md` if structure changes
+7. Always use context7 when I need code generation, setup   or configuration steps, or
+  library/API documentation. This means you should automatically use the Context7 MCP
+  tools to resolve library id and get library docs without me having to explicitly ask.
+8. **После изменений в webapp — обязательно проверить через Playwright MCP:**
+   - **Если dev server уже запущен и страница открыта** — НЕ запускать сервер повторно, сразу использовать `browser_snapshot`
+   - Если сервер не запущен: `cd webapp && npm run dev`
+   НЕ открывать приложение повторно, сразу использовать
+   - Если приложение не открыто: Открыть приложение: `browser_navigate` → `http://localhost:5173`
+   - Проверить визуально: `browser_snapshot` — убедиться, что UI не сломан
+   - Проверить логику: кликнуть по затронутым элементам, заполнить формы
+   - При ошибках: сделать `browser_take_screenshot` для отладки
+
+## Quick Commands
+
+```bash
+# Webapp dev server (localhost:5173)
+cd webapp && npm run dev
+
+# Бот
+python -m src.entry
+
+# База данных
+docker-compose up -d db
+```
 
 ## Quick Reference
 
@@ -64,6 +88,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ### Testing
 - No pytest framework — run directly: `python test_*.py`
 - Requires DB setup: `docker-compose up -d db`
+
+### Webapp UI Testing (Playwright MCP)
+- **Dev server:** `cd webapp && npm run dev` (порт 5173)
+- **Навигация:** `browser_navigate` → `http://localhost:5173`
+- **Snapshot:** `browser_snapshot` — получить структуру UI
+- **Клики:** `browser_click` с указанием ref элемента
+- **Скриншоты:** `browser_take_screenshot` для отладки
+- **Проверять после:** любых изменений в `webapp/src/`
 
 ## Technology Notes
 

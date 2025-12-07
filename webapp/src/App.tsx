@@ -6,6 +6,7 @@
 import { useEffect } from 'react';
 import { useTelegram } from '@hooks/useTelegram';
 import { useTelegramTheme } from '@hooks/useTelegramTheme';
+import { useEventsSync } from '@hooks/useEventsSync';
 import { useUIStore } from '@store/uiStore';
 import { CalendarLayout } from '@components/layout';
 import { SideMenu } from '@components/menu';
@@ -19,6 +20,9 @@ function App() {
 
   // Синхронизация темы с Telegram
   useTelegramTheme();
+
+  // Синхронизация событий с сервером (только в Telegram WebApp)
+  useEventsSync();
 
   // UI state
   const theme = useUIStore((state) => state.theme);

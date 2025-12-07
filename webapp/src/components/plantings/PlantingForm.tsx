@@ -13,7 +13,7 @@ import styles from './PlantingForm.module.css';
 
 export function PlantingForm() {
   const { isPlantingFormOpen, editingPlantingId, closePlantingForm } = useUIStore();
-  const { plantings, addPlanting, updatePlanting, getPlantingById } = usePlantingsStore();
+  const { addPlanting, updatePlanting, getPlantingById } = usePlantingsStore();
   const { medium, light, success, error: hapticError } = useTelegramHaptic();
 
   const [cultureType, setCultureType] = useState<CultureType | ''>('');

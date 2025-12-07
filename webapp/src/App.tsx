@@ -14,6 +14,7 @@ import { SideMenu } from '@components/menu';
 import { EventDetailsSheet } from '@components/sheets';
 import { EventForm } from '@components/forms';
 import { PlantingsPage, PlantingForm } from '@components/plantings';
+import { UpdateBanner } from '@components/common';
 import styles from './App.module.css';
 
 function App() {
@@ -44,6 +45,7 @@ function App() {
 
   return (
     <div className={styles.app} data-theme={theme}>
+      <UpdateBanner />
       <CalendarLayout />
       <SideMenu />
       <EventDetailsSheet />

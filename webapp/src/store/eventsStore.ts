@@ -6,11 +6,9 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import { format, isSameDay } from 'date-fns';
 import { parseLocalDateTime } from '@utils/dateUtils';
 import type { CalendarEvent, EventStatus, EventType } from '@/types';
-import { api } from '@services/api';
 // ВРЕМЕННО: демо-данные - удалить после тестирования!
 import { generateDemoEvents } from '@/data/demoEvents';
 
@@ -53,176 +51,6 @@ interface EventsStore {
 
 // ВРЕМЕННО: кэшируем демо-события - удалить после тестирования!
 const DEMO_EVENTS = generateDemoEvents();
-
-// Store для работы с API (Telegram WebApp)
-const createApiStore = (
-  set: (fn: (state: EventsStore) => Partial<EventsStore>) => void,
-  get: () => EventsStore
-): EventsStore => ({
-  // ВРЕМЕННО: используем демо-события - удалить после тестирования!
-  events: DEMO_EVENTS,
-  isLoading: false,
-  isSynced: true, // ВРЕМЕННО: true чтобы не загружать с API
-  error: null,
-
-  fetchEvents: async (start?: Date, end?: Date) => {
-    set(() => ({ isLoading: true, error: null }));
-    try {
-      const events = await api.getEvents(
-        start?.toISOString(),
-        end?.toISOString()
-      );
-      const eventsMap = Object.fromEntries(events.map((e) => [e.id, e]));
-      set(() => ({ events: eventsMap, isSynced: true }));
-    } catch (error) {
-      console.error('Failed to fetch events:', error);
-      set(() => ({
-        error: error instanceof Error ? error.message : 'Failed to fetch events',
-      }));
-    } finally {
-      set(() => ({ isLoading: false }));
-    }
-  },
-
-  addEvent: async (eventData) => {
-    set(() => ({ isLoading: true, error: null }));
-    try {
-      const event = await api.createEvent(eventData);
-      set((state) => ({
-        events: { ...state.events, [event.id]: event },
-      }));
-      return event.id;
-    } catch (error) {
-      console.error('Failed to create event:', error);
-      set(() => ({
-        error: error instanceof Error ? error.message : 'Failed to create event',
-      }));
-      throw error;
-    } finally {
-      set(() => ({ isLoading: false }));
-    }
-  },
-
-  updateEvent: async (id, data) => {
-    set(() => ({ isLoading: true, error: null }));
-    try {
-      const event = await api.updateEvent(id, data);
-      set((state) => ({
-        events: { ...state.events, [event.id]: event },
-      }));
-    } catch (error) {
-      console.error('Failed to update event:', error);
-      set(() => ({
-        error: error instanceof Error ? error.message : 'Failed to update event',
-      }));
-      throw error;
-    } finally {
-      set(() => ({ isLoading: false }));
-    }
-  },
-
-  deleteEvent: async (id) => {
-    set(() => ({ isLoading: true, error: null }));
-    try {
-      await api.deleteEvent(id);
-      set((state) => {
-        const { [id]: _, ...rest } = state.events;
-        return { events: rest };
-      });
-    } catch (error) {
-      console.error('Failed to delete event:', error);
-      set(() => ({
-        error: error instanceof Error ? error.message : 'Failed to delete event',
-      }));
-      throw error;
-    } finally {
-      set(() => ({ isLoading: false }));
-    }
-  },
-
-  setEventStatus: async (id, status) => {
-    set(() => ({ isLoading: true, error: null }));
-    try {
-      const event = await api.updateEventStatus(id, status);
-      set((state) => ({
-        events: { ...state.events, [event.id]: event },
-      }));
-    } catch (error) {
-      console.error('Failed to update event status:', error);
-      set(() => ({
-        error:
-          error instanceof Error ? error.message : 'Failed to update event status',
-      }));
-      throw error;
-    } finally {
-      set(() => ({ isLoading: false }));
-    }
-  },
-
-  clearError: () => set(() => ({ error: null })),
-
-  getEventById: (id) => get().events[id],
-
-  getEventsByDate: (date, cultureCode) => {
-    let events = Object.values(get().events);
-
-    // Фильтр по культуре если задан
-    if (cultureCode) {
-      events = events.filter((event) => event.cultureCode === cultureCode);
-    }
-
-    return events
-      .filter((event) => {
-        const eventDate = parseLocalDateTime(event.startDateTime);
-        return isSameDay(eventDate, date);
-      })
-      .sort((a, b) => {
-        // All-day events first
-        if (a.allDay && !b.allDay) return -1;
-        if (!a.allDay && b.allDay) return 1;
-        // Then by start time
-        return a.startDateTime.localeCompare(b.startDateTime);
-      });
-  },
-
-  getEventsForMonth: (_month, cultureCode) => {
-    const map = new Map<string, CalendarEvent[]>();
-    let events = Object.values(get().events);
-
-    // Фильтр по культуре если задан
-    if (cultureCode) {
-      events = events.filter((event) => event.cultureCode === cultureCode);
-    }
-
-    events.forEach((event) => {
-      const dateKey = event.startDateTime.slice(0, 10); // YYYY-MM-DD
-      const existing = map.get(dateKey) || [];
-      map.set(dateKey, [...existing, event]);
-    });
-
-    // Sort events within each day
-    map.forEach((dayEvents, key) => {
-      map.set(
-        key,
-        dayEvents.sort((a, b) => {
-          if (a.allDay && !b.allDay) return -1;
-          if (!a.allDay && b.allDay) return 1;
-          return a.startDateTime.localeCompare(b.startDateTime);
-        })
-      );
-    });
-
-    return map;
-  },
-
-  getAllEvents: (cultureCode) => {
-    let events = Object.values(get().events);
-    if (cultureCode) {
-      events = events.filter((event) => event.cultureCode === cultureCode);
-    }
-    return events;
-  },
-});
 
 // Store для локальной разработки (localStorage)
 const createLocalStore = (
@@ -358,14 +186,6 @@ const createLocalStore = (
     return events;
   },
 });
-
-// Определяем, какой store использовать
-const shouldUseApi = () => {
-  // Используем API если:
-  // 1. Есть Telegram WebApp initData
-  // 2. Настроен API URL
-  return api.isTelegramWebApp() && api.isApiConfigured();
-};
 
 // ВРЕМЕННО: отключаем persist и используем демо-данные напрямую
 // Удалить после тестирования и вернуть persist!

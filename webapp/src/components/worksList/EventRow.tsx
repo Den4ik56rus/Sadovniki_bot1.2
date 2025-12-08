@@ -6,7 +6,7 @@
 import { format, isSameDay } from 'date-fns';
 import { ru } from 'date-fns/locale';
 import { parseLocalDateTime } from '@utils/dateUtils';
-import { getCultureIcon } from '@/constants/plantingCultures';
+import { getCultureIconComponent, getCultureTypeFromCode } from '@/constants/plantingCultures';
 import type { CalendarEvent } from '@/types';
 import styles from './EventRow.module.css';
 
@@ -46,29 +46,10 @@ function formatDateRange(event: CalendarEvent): string {
   }
 }
 
-/**
- * Извлекает базовый код культуры из полного кода
- * "клубника ремонтантная" -> "strawberry"
- */
-function getCultureBaseCode(cultureCode?: string): string | null {
-  if (!cultureCode) return null;
-
-  const cultureLower = cultureCode.toLowerCase();
-  if (cultureLower.includes('клубник') || cultureLower.includes('земляник')) return 'strawberry';
-  if (cultureLower.includes('малин')) return 'raspberry';
-  if (cultureLower.includes('ежевик')) return 'blackberry';
-  if (cultureLower.includes('смородин')) return 'currant';
-  if (cultureLower.includes('голубик')) return 'blueberry';
-  if (cultureLower.includes('жимолост')) return 'honeysuckle';
-  if (cultureLower.includes('крыжовник')) return 'gooseberry';
-
-  return null;
-}
-
 export function EventRow({ event, onClick }: EventRowProps) {
   const dateRange = formatDateRange(event);
-  const cultureBaseCode = getCultureBaseCode(event.cultureCode);
-  const CultureIcon = cultureBaseCode ? getCultureIcon(cultureBaseCode) : null;
+  const cultureType = event.cultureCode ? getCultureTypeFromCode(event.cultureCode) : null;
+  const CultureIcon = cultureType ? getCultureIconComponent(cultureType) : null;
 
   return (
     <button className={styles.row} onClick={onClick} type="button">

@@ -33,6 +33,8 @@ export interface TelegramWebApp {
   showConfirm: (message: string, callback?: (confirmed: boolean) => void) => void;
   enableClosingConfirmation: () => void;
   disableClosingConfirmation: () => void;
+  disableVerticalSwipes?: () => void;
+  enableVerticalSwipes?: () => void;
   onEvent: (eventType: string, callback: () => void) => void;
   offEvent: (eventType: string, callback: () => void) => void;
   setHeaderColor: (color: string) => void;

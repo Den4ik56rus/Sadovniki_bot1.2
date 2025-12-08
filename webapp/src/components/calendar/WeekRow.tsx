@@ -3,8 +3,7 @@
  * Отображает дни в виде сетки с событиями
  */
 
-import { getDate, getMonth, isWeekend, isSameMonth, isToday, isSameDay, format } from 'date-fns';
-import { parseLocalDateTime } from '@utils/dateUtils';
+import { getDate, getMonth, isWeekend, isSameMonth, isToday, isSameDay } from 'date-fns';
 import { useCalendarStore } from '@store/calendarStore';
 import { useUIStore } from '@store/uiStore';
 import { useTelegramHaptic } from '@hooks/useTelegramHaptic';

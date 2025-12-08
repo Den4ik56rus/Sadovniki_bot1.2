@@ -1,24 +1,31 @@
-/* CSS Variables - Design Tokens */
+/* CSS Variables - Botanical Garden Design Tokens */
+
+/* Import distinctive fonts */
+@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;500;600;700&family=Source+Sans+3:wght@400;500;600;700&display=swap');
 
 :root {
-  /* Spacing */
+  /* Spacing - organic proportions based on golden ratio */
   --spacing-xs: 4px;
   --spacing-sm: 8px;
   --spacing-md: 16px;
-  --spacing-lg: 24px;
-  --spacing-xl: 32px;
+  --spacing-lg: 26px;
+  --spacing-xl: 42px;
 
   /* Touch targets */
   --touch-target-min: 44px;
 
-  /* Typography */
-  --font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-  --font-size-xs: 12px;
-  --font-size-sm: 14px;
-  --font-size-base: 16px;
-  --font-size-lg: 18px;
+  /* Typography - elegant botanical feel */
+  --font-display: 'Cormorant Garamond', Georgia, serif;
+  --font-body: 'Source Sans 3', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-family: var(--font-body);
+
+  --font-size-xs: 11px;
+  --font-size-sm: 13px;
+  --font-size-base: 15px;
+  --font-size-lg: 17px;
   --font-size-xl: 20px;
-  --font-size-2xl: 24px;
+  --font-size-2xl: 28px;
+  --font-size-3xl: 36px;
 
   --font-weight-normal: 400;
   --font-weight-medium: 500;
@@ -29,23 +36,27 @@
   --line-height-normal: 1.5;
   --line-height-relaxed: 1.75;
 
-  /* Border radius */
-  --radius-sm: 4px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  /* Border radius - organic shapes */
+  --radius-sm: 6px;
+  --radius-md: 12px;
+  --radius-lg: 18px;
+  --radius-xl: 24px;
+  --radius-organic: 30% 70% 70% 30% / 30% 30% 70% 70%;
+  --radius-leaf: 60% 40% 40% 60% / 60% 40% 60% 40%;
   --radius-full: 9999px;
 
-  /* Shadows */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
-  --shadow-xl: 0 20px 25px rgba(0, 0, 0, 0.15);
+  /* Shadows - soft, natural */
+  --shadow-sm: 0 1px 3px rgba(45, 60, 36, 0.08);
+  --shadow-md: 0 4px 12px rgba(45, 60, 36, 0.1);
+  --shadow-lg: 0 8px 24px rgba(45, 60, 36, 0.12);
+  --shadow-xl: 0 16px 40px rgba(45, 60, 36, 0.15);
+  --shadow-inner: inset 0 2px 6px rgba(45, 60, 36, 0.06);
 
-  /* Transitions */
-  --transition-fast: 150ms ease;
-  --transition-normal: 250ms ease;
-  --transition-slow: 350ms ease;
+  /* Transitions - smooth, natural */
+  --transition-fast: 180ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 280ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 400ms cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-bounce: 500ms cubic-bezier(0.68, -0.55, 0.265, 1.55);
 
   /* Z-index layers */
   --z-base: 0;
@@ -57,14 +68,25 @@
 
   /* Calendar specific */
   --calendar-cell-size: 44px;
-  --topbar-height: 56px;
-  --bottom-sheet-radius: 16px;
+  --topbar-height: 64px;
+  --bottom-sheet-radius: 24px;
 
-  /* Event type colors */
-  --color-nutrition: #4CAF50;
-  --color-soil: #795548;
-  --color-protection: #F44336;
-  --color-harvest: #FF9800;
-  --color-planting: #2196F3;
-  --color-other: #9E9E9E;
+  /* Event type colors - nature-inspired palette */
+  --color-nutrition: #5B8A3C;      /* Lush leaf green */
+  --color-soil: #8B6B4D;           /* Rich earth brown */
+  --color-protection: #C75B5B;     /* Berry red */
+  --color-harvest: #D4A84B;        /* Golden wheat */
+  --color-planting: #4A90A4;       /* Sky/water blue */
+  --color-other: #7A8B7A;          /* Sage grey-green */
+
+  /* Decorative botanical elements */
+  --gradient-leaf: linear-gradient(135deg, #5B8A3C 0%, #3D6B2B 100%);
+  --gradient-sunrise: linear-gradient(180deg, #FFF8E7 0%, #E8DFD0 100%);
+  --gradient-moss: linear-gradient(135deg, #E8EDE5 0%, #D4DDD0 100%);
+
+  /* Texture overlays */
+  --texture-grain: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+
+  /* Leaf pattern for backgrounds */
+  --pattern-leaves: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M30 5c-5 10-15 15-15 25s10 15 15 25c5-10 15-15 15-25S35 15 30 5z' fill='%234A7C59' fill-opacity='0.03'/%3E%3C/svg%3E");
 }

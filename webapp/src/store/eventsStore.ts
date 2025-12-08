@@ -11,6 +11,8 @@ import { format, isSameDay } from 'date-fns';
 import { parseLocalDateTime } from '@utils/dateUtils';
 import type { CalendarEvent, EventStatus, EventType } from '@/types';
 import { api } from '@services/api';
+// ВРЕМЕННО: демо-данные - удалить после тестирования!
+import { generateDemoEvents } from '@/data/demoEvents';
 
 // Полифил для crypto.randomUUID (не работает в старых мобильных браузерах)
 function generateUUID(): string {
@@ -44,19 +46,23 @@ interface EventsStore {
 
   // Selectors
   getEventById: (id: string) => CalendarEvent | undefined;
-  getEventsByDate: (date: Date) => CalendarEvent[];
-  getEventsForMonth: (month: Date) => Map<string, CalendarEvent[]>;
-  getAllEvents: () => CalendarEvent[];
+  getEventsByDate: (date: Date, cultureCode?: string | null) => CalendarEvent[];
+  getEventsForMonth: (month: Date, cultureCode?: string | null) => Map<string, CalendarEvent[]>;
+  getAllEvents: (cultureCode?: string | null) => CalendarEvent[];
 }
+
+// ВРЕМЕННО: кэшируем демо-события - удалить после тестирования!
+const DEMO_EVENTS = generateDemoEvents();
 
 // Store для работы с API (Telegram WebApp)
 const createApiStore = (
   set: (fn: (state: EventsStore) => Partial<EventsStore>) => void,
   get: () => EventsStore
 ): EventsStore => ({
-  events: {},
+  // ВРЕМЕННО: используем демо-события - удалить после тестирования!
+  events: DEMO_EVENTS,
   isLoading: false,
-  isSynced: false,
+  isSynced: true, // ВРЕМЕННО: true чтобы не загружать с API
   error: null,
 
   fetchEvents: async (start?: Date, end?: Date) => {
@@ -157,8 +163,14 @@ const createApiStore = (
 
   getEventById: (id) => get().events[id],
 
-  getEventsByDate: (date) => {
-    const events = Object.values(get().events);
+  getEventsByDate: (date, cultureCode) => {
+    let events = Object.values(get().events);
+
+    // Фильтр по культуре если задан
+    if (cultureCode) {
+      events = events.filter((event) => event.cultureCode === cultureCode);
+    }
+
     return events
       .filter((event) => {
         const eventDate = parseLocalDateTime(event.startDateTime);
@@ -173,9 +185,14 @@ const createApiStore = (
       });
   },
 
-  getEventsForMonth: (_month) => {
+  getEventsForMonth: (_month, cultureCode) => {
     const map = new Map<string, CalendarEvent[]>();
-    const events = Object.values(get().events);
+    let events = Object.values(get().events);
+
+    // Фильтр по культуре если задан
+    if (cultureCode) {
+      events = events.filter((event) => event.cultureCode === cultureCode);
+    }
 
     events.forEach((event) => {
       const dateKey = event.startDateTime.slice(0, 10); // YYYY-MM-DD
@@ -198,7 +215,13 @@ const createApiStore = (
     return map;
   },
 
-  getAllEvents: () => Object.values(get().events),
+  getAllEvents: (cultureCode) => {
+    let events = Object.values(get().events);
+    if (cultureCode) {
+      events = events.filter((event) => event.cultureCode === cultureCode);
+    }
+    return events;
+  },
 });
 
 // Store для локальной разработки (localStorage)
@@ -206,7 +229,8 @@ const createLocalStore = (
   set: (fn: (state: EventsStore) => Partial<EventsStore>) => void,
   get: () => EventsStore
 ): EventsStore => ({
-  events: {},
+  // ВРЕМЕННО: используем демо-события - удалить после тестирования!
+  events: DEMO_EVENTS,
   isLoading: false,
   isSynced: true, // В локальном режиме всегда "синхронизировано"
   error: null,
@@ -277,8 +301,14 @@ const createLocalStore = (
 
   getEventById: (id) => get().events[id],
 
-  getEventsByDate: (date) => {
-    const events = Object.values(get().events);
+  getEventsByDate: (date, cultureCode) => {
+    let events = Object.values(get().events);
+
+    // Фильтр по культуре если задан
+    if (cultureCode) {
+      events = events.filter((event) => event.cultureCode === cultureCode);
+    }
+
     return events
       .filter((event) => {
         const eventDate = parseLocalDateTime(event.startDateTime);
@@ -291,9 +321,14 @@ const createLocalStore = (
       });
   },
 
-  getEventsForMonth: (_month) => {
+  getEventsForMonth: (_month, cultureCode) => {
     const map = new Map<string, CalendarEvent[]>();
-    const events = Object.values(get().events);
+    let events = Object.values(get().events);
+
+    // Фильтр по культуре если задан
+    if (cultureCode) {
+      events = events.filter((event) => event.cultureCode === cultureCode);
+    }
 
     events.forEach((event) => {
       const dateKey = event.startDateTime.slice(0, 10);
@@ -315,7 +350,13 @@ const createLocalStore = (
     return map;
   },
 
-  getAllEvents: () => Object.values(get().events),
+  getAllEvents: (cultureCode) => {
+    let events = Object.values(get().events);
+    if (cultureCode) {
+      events = events.filter((event) => event.cultureCode === cultureCode);
+    }
+    return events;
+  },
 });
 
 // Определяем, какой store использовать
@@ -326,21 +367,10 @@ const shouldUseApi = () => {
   return api.isTelegramWebApp() && api.isApiConfigured();
 };
 
-// Создаём store с условной персистенцией
+// ВРЕМЕННО: отключаем persist и используем демо-данные напрямую
+// Удалить после тестирования и вернуть persist!
 export const useEventsStore = create<EventsStore>()(
-  // Оборачиваем в persist только для локального режима
-  shouldUseApi()
-    ? (set, get) => createApiStore(set, get)
-    : persist(
-        (set, get) => createLocalStore(set, get),
-        {
-          name: 'sadovniki-calendar-events',
-          version: 1,
-          migrate: (persistedState: unknown, _version: number) => {
-            return persistedState as EventsStore;
-          },
-        }
-      )
+  (set, get) => createLocalStore(set, get)
 );
 
 /**

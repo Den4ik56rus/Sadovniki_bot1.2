@@ -8,6 +8,7 @@ import { ru } from 'date-fns/locale';
 import { useCalendarStore } from '@store/calendarStore';
 import { useUIStore } from '@store/uiStore';
 import { useTelegramHaptic } from '@hooks/useTelegramHaptic';
+import { CultureFilter } from './CultureFilter';
 import styles from './TopBar.module.css';
 
 export function TopBar() {
@@ -44,7 +45,7 @@ export function TopBar() {
 
   return (
     <header className={styles.topbar}>
-      {/* Левая часть: меню + месяц */}
+      {/* Левая часть: меню + месяц + фильтр */}
       <div className={styles.leftSection}>
         <button
           className={styles.menuButton}
@@ -64,6 +65,9 @@ export function TopBar() {
             <ChevronDownIcon />
           </span>
         </button>
+
+        {/* Фильтр по культурам - виден только когда календарь развёрнут */}
+        {isCalendarExpanded && <CultureFilter />}
       </div>
 
       {/* Правая часть: поиск + сегодня */}

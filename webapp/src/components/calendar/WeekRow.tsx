@@ -10,6 +10,7 @@ import { useUIStore } from '@store/uiStore';
 import { useTelegramHaptic } from '@hooks/useTelegramHaptic';
 import type { CalendarEvent } from '@/types/event';
 import { getWeekEvents, getEventColor, type PositionedEvent } from '@utils/eventLayoutUtils';
+import { getCultureIconFromCode } from '@constants/plantingCultures';
 import { MONTHS_FULL } from '@constants/ui';
 import styles from './WeekRow.module.css';
 
@@ -234,10 +235,8 @@ function EventBar({
   const { event, startCol, endCol, row, continuesFromPrev, continuesToNext } = positioned;
   const color = getEventColor(event);
 
-  // Время события (если не allDay)
-  const timeLabel = !event.allDay
-    ? format(parseLocalDateTime(event.startDateTime), 'HH:mm')
-    : null;
+  // Иконка культуры
+  const CultureIcon = event.cultureCode ? getCultureIconFromCode(event.cultureCode) : null;
 
   // Проверяем есть ли preview для этого события
   const preview = getEventPreview(event.id);
@@ -312,7 +311,11 @@ function EventBar({
       onDoubleClick={handleDoubleClick}
       title={event.title}
     >
-      {timeLabel && <span className={styles.eventTime}>{timeLabel}</span>}
+      {CultureIcon && (
+        <span className={styles.eventCultureIcon}>
+          <CultureIcon width={14} height={14} />
+        </span>
+      )}
       <span className={styles.eventTitle}>{event.title}</span>
 
       {/* Resize handles - показываем только на реальных концах события */}

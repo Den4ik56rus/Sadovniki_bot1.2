@@ -170,6 +170,21 @@
   width: calc(var(--span) * (100% / 7));
 }
 
+/* Иконка культуры */
+.eventCultureIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  margin-right: 2px;
+  color: var(--event-color);
+}
+
+.eventCultureIcon svg {
+  width: 10px;
+  height: 10px;
+}
+
 .eventTime {
   font-size: 8px;
   font-weight: var(--font-weight-medium);

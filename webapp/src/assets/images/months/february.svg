@@ -1,0 +1,51 @@
+<svg viewBox="0 0 400 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Подготовка инструментов, планирование -->
+  <defs>
+    <linearGradient id="feb-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#F5EDE4"/>
+      <stop offset="100%" stop-color="#E8DFD0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Фон -->
+  <rect width="400" height="180" fill="url(#feb-bg)"/>
+
+  <!-- Стол/поверхность -->
+  <rect x="0" y="130" width="400" height="50" fill="#C9B8A0" opacity="0.5"/>
+  <line x1="0" y1="130" x2="400" y2="130" stroke="#A89880" stroke-width="2"/>
+
+  <!-- Блокнот/планировщик -->
+  <rect x="40" y="70" width="80" height="100" rx="3" fill="#FDFBF7"/>
+  <rect x="40" y="70" width="80" height="100" rx="3" stroke="#D4C8B8" stroke-width="1"/>
+  <line x1="55" y1="85" x2="105" y2="85" stroke="#B8C9AC" stroke-width="1" opacity="0.6"/>
+  <line x1="55" y1="95" x2="100" y2="95" stroke="#B8C9AC" stroke-width="1" opacity="0.6"/>
+  <line x1="55" y1="105" x2="95" y2="105" stroke="#B8C9AC" stroke-width="1" opacity="0.6"/>
+  <line x1="55" y1="115" x2="90" y2="115" stroke="#B8C9AC" stroke-width="1" opacity="0.6"/>
+  <!-- Спираль -->
+  <circle cx="45" cy="80" r="2" fill="#8B8B8B"/>
+  <circle cx="45" cy="95" r="2" fill="#8B8B8B"/>
+  <circle cx="45" cy="110" r="2" fill="#8B8B8B"/>
+  <circle cx="45" cy="125" r="2" fill="#8B8B8B"/>
+
+  <!-- Карандаш -->
+  <rect x="130" y="85" width="60" height="8" rx="1" fill="#D4A84B" transform="rotate(-15 130 85)"/>
+  <polygon points="125,82 130,78 130,88" fill="#F5E0C0" transform="rotate(-15 130 85)"/>
+  <rect x="185" y="78" width="8" height="8" rx="1" fill="#C75B5B" transform="rotate(-15 185 78)"/>
+
+  <!-- Секатор -->
+  <ellipse cx="270" cy="100" rx="15" ry="25" fill="#6B5A4A" transform="rotate(30 270 100)"/>
+  <ellipse cx="290" cy="95" rx="15" ry="25" fill="#5A4A3A" transform="rotate(-30 290 95)"/>
+  <rect x="250" y="120" width="60" height="12" rx="3" fill="#C75B5B"/>
+  <circle cx="280" cy="100" r="8" fill="#A89880"/>
+
+  <!-- Пакетик семян -->
+  <rect x="330" y="90" width="45" height="60" rx="3" fill="#D4E4D8"/>
+  <rect x="330" y="90" width="45" height="20" rx="3" fill="#4A7C59"/>
+  <ellipse cx="352" cy="125" rx="12" ry="8" fill="#C75B5B" opacity="0.7"/>
+  <ellipse cx="352" cy="130" rx="8" ry="5" fill="#C75B5B" opacity="0.5"/>
+
+  <!-- Маленький росток на пакетике -->
+  <path d="M352 115 Q350 108 352 102 Q354 108 352 115" fill="#5B8A3C" opacity="0.8"/>
+  <ellipse cx="349" cy="105" rx="4" ry="3" fill="#5B8A3C" opacity="0.6"/>
+  <ellipse cx="355" cy="106" rx="4" ry="3" fill="#5B8A3C" opacity="0.6"/>
+</svg>

@@ -8,7 +8,7 @@ import { ru } from 'date-fns/locale';
 import { parseLocalDateTime } from '@utils/dateUtils';
 import type { CalendarEvent } from '@/types/event';
 import { EVENT_TYPES } from '@constants/eventTypes';
-import { CULTURES } from '@constants/cultures';
+import { getCultureIconFromCode } from '@constants/plantingCultures';
 import styles from './EventCard.module.css';
 
 interface EventCardProps {
@@ -18,7 +18,7 @@ interface EventCardProps {
 
 export function EventCard({ event, onClick }: EventCardProps) {
   const typeInfo = EVENT_TYPES[event.type];
-  const cultureInfo = event.cultureCode ? CULTURES[event.cultureCode] : null;
+  const CultureIcon = event.cultureCode ? getCultureIconFromCode(event.cultureCode) : null;
   const color = event.color || typeInfo?.color || '#9E9E9E';
 
   // Форматируем даты
@@ -40,8 +40,10 @@ export function EventCard({ event, onClick }: EventCardProps) {
       <div className={styles.content}>
         <div className={styles.header}>
           <span className={styles.date}>{dateLabel}</span>
-          {cultureInfo && (
-            <span className={styles.culture}>{cultureInfo.icon}</span>
+          {CultureIcon && (
+            <span className={styles.culture}>
+              <CultureIcon width={24} height={24} />
+            </span>
           )}
         </div>
         <h3 className={styles.title}>{event.title}</h3>

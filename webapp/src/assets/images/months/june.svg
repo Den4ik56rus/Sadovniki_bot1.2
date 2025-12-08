@@ -1,0 +1,79 @@
+<svg viewBox="0 0 400 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Зелёные завязи ягод -->
+  <defs>
+    <linearGradient id="jun-sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7EC8E3"/>
+      <stop offset="100%" stop-color="#A8DCF0"/>
+    </linearGradient>
+    <linearGradient id="jun-grass" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#66BB6A"/>
+      <stop offset="100%" stop-color="#43A047"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Небо -->
+  <rect width="400" height="180" fill="url(#jun-sky)"/>
+
+  <!-- Трава -->
+  <rect x="0" y="125" width="400" height="55" fill="url(#jun-grass)"/>
+
+  <!-- Куст клубники с зелёными завязями -->
+  <ellipse cx="90" cy="115" rx="50" ry="35" fill="#43A047"/>
+  <ellipse cx="85" cy="110" rx="45" ry="30" fill="#4CAF50"/>
+  <!-- Зелёные клубнички -->
+  <ellipse cx="70" cy="100" rx="7" ry="9" fill="#8BC34A"/>
+  <ellipse cx="70" cy="98" rx="4" ry="2" fill="#7CB342"/>
+  <ellipse cx="95" cy="95" rx="8" ry="10" fill="#9CCC65"/>
+  <ellipse cx="95" cy="93" rx="5" ry="2.5" fill="#8BC34A"/>
+  <ellipse cx="110" cy="105" rx="6" ry="8" fill="#8BC34A"/>
+  <ellipse cx="110" cy="103" rx="3.5" ry="2" fill="#7CB342"/>
+  <!-- Мелкие цветочки ещё -->
+  <circle cx="80" cy="108" r="4" fill="#FFFFFF" opacity="0.8"/>
+  <circle cx="80" cy="108" r="1.5" fill="#FFE066"/>
+
+  <!-- Куст малины с зелёными ягодами -->
+  <ellipse cx="220" cy="110" rx="55" ry="40" fill="#43A047"/>
+  <ellipse cx="215" cy="105" rx="50" ry="35" fill="#4CAF50"/>
+  <!-- Зелёные малинки -->
+  <ellipse cx="195" cy="95" rx="6" ry="8" fill="#AED581"/>
+  <circle cx="192" cy="92" r="2" fill="#9CCC65"/>
+  <circle cx="198" cy="92" r="2" fill="#9CCC65"/>
+  <circle cx="195" cy="97" r="2" fill="#9CCC65"/>
+  <ellipse cx="220" cy="90" rx="7" ry="9" fill="#C5E1A5"/>
+  <circle cx="217" cy="87" r="2.5" fill="#AED581"/>
+  <circle cx="223" cy="87" r="2.5" fill="#AED581"/>
+  <circle cx="220" cy="93" r="2.5" fill="#AED581"/>
+  <ellipse cx="240" cy="98" rx="5" ry="7" fill="#AED581"/>
+  <circle cx="238" cy="96" r="2" fill="#9CCC65"/>
+  <circle cx="242" cy="96" r="2" fill="#9CCC65"/>
+  <!-- Цветочки -->
+  <circle cx="205" cy="105" r="4" fill="#FFCDD2" opacity="0.8"/>
+  <circle cx="230" cy="102" r="3.5" fill="#FFCDD2" opacity="0.8"/>
+
+  <!-- Куст смородины -->
+  <ellipse cx="340" cy="112" rx="45" ry="32" fill="#43A047"/>
+  <ellipse cx="335" cy="107" rx="40" ry="27" fill="#4CAF50"/>
+  <!-- Гроздь зелёной смородины -->
+  <circle cx="325" cy="95" r="3" fill="#C5E1A5"/>
+  <circle cx="330" cy="98" r="3" fill="#AED581"/>
+  <circle cx="335" cy="95" r="3.5" fill="#C5E1A5"/>
+  <circle cx="328" cy="102" r="3" fill="#AED581"/>
+  <circle cx="333" cy="104" r="3" fill="#C5E1A5"/>
+  <circle cx="350" cy="100" r="3" fill="#AED581"/>
+  <circle cx="355" cy="103" r="2.5" fill="#C5E1A5"/>
+  <circle cx="345" cy="97" r="3" fill="#AED581"/>
+
+  <!-- Солнце -->
+  <circle cx="50" cy="35" r="22" fill="#FFEE58"/>
+  <circle cx="50" cy="35" r="16" fill="#FFF59D"/>
+
+  <!-- Облачко -->
+  <ellipse cx="300" cy="40" rx="30" ry="18" fill="#FFFFFF" opacity="0.7"/>
+  <ellipse cx="325" cy="35" rx="25" ry="15" fill="#FFFFFF" opacity="0.7"/>
+  <ellipse cx="280" cy="38" rx="22" ry="13" fill="#FFFFFF" opacity="0.7"/>
+
+  <!-- Бабочка -->
+  <ellipse cx="160" cy="60" rx="10" ry="7" fill="#FFAB91" transform="rotate(-30 160 60)"/>
+  <ellipse cx="175" cy="58" rx="10" ry="7" fill="#FF8A65" transform="rotate(30 175 58)"/>
+  <ellipse cx="167" cy="65" rx="3" ry="8" fill="#5D4037"/>
+</svg>

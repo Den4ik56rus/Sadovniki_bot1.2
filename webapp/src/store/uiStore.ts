@@ -17,6 +17,10 @@ interface UIStore {
   theme: Theme;
   initialFormDate: Date | null;  // Дата для предзаполнения формы
 
+  // Culture filter
+  isCultureFilterOpen: boolean;
+  selectedCultureFilter: string | null; // null = все культуры, иначе planting.id
+
   // Plantings page state
   isPlantingsPageOpen: boolean;
   isPlantingFormOpen: boolean;
@@ -53,6 +57,11 @@ interface UIStore {
   openSearch: () => void;
   closeSearch: () => void;
 
+  // Culture filter
+  toggleCultureFilter: () => void;
+  closeCultureFilter: () => void;
+  setCultureFilter: (plantingId: string | null) => void;
+
   // Event selection (for drag/resize)
   selectEvent: (eventId: string | null) => void;
 
@@ -72,6 +81,10 @@ export const useUIStore = create<UIStore>((set) => ({
   theme: 'light',
   initialFormDate: null,
   selectedEventId: null,
+
+  // Culture filter
+  isCultureFilterOpen: false,
+  selectedCultureFilter: null,
 
   // Plantings page state
   isPlantingsPageOpen: false,
@@ -151,6 +164,11 @@ export const useUIStore = create<UIStore>((set) => ({
   openSearch: () => set({ isSearchOpen: true }),
   closeSearch: () => set({ isSearchOpen: false }),
 
+  // Culture filter
+  toggleCultureFilter: () => set((state) => ({ isCultureFilterOpen: !state.isCultureFilterOpen })),
+  closeCultureFilter: () => set({ isCultureFilterOpen: false }),
+  setCultureFilter: (plantingId) => set({ selectedCultureFilter: plantingId, isCultureFilterOpen: false }),
+
   // Event selection (for drag/resize)
   selectEvent: (eventId) => set({ selectedEventId: eventId }),
 
@@ -161,6 +179,7 @@ export const useUIStore = create<UIStore>((set) => ({
       isEventFormOpen: false,
       isEventDetailsOpen: false,
       isSearchOpen: false,
+      isCultureFilterOpen: false,
       isPlantingsPageOpen: false,
       isPlantingFormOpen: false,
       editingEventId: null,
@@ -181,12 +200,14 @@ export function useAnyModalOpen() {
     isEventDetailsOpen,
     isPlantingsPageOpen,
     isPlantingFormOpen,
+    isCultureFilterOpen,
   } = useUIStore();
   return (
     isSideMenuOpen ||
     isEventFormOpen ||
     isEventDetailsOpen ||
     isPlantingsPageOpen ||
-    isPlantingFormOpen
+    isPlantingFormOpen ||
+    isCultureFilterOpen
   );
 }

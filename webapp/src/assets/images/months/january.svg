@@ -1,0 +1,49 @@
+<svg viewBox="0 0 400 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Зимний сад под снегом -->
+  <defs>
+    <linearGradient id="jan-sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#E8EEF4"/>
+      <stop offset="100%" stop-color="#D4E0EC"/>
+    </linearGradient>
+    <linearGradient id="jan-snow" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E8EEF4"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Небо -->
+  <rect width="400" height="180" fill="url(#jan-sky)"/>
+
+  <!-- Снежные холмы -->
+  <ellipse cx="100" cy="200" rx="150" ry="80" fill="url(#jan-snow)"/>
+  <ellipse cx="300" cy="210" rx="180" ry="90" fill="url(#jan-snow)"/>
+  <ellipse cx="200" cy="195" rx="120" ry="60" fill="#FFFFFF"/>
+
+  <!-- Укрытый куст 1 -->
+  <path d="M80 130 Q90 100 100 130 Q110 100 120 130 L115 145 Q100 140 85 145 Z" fill="#8B9A7A" opacity="0.6"/>
+  <ellipse cx="100" cy="145" rx="25" ry="10" fill="#FFFFFF" opacity="0.9"/>
+
+  <!-- Укрытый куст 2 -->
+  <path d="M180 125 Q195 90 210 125 Q225 90 240 125 L235 145 Q210 138 185 145 Z" fill="#7A8B6A" opacity="0.5"/>
+  <ellipse cx="210" cy="145" rx="35" ry="12" fill="#FFFFFF" opacity="0.9"/>
+
+  <!-- Укрытый куст 3 -->
+  <path d="M300 130 Q310 105 320 130 Q330 105 340 130 L337 143 Q320 138 303 143 Z" fill="#8B9A7A" opacity="0.6"/>
+  <ellipse cx="320" cy="143" rx="22" ry="9" fill="#FFFFFF" opacity="0.9"/>
+
+  <!-- Снежинки -->
+  <circle cx="50" cy="40" r="2" fill="#FFFFFF" opacity="0.8"/>
+  <circle cx="120" cy="60" r="1.5" fill="#FFFFFF" opacity="0.7"/>
+  <circle cx="200" cy="35" r="2" fill="#FFFFFF" opacity="0.8"/>
+  <circle cx="280" cy="55" r="1.5" fill="#FFFFFF" opacity="0.6"/>
+  <circle cx="350" cy="45" r="2" fill="#FFFFFF" opacity="0.7"/>
+  <circle cx="90" cy="80" r="1" fill="#FFFFFF" opacity="0.5"/>
+  <circle cx="160" cy="50" r="1.5" fill="#FFFFFF" opacity="0.6"/>
+  <circle cx="320" cy="75" r="1" fill="#FFFFFF" opacity="0.5"/>
+  <circle cx="380" cy="30" r="1.5" fill="#FFFFFF" opacity="0.7"/>
+
+  <!-- Деревце на фоне -->
+  <path d="M350 90 L350 140" stroke="#6B5A4A" stroke-width="3"/>
+  <ellipse cx="350" cy="75" rx="20" ry="25" fill="#4A5A4A" opacity="0.4"/>
+  <ellipse cx="350" cy="70" rx="8" ry="10" fill="#FFFFFF" opacity="0.7"/>
+</svg>

@@ -1,48 +1,67 @@
-/* MonthGrid styles - Grid view с событиями */
+/* MonthGrid styles - Botanical Garden Calendar Grid */
 
 .container {
   display: flex;
   flex-direction: column;
   flex: 1;
-  background-color: var(--color-bg-secondary);
+  background: var(--gradient-card);
   touch-action: pan-y pinch-zoom;
   user-select: none;
   overflow: hidden;
   transform-origin: top center;
+  position: relative;
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  margin: 0 var(--spacing-sm);
+  box-shadow: var(--shadow-card);
 }
 
-/* Expanded state - плавное раскрытие вниз */
+/* Subtle grain texture overlay */
+.container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: var(--texture-grain);
+  opacity: 0.02;
+  pointer-events: none;
+  z-index: 0;
+  border-radius: inherit;
+}
+
+/* Expanded state - organic reveal animation */
 .expanded {
-  animation: slideDown 0.3s ease-out forwards;
+  animation: growIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
 }
 
-@keyframes slideDown {
+@keyframes growIn {
   from {
     opacity: 0;
-    transform: translateY(-20px);
+    transform: translateY(-20px) scale(0.97);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
 }
 
-/* Collapsed state - плавное сворачивание вверх */
+/* Collapsed state - graceful fade */
 .collapsed {
   max-height: 0;
   opacity: 0;
   pointer-events: none;
-  animation: slideUp 0.25s ease-in forwards;
+  animation: shrinkOut 0.25s ease-in forwards;
 }
 
-@keyframes slideUp {
+@keyframes shrinkOut {
   from {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
   }
   to {
     opacity: 0;
-    transform: translateY(-20px);
+    transform: translateY(-20px) scale(0.97);
   }
 }
 
@@ -50,51 +69,73 @@
   display: flex;
   flex-direction: column;
   flex: 1;
+  position: relative;
+  z-index: 1;
 }
 
-/* Заголовок дней недели - отдельная строка */
+/* Заголовок дней недели - botanical style */
 .weekdaysHeader {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  border-bottom: 1px solid var(--color-divider);
+  background: var(--color-accent-bg);
+  border-bottom: 1px solid var(--color-border);
+  border-radius: var(--radius-xl) var(--radius-xl) 0 0;
+  padding: var(--spacing-xs) 0;
 }
 
 .weekday {
   text-align: center;
-  font-size: 10px;
-  font-weight: var(--font-weight-medium);
+  font-family: var(--font-body);
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-semibold);
   color: var(--color-text-secondary);
-  padding: 4px 0;
+  padding: var(--spacing-xs) 0;
   text-transform: uppercase;
-  letter-spacing: 0.3px;
+  letter-spacing: 0.08em;
+  position: relative;
 }
 
 .weekday.weekend {
   color: var(--color-weekend);
 }
 
-/* Контейнер недель - замкнутая сетка */
+/* Decorative dot under weekend days */
+.weekday.weekend::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 3px;
+  height: 3px;
+  background-color: var(--color-weekend);
+  border-radius: var(--radius-full);
+  opacity: 0.5;
+}
+
+/* Контейнер недель - elegant grid */
 .weeksContainer {
   display: flex;
   flex-direction: column;
   flex: 1;
-  /* Левая граница для замкнутости */
-  border-left: 1px solid var(--color-divider);
+  background-color: var(--color-bg-elevated);
+  /* Subtle inner shadow for depth */
+  box-shadow: var(--shadow-inner);
 }
 
-/* Slide animations for month navigation */
+/* Slide animations for month navigation - smooth organic motion */
 .slideLeft {
-  animation: slideInFromRight 0.3s ease-out forwards;
+  animation: slideInFromRight 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 .slideRight {
-  animation: slideInFromLeft 0.3s ease-out forwards;
+  animation: slideInFromLeft 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards;
 }
 
 @keyframes slideInFromRight {
   from {
     opacity: 0;
-    transform: translateX(30%);
+    transform: translateX(40px);
   }
   to {
     opacity: 1;
@@ -105,7 +146,7 @@
 @keyframes slideInFromLeft {
   from {
     opacity: 0;
-    transform: translateX(-30%);
+    transform: translateX(-40px);
   }
   to {
     opacity: 1;

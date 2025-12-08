@@ -1,0 +1,74 @@
+<svg viewBox="0 0 400 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Укрытие на зиму -->
+  <defs>
+    <linearGradient id="nov-sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#607D8B"/>
+      <stop offset="100%" stop-color="#78909C"/>
+    </linearGradient>
+    <linearGradient id="nov-ground" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#5D4037"/>
+      <stop offset="100%" stop-color="#3E2723"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Небо -->
+  <rect width="400" height="180" fill="url(#nov-sky)"/>
+
+  <!-- Земля -->
+  <rect x="0" y="130" width="400" height="50" fill="url(#nov-ground)"/>
+
+  <!-- Первый снежок местами -->
+  <ellipse cx="50" cy="145" rx="25" ry="8" fill="#ECEFF1" opacity="0.5"/>
+  <ellipse cx="200" cy="150" rx="30" ry="10" fill="#ECEFF1" opacity="0.4"/>
+  <ellipse cx="350" cy="148" rx="28" ry="9" fill="#ECEFF1" opacity="0.5"/>
+
+  <!-- Укрытый куст 1 - под агроволокном -->
+  <path d="M60 130 Q80 80 100 130" fill="#E0E0E0" stroke="#BDBDBD" stroke-width="2"/>
+  <ellipse cx="80" cy="130" rx="25" ry="8" fill="#5D4037"/>
+  <!-- Колышки -->
+  <line x1="65" y1="130" x2="65" y2="110" stroke="#6D4C41" stroke-width="2"/>
+  <line x1="95" y1="130" x2="95" y2="110" stroke="#6D4C41" stroke-width="2"/>
+
+  <!-- Укрытый куст 2 - под лапником -->
+  <ellipse cx="180" cy="125" rx="45" ry="30" fill="#2E7D32"/>
+  <path d="M150 135 L180 90 L210 135" fill="#388E3C"/>
+  <path d="M140 140 L170 100 L200 140" fill="#43A047"/>
+  <path d="M160 142 L190 95 L220 142" fill="#388E3C"/>
+  <ellipse cx="180" cy="130" rx="40" ry="6" fill="#5D4037"/>
+
+  <!-- Укрытый куст 3 - под мешковиной -->
+  <ellipse cx="300" cy="115" rx="35" ry="35" fill="#A1887F"/>
+  <ellipse cx="300" cy="115" rx="33" ry="33" fill="#8D6E63"/>
+  <!-- Текстура мешковины -->
+  <line x1="275" y1="100" x2="325" y2="100" stroke="#795548" stroke-width="1" opacity="0.5"/>
+  <line x1="275" y1="115" x2="325" y2="115" stroke="#795548" stroke-width="1" opacity="0.5"/>
+  <line x1="275" y1="130" x2="325" y2="130" stroke="#795548" stroke-width="1" opacity="0.5"/>
+  <line x1="285" y1="85" x2="285" y2="145" stroke="#795548" stroke-width="1" opacity="0.5"/>
+  <line x1="300" y1="82" x2="300" y2="148" stroke="#795548" stroke-width="1" opacity="0.5"/>
+  <line x1="315" y1="85" x2="315" y2="145" stroke="#795548" stroke-width="1" opacity="0.5"/>
+  <!-- Завязка сверху -->
+  <ellipse cx="300" cy="82" rx="8" ry="4" fill="#6D4C41"/>
+  <rect x="297" y="78" width="6" height="8" fill="#6D4C41"/>
+
+  <!-- Рулон агроволокна -->
+  <ellipse cx="370" cy="140" rx="15" ry="25" fill="#E0E0E0"/>
+  <ellipse cx="370" cy="140" rx="12" ry="22" fill="#EEEEEE"/>
+  <ellipse cx="370" cy="115" rx="12" ry="5" fill="#BDBDBD"/>
+  <ellipse cx="370" cy="165" rx="12" ry="5" fill="#BDBDBD"/>
+
+  <!-- Снежинки падают -->
+  <circle cx="30" cy="30" r="2" fill="#FFFFFF" opacity="0.7"/>
+  <circle cx="80" cy="50" r="1.5" fill="#FFFFFF" opacity="0.6"/>
+  <circle cx="140" cy="35" r="2" fill="#FFFFFF" opacity="0.7"/>
+  <circle cx="220" cy="45" r="1.5" fill="#FFFFFF" opacity="0.6"/>
+  <circle cx="280" cy="30" r="2" fill="#FFFFFF" opacity="0.7"/>
+  <circle cx="330" cy="55" r="1.5" fill="#FFFFFF" opacity="0.6"/>
+  <circle cx="380" cy="40" r="2" fill="#FFFFFF" opacity="0.7"/>
+  <circle cx="100" cy="70" r="1.5" fill="#FFFFFF" opacity="0.5"/>
+  <circle cx="250" cy="65" r="1.5" fill="#FFFFFF" opacity="0.5"/>
+
+  <!-- Тучи -->
+  <ellipse cx="80" cy="25" rx="40" ry="20" fill="#546E7A" opacity="0.6"/>
+  <ellipse cx="115" cy="20" rx="35" ry="17" fill="#546E7A" opacity="0.6"/>
+  <ellipse cx="50" cy="22" rx="30" ry="14" fill="#546E7A" opacity="0.6"/>
+</svg>

@@ -1,26 +1,58 @@
-/* DayEventsPanel styles */
+/* DayEventsPanel styles - Botanical Garden Events */
 
 .panel {
   display: flex;
   flex-direction: column;
   flex: 1;
   background-color: var(--color-bg-primary);
-  border-top: 1px solid var(--color-divider);
   overflow: hidden;
+  position: relative;
+}
+
+/* Decorative botanical corner accent */
+.panel::before {
+  content: '';
+  position: absolute;
+  bottom: 80px;
+  right: -20px;
+  width: 100px;
+  height: 100px;
+  background: var(--color-accent);
+  opacity: 0.03;
+  border-radius: var(--radius-organic);
+  transform: rotate(-15deg);
+  pointer-events: none;
 }
 
 .header {
-  padding: var(--spacing-md);
-  background-color: var(--color-bg-primary);
-  border-bottom: 1px solid var(--color-divider);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--gradient-header);
+  border-bottom: 1px solid var(--color-border);
+  position: relative;
+}
+
+/* Subtle leaf decoration on header */
+.header::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  right: var(--spacing-lg);
+  transform: translateY(-50%);
+  width: 24px;
+  height: 24px;
+  background: var(--color-accent);
+  opacity: 0.08;
+  border-radius: var(--radius-leaf);
 }
 
 .title {
-  font-size: var(--font-size-base);
+  font-family: var(--font-display);
+  font-size: var(--font-size-xl);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
   margin: 0;
   text-transform: capitalize;
+  letter-spacing: -0.01em;
 }
 
 .content {
@@ -32,163 +64,307 @@
 .eventsList {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
 }
 
+/* Empty state - with botanical illustration placeholder */
 .empty {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   height: 100%;
-  min-height: 100px;
+  min-height: 120px;
+  gap: var(--spacing-sm);
+}
+
+.empty::before {
+  content: '';
+  width: 48px;
+  height: 48px;
+  background: var(--color-accent-bg);
+  border-radius: var(--radius-leaf);
+  opacity: 0.6;
 }
 
 .emptyText {
+  font-family: var(--font-body);
   font-size: var(--font-size-base);
   color: var(--color-text-tertiary);
+  font-style: italic;
 }
 
 .footer {
-  padding: var(--spacing-md);
-  background-color: var(--color-bg-primary);
-  border-top: 1px solid var(--color-divider);
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--gradient-header);
+  border-top: 1px solid var(--color-border);
 }
 
+/* Add button - botanical accent style */
 .addButton {
   width: 100%;
   padding: var(--spacing-md);
   border: none;
-  background-color: var(--color-accent);
+  background: var(--gradient-accent);
   color: var(--color-text-inverse);
+  font-family: var(--font-body);
   font-size: var(--font-size-base);
-  font-weight: var(--font-weight-medium);
-  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: background-color var(--transition-fast);
-  min-height: 48px;
+  transition: transform var(--transition-fast),
+              box-shadow var(--transition-fast),
+              filter var(--transition-fast);
+  min-height: 52px;
+  box-shadow: var(--shadow-button);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle shine effect */
+.addButton::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(255, 255, 255, 0.15),
+    transparent
+  );
+  transition: left 0.5s ease;
+}
+
+.addButton:hover::before {
+  left: 100%;
+}
+
+.addButton:hover {
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-md);
 }
 
 .addButton:active {
-  background-color: var(--color-accent-hover);
+  transform: scale(0.98);
+  filter: brightness(0.95);
 }
 
+/* Placeholder state */
 .placeholder {
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
   flex: 1;
   padding: var(--spacing-xl);
+  gap: var(--spacing-md);
+}
+
+/* Decorative leaf icon for placeholder */
+.placeholder::before {
+  content: '';
+  width: 64px;
+  height: 64px;
+  background: var(--color-accent-bg);
+  border-radius: var(--radius-organic);
+  opacity: 0.4;
+  animation: leafSway 4s ease-in-out infinite;
+}
+
+@keyframes leafSway {
+  0%, 100% { transform: rotate(-3deg) scale(1); }
+  50% { transform: rotate(3deg) scale(1.02); }
 }
 
 .placeholderText {
-  font-size: var(--font-size-base);
+  font-family: var(--font-display);
+  font-size: var(--font-size-lg);
   color: var(--color-text-tertiary);
   text-align: center;
+  font-style: italic;
 }
 
-/* Back button */
+/* Back button - elegant link style */
 .backButton {
   background: none;
   border: none;
-  padding: 0;
+  padding: var(--spacing-xs) 0;
+  font-family: var(--font-body);
   font-size: var(--font-size-base);
   font-weight: var(--font-weight-medium);
   color: var(--color-accent);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  transition: color var(--transition-fast),
+              transform var(--transition-fast);
+}
+
+.backButton:hover {
+  color: var(--color-accent-hover);
 }
 
 .backButton:active {
-  opacity: 0.7;
+  transform: translateX(-2px);
 }
 
-/* Event details */
+/* Event details card */
 .eventDetails {
-  background-color: var(--color-bg-primary);
-  border-radius: var(--radius-md);
-  padding: var(--spacing-md);
+  background: var(--gradient-card);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-lg);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Decorative accent on card */
+.eventDetails::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 60px;
+  height: 60px;
+  background: var(--color-accent);
+  opacity: 0.04;
+  border-radius: 0 var(--radius-lg) 0 100%;
 }
 
 .eventTitle {
-  font-size: var(--font-size-lg);
+  font-family: var(--font-display);
+  font-size: var(--font-size-2xl);
   font-weight: var(--font-weight-semibold);
   color: var(--color-text-primary);
-  margin: 0 0 var(--spacing-md) 0;
+  margin: 0 0 var(--spacing-lg) 0;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
 }
 
 .detailsGrid {
   display: flex;
   flex-direction: column;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
 }
 
 .detailRow {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  padding: var(--spacing-xs) 0;
+  border-bottom: 1px solid var(--color-divider);
+}
+
+.detailRow:last-child {
+  border-bottom: none;
 }
 
 .detailRowFull {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-xs);
+  padding: var(--spacing-sm) 0;
+  border-top: 1px solid var(--color-divider);
 }
 
 .detailLabel {
+  font-family: var(--font-body);
   font-size: var(--font-size-sm);
   color: var(--color-text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
 .detailValue {
-  font-size: var(--font-size-sm);
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
   font-weight: var(--font-weight-medium);
   color: var(--color-text-primary);
 }
 
-.description {
-  font-size: var(--font-size-sm);
-  color: var(--color-text-primary);
-  margin: 0;
-  line-height: 1.5;
+.cultureValue {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
 }
 
-/* Actions */
+.cultureValue svg {
+  color: var(--color-accent);
+}
+
+.description {
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+  margin: 0;
+  line-height: 1.6;
+  padding: var(--spacing-sm);
+  background-color: var(--color-bg-secondary);
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--color-accent);
+}
+
+/* Actions - botanical styled buttons */
 .actions {
   display: flex;
-  gap: var(--spacing-sm);
+  gap: var(--spacing-md);
 }
 
 .editButton {
   flex: 1;
   padding: var(--spacing-md);
   border: none;
-  background-color: var(--color-accent);
+  background: var(--gradient-accent);
   color: var(--color-text-inverse);
+  font-family: var(--font-body);
   font-size: var(--font-size-base);
-  font-weight: var(--font-weight-medium);
-  border-radius: var(--radius-md);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: background-color var(--transition-fast);
-  min-height: 48px;
+  transition: transform var(--transition-fast),
+              box-shadow var(--transition-fast),
+              filter var(--transition-fast);
+  min-height: 52px;
+  box-shadow: var(--shadow-button);
+}
+
+.editButton:hover {
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-md);
 }
 
 .editButton:active {
-  background-color: var(--color-accent-hover);
+  transform: scale(0.98);
+  filter: brightness(0.95);
 }
 
 .deleteButton {
   flex: 1;
   padding: var(--spacing-md);
-  border: none;
+  border: 2px solid var(--color-error);
+  background: transparent;
+  color: var(--color-error);
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: transform var(--transition-fast),
+              background-color var(--transition-fast),
+              color var(--transition-fast);
+  min-height: 52px;
+}
+
+.deleteButton:hover {
   background-color: var(--color-error);
   color: var(--color-text-inverse);
-  font-size: var(--font-size-base);
-  font-weight: var(--font-weight-medium);
-  border-radius: var(--radius-md);
-  cursor: pointer;
-  transition: background-color var(--transition-fast);
-  min-height: 48px;
 }
 
 .deleteButton:active {
-  opacity: 0.8;
+  transform: scale(0.98);
 }

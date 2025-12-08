@@ -1,0 +1,58 @@
+<svg viewBox="0 0 400 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Первые проталины, обрезка кустов -->
+  <defs>
+    <linearGradient id="mar-sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#B8D4E8"/>
+      <stop offset="100%" stop-color="#D4E4F0"/>
+    </linearGradient>
+    <linearGradient id="mar-ground" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8B7355"/>
+      <stop offset="100%" stop-color="#6B5A45"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Небо -->
+  <rect width="400" height="180" fill="url(#mar-sky)"/>
+
+  <!-- Земля с проталинами -->
+  <ellipse cx="200" cy="220" rx="250" ry="100" fill="url(#mar-ground)"/>
+
+  <!-- Снежные пятна -->
+  <ellipse cx="50" cy="160" rx="40" ry="15" fill="#FFFFFF" opacity="0.7"/>
+  <ellipse cx="350" cy="155" rx="50" ry="18" fill="#FFFFFF" opacity="0.6"/>
+  <ellipse cx="180" cy="165" rx="30" ry="12" fill="#FFFFFF" opacity="0.5"/>
+
+  <!-- Куст для обрезки (до) -->
+  <path d="M70 140 Q60 100 80 80 Q90 100 100 85 Q115 100 120 140" fill="#5A6B52" opacity="0.7"/>
+  <line x1="90" y1="140" x2="90" y2="110" stroke="#6B5A4A" stroke-width="3"/>
+  <line x1="90" y1="120" x2="75" y2="100" stroke="#6B5A4A" stroke-width="2"/>
+  <line x1="90" y1="115" x2="105" y2="95" stroke="#6B5A4A" stroke-width="2"/>
+
+  <!-- Обрезанный куст (аккуратный) -->
+  <ellipse cx="200" cy="115" rx="35" ry="30" fill="#5B8A3C" opacity="0.6"/>
+  <line x1="200" y1="145" x2="200" y2="120" stroke="#6B5A4A" stroke-width="4"/>
+  <line x1="200" y1="130" x2="180" y2="115" stroke="#6B5A4A" stroke-width="2"/>
+  <line x1="200" y1="130" x2="220" y2="115" stroke="#6B5A4A" stroke-width="2"/>
+
+  <!-- Секатор рядом с кустом -->
+  <ellipse cx="245" cy="150" rx="8" ry="15" fill="#6B5A4A" transform="rotate(45 245 150)"/>
+  <ellipse cx="255" cy="145" rx="8" ry="15" fill="#5A4A3A" transform="rotate(-45 255 145)"/>
+  <rect x="258" y="155" width="25" height="6" rx="2" fill="#C75B5B" transform="rotate(20 258 155)"/>
+
+  <!-- Обрезанные ветки на земле -->
+  <line x1="130" y1="155" x2="160" y2="150" stroke="#6B5A4A" stroke-width="2"/>
+  <line x1="135" y1="160" x2="155" y2="158" stroke="#6B5A4A" stroke-width="1.5"/>
+
+  <!-- Ещё один куст -->
+  <ellipse cx="320" cy="120" rx="30" ry="28" fill="#4A7C59" opacity="0.5"/>
+  <line x1="320" y1="148" x2="320" y2="125" stroke="#6B5A4A" stroke-width="3"/>
+
+  <!-- Солнце выглядывает -->
+  <circle cx="360" cy="35" r="25" fill="#F5E0A0" opacity="0.8"/>
+  <circle cx="360" cy="35" r="18" fill="#FFE5A0"/>
+
+  <!-- Птичка -->
+  <ellipse cx="50" cy="50" rx="8" ry="6" fill="#5A6B52"/>
+  <polygon points="42,50 35,48 35,52" fill="#D4A84B"/>
+  <circle cx="55" cy="48" r="1.5" fill="#2D3A28"/>
+</svg>

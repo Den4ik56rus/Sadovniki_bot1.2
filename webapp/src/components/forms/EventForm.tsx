@@ -61,10 +61,10 @@ export function EventForm() {
     return {
       title: '',
       startDate: format(defaultDate, 'yyyy-MM-dd'),
-      startTime: '09:00',
+      startTime: '',
       endDate: '',
       endTime: '',
-      allDay: false,
+      allDay: true,
       type: 'nutrition',
       cultureCode: '',
       plotId: '',
@@ -76,15 +76,12 @@ export function EventForm() {
     control,
     handleSubmit,
     reset,
-    watch,
     formState: { errors, isValid },
   } = useForm<EventFormInput, unknown, EventFormValues>({
     resolver: zodResolver(eventFormSchema),
     defaultValues: getDefaultValues(),
     mode: 'onChange',
   });
-
-  const allDay = watch('allDay');
 
   // Reset form when opening
   useEffect(() => {
@@ -116,22 +113,16 @@ export function EventForm() {
   // Обработчик сохранения
   const onSubmit = useCallback(async (data: EventFormValues) => {
     try {
-      const startDateTime = data.allDay
-        ? `${data.startDate}T00:00:00`
-        : `${data.startDate}T${data.startTime}:00`;
-
-      const endDateTime = data.endDate
-        ? data.allDay
-          ? `${data.endDate}T23:59:59`
-          : `${data.endDate}T${data.endTime || '23:59'}:00`
-        : null;
+      // Все события — весь день
+      const startDateTime = `${data.startDate}T00:00:00`;
+      const endDateTime = data.endDate ? `${data.endDate}T23:59:59` : null;
 
       if (isEdit && editingEventId) {
         await updateEvent(editingEventId, {
           title: data.title,
           startDateTime,
           endDateTime,
-          allDay: data.allDay,
+          allDay: true,
           type: data.type,
           cultureCode: data.cultureCode,
           plotId: data.plotId,
@@ -142,7 +133,7 @@ export function EventForm() {
           title: data.title,
           startDateTime,
           endDateTime,
-          allDay: data.allDay,
+          allDay: true,
           type: data.type,
           cultureCode: data.cultureCode,
           plotId: data.plotId,
@@ -229,26 +220,9 @@ export function EventForm() {
           )}
         </div>
 
-        {/* All Day */}
-        <div className={styles.fieldRow}>
-          <label className={styles.label}>{UI_TEXT.fieldAllDay}</label>
-          <Controller
-            name="allDay"
-            control={control}
-            render={({ field }) => (
-              <input
-                type="checkbox"
-                checked={field.value}
-                onChange={field.onChange}
-                className={styles.checkbox}
-              />
-            )}
-          />
-        </div>
-
         {/* Date Range Section */}
         <div className={styles.dateSection}>
-          {/* Start Date/Time */}
+          {/* Start Date */}
           <div className={styles.dateRow}>
             <span className={styles.dateLabel}>С</span>
             <Controller
@@ -262,22 +236,9 @@ export function EventForm() {
                 />
               )}
             />
-            {!allDay && (
-              <Controller
-                name="startTime"
-                control={control}
-                render={({ field }) => (
-                  <input
-                    {...field}
-                    type="time"
-                    className={styles.timeInput}
-                  />
-                )}
-              />
-            )}
           </div>
 
-          {/* End Date/Time */}
+          {/* End Date */}
           <div className={styles.dateRow}>
             <span className={styles.dateLabel}>До</span>
             <Controller
@@ -292,19 +253,6 @@ export function EventForm() {
                 />
               )}
             />
-            {!allDay && (
-              <Controller
-                name="endTime"
-                control={control}
-                render={({ field }) => (
-                  <input
-                    {...field}
-                    type="time"
-                    className={styles.timeInput}
-                  />
-                )}
-              />
-            )}
           </div>
         </div>
 

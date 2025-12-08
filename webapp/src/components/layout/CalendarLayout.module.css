@@ -1,4 +1,4 @@
-/* CalendarLayout styles */
+/* CalendarLayout styles - Botanical Garden Container */
 
 .layout {
   display: flex;
@@ -6,6 +6,39 @@
   height: 100vh;
   height: 100dvh;
   overflow: hidden;
+  background-color: var(--color-bg-primary);
+  position: relative;
+}
+
+/* Decorative botanical corner shapes */
+.layout::before {
+  content: '';
+  position: fixed;
+  top: -50px;
+  left: -50px;
+  width: 150px;
+  height: 150px;
+  background: var(--color-accent);
+  opacity: 0.03;
+  border-radius: var(--radius-organic);
+  transform: rotate(-30deg);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.layout::after {
+  content: '';
+  position: fixed;
+  bottom: -30px;
+  right: -30px;
+  width: 120px;
+  height: 120px;
+  background: var(--color-secondary, var(--color-accent));
+  opacity: 0.04;
+  border-radius: var(--radius-leaf);
+  transform: rotate(15deg);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .main {
@@ -15,4 +48,11 @@
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
+  position: relative;
+  z-index: 1;
+  background: linear-gradient(
+    180deg,
+    var(--color-bg-secondary) 0%,
+    var(--color-bg-primary) 30%
+  );
 }

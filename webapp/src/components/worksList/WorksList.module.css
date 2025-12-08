@@ -1,0 +1,15 @@
+/* WorksList - Контейнер списка работ */
+
+.container {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+}
+
+.list {
+  padding: var(--spacing-md);
+  padding-bottom: calc(var(--spacing-xl) * 2);
+}

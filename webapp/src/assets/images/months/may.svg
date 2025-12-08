@@ -1,0 +1,84 @@
+<svg viewBox="0 0 400 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Цветение ягодников, пчёлы -->
+  <defs>
+    <linearGradient id="may-sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#87CEEB"/>
+      <stop offset="100%" stop-color="#B8E0F0"/>
+    </linearGradient>
+    <linearGradient id="may-grass" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#7CB342"/>
+      <stop offset="100%" stop-color="#558B2F"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Небо -->
+  <rect width="400" height="180" fill="url(#may-sky)"/>
+
+  <!-- Трава -->
+  <rect x="0" y="130" width="400" height="50" fill="url(#may-grass)"/>
+
+  <!-- Цветущий куст клубники 1 -->
+  <ellipse cx="80" cy="120" rx="40" ry="30" fill="#4A7C59"/>
+  <ellipse cx="75" cy="115" rx="35" ry="25" fill="#5B8A3C"/>
+  <!-- Цветочки -->
+  <circle cx="65" cy="105" r="6" fill="#FFFFFF"/>
+  <circle cx="65" cy="105" r="2" fill="#FFE066"/>
+  <circle cx="85" cy="100" r="5" fill="#FFFFFF"/>
+  <circle cx="85" cy="100" r="1.5" fill="#FFE066"/>
+  <circle cx="95" cy="110" r="6" fill="#FFFFFF"/>
+  <circle cx="95" cy="110" r="2" fill="#FFE066"/>
+  <circle cx="70" cy="118" r="5" fill="#FFFFFF"/>
+  <circle cx="70" cy="118" r="1.5" fill="#FFE066"/>
+
+  <!-- Цветущий куст малины 2 -->
+  <ellipse cx="200" cy="115" rx="45" ry="35" fill="#4A7C59"/>
+  <ellipse cx="195" cy="110" rx="40" ry="30" fill="#5B8A3C"/>
+  <!-- Цветочки -->
+  <circle cx="180" cy="100" r="6" fill="#FFB8C6"/>
+  <circle cx="180" cy="100" r="2" fill="#FFE066"/>
+  <circle cx="200" cy="95" r="7" fill="#FFC8D6"/>
+  <circle cx="200" cy="95" r="2.5" fill="#FFE066"/>
+  <circle cx="215" cy="102" r="5" fill="#FFB8C6"/>
+  <circle cx="215" cy="102" r="1.5" fill="#FFE066"/>
+  <circle cx="190" cy="115" r="6" fill="#FFD0DD"/>
+  <circle cx="190" cy="115" r="2" fill="#FFE066"/>
+
+  <!-- Цветущий куст 3 -->
+  <ellipse cx="320" cy="118" rx="38" ry="28" fill="#4A7C59"/>
+  <ellipse cx="315" cy="113" rx="33" ry="23" fill="#5B8A3C"/>
+  <!-- Цветочки -->
+  <circle cx="305" cy="105" r="5" fill="#FFFFFF"/>
+  <circle cx="305" cy="105" r="1.5" fill="#FFE066"/>
+  <circle cx="325" cy="100" r="6" fill="#FFFFFF"/>
+  <circle cx="325" cy="100" r="2" fill="#FFE066"/>
+  <circle cx="335" cy="112" r="5" fill="#FFFFFF"/>
+  <circle cx="335" cy="112" r="1.5" fill="#FFE066"/>
+
+  <!-- Пчела 1 -->
+  <ellipse cx="110" cy="70" rx="10" ry="7" fill="#FFD54F"/>
+  <line x1="105" y1="70" x2="115" y2="70" stroke="#2D3A28" stroke-width="2"/>
+  <line x1="103" y1="68" x2="117" y2="72" stroke="#2D3A28" stroke-width="1.5"/>
+  <circle cx="118" cy="68" r="3" fill="#2D3A28"/>
+  <ellipse cx="108" cy="63" rx="6" ry="4" fill="#FFFFFF" opacity="0.7" transform="rotate(-20 108 63)"/>
+  <ellipse cx="112" cy="64" rx="6" ry="4" fill="#FFFFFF" opacity="0.7" transform="rotate(20 112 64)"/>
+
+  <!-- Пчела 2 -->
+  <ellipse cx="240" cy="55" rx="8" ry="6" fill="#FFD54F"/>
+  <line x1="236" y1="55" x2="244" y2="55" stroke="#2D3A28" stroke-width="1.5"/>
+  <line x1="234" y1="53" x2="246" y2="57" stroke="#2D3A28" stroke-width="1"/>
+  <circle cx="247" cy="53" r="2.5" fill="#2D3A28"/>
+  <ellipse cx="238" cy="50" rx="5" ry="3" fill="#FFFFFF" opacity="0.7" transform="rotate(-20 238 50)"/>
+  <ellipse cx="242" cy="51" rx="5" ry="3" fill="#FFFFFF" opacity="0.7" transform="rotate(20 242 51)"/>
+
+  <!-- Пчела 3 -->
+  <ellipse cx="350" cy="65" rx="9" ry="6.5" fill="#FFD54F"/>
+  <line x1="345" y1="65" x2="355" y2="65" stroke="#2D3A28" stroke-width="1.5"/>
+  <line x1="343" y1="63" x2="357" y2="67" stroke="#2D3A28" stroke-width="1"/>
+  <circle cx="358" cy="63" r="2.5" fill="#2D3A28"/>
+  <ellipse cx="348" cy="60" rx="5" ry="3.5" fill="#FFFFFF" opacity="0.7" transform="rotate(-20 348 60)"/>
+  <ellipse cx="352" cy="61" rx="5" ry="3.5" fill="#FFFFFF" opacity="0.7" transform="rotate(20 352 61)"/>
+
+  <!-- Солнце -->
+  <circle cx="360" cy="30" r="20" fill="#FFE082"/>
+  <circle cx="360" cy="30" r="14" fill="#FFEB99"/>
+</svg>

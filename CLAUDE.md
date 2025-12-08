@@ -33,7 +33,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
    - Проверить логику: кликнуть по затронутым элементам, заполнить формы
    - При ошибках: сделать `browser_take_screenshot` для отладки
 9. Псоле комита на гит хаб обязательно обновить версию приложения и дабавить одну десятую к номеру версии (это требуется для того чтобы телеграм что это новоая версия)
-10. сам пуш в гет хаб не делай только когда об этом просят напрямую
+10. сам не пуш в гет хаб  делай только когда об этом просят напрямую
 
 ## Quick Commands
 
@@ -98,6 +98,15 @@ docker-compose up -d db
 - **Клики:** `browser_click` с указанием ref элемента
 - **Скриншоты:** `browser_take_screenshot` для отладки
 - **Проверять после:** любых изменений в `webapp/src/`
+
+### Webapp Design System
+- **Дизайн-система:** [webapp/DESIGN_SYSTEM.md](webapp/DESIGN_SYSTEM.md) — полное описание стиля
+- **Концепция:** "Органический ботанический сад" — природные тона, органические формы
+- **Шрифты:** Cormorant Garamond (заголовки) + Source Sans 3 (текст)
+- **Основные цвета:** зелёный #4A7C59, ягодный #C75B5B, кремовый #FDFBF7
+- **Уникальные формы:** `--radius-leaf` для выбранных элементов
+- **CSS переменные:** `webapp/src/styles/variables.css`
+- **Темы:** `webapp/src/styles/themes/{light,dark}.css`
 
 ## Technology Notes
 

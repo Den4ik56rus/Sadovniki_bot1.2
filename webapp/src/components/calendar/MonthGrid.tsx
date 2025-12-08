@@ -3,41 +3,22 @@
  * Grid view с многодневными событиями (стиль Apple Calendar)
  */
 
-import { useRef, useMemo, useEffect, useState, useCallback } from 'react';
+import { useRef, useMemo, useEffect, useState } from 'react';
 import { useCalendarStore } from '@store/calendarStore';
 import { useUIStore } from '@store/uiStore';
-import { useCalendarDrag, useFilteredEvents, useSwipeNavigation, hapticImpact } from '@hooks/index';
+import { useCalendarDrag, useFilteredEvents } from '@hooks/index';
 import { generateCalendarGrid } from '@utils/dateUtils';
 import { WEEKDAYS_SHORT } from '@constants/ui';
 import { WeekRow } from './WeekRow';
+import { MonthScroller } from './MonthScroller';
 import styles from './MonthGrid.module.css';
 
 export function MonthGrid() {
-  const { currentDate, slideDirection, clearSlideDirection, goToNextMonth, goToPrevMonth } = useCalendarStore();
+  const { currentDate, slideDirection, clearSlideDirection } = useCalendarStore();
   const filteredEvents = useFilteredEvents();
   const isCalendarExpanded = useUIStore((state) => state.isCalendarExpanded);
   const weeksContainerRef = useRef<HTMLDivElement>(null);
   const [isAnimating, setIsAnimating] = useState(false);
-
-  // Обработчики свайпа
-  const handleSwipeLeft = useCallback(() => {
-    if (isAnimating) return;
-    hapticImpact('light');
-    goToNextMonth();
-  }, [isAnimating, goToNextMonth]);
-
-  const handleSwipeRight = useCallback(() => {
-    if (isAnimating) return;
-    hapticImpact('light');
-    goToPrevMonth();
-  }, [isAnimating, goToPrevMonth]);
-
-  const swipeHandlers = useSwipeNavigation({
-    onSwipeLeft: handleSwipeLeft,
-    onSwipeRight: handleSwipeRight,
-    threshold: 50,
-    enabled: isCalendarExpanded && !isAnimating,
-  });
 
   // Запускаем анимацию при изменении направления
   useEffect(() => {
@@ -75,7 +56,6 @@ export function MonthGrid() {
   return (
     <div
       className={`${styles.container} ${isCalendarExpanded ? styles.expanded : styles.collapsed}`}
-      {...swipeHandlers}
     >
       <div className={styles.content}>
         {/* Заголовок с днями недели */}
@@ -108,6 +88,9 @@ export function MonthGrid() {
             />
           ))}
         </div>
+
+        {/* Колёсико выбора месяца */}
+        <MonthScroller />
       </div>
     </div>
   );

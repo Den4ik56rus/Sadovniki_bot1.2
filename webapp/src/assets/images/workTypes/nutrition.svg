@@ -1,0 +1,45 @@
+<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Питание - внесение удобрений -->
+  <defs>
+    <linearGradient id="nutr-soil" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8D6E63"/>
+      <stop offset="100%" stop-color="#6D4C41"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Фон круглый -->
+  <circle cx="40" cy="40" r="38" fill="#E8F5E9"/>
+
+  <!-- Земля -->
+  <ellipse cx="40" cy="68" rx="35" ry="12" fill="url(#nutr-soil)"/>
+
+  <!-- Растение -->
+  <rect x="38" y="45" width="4" height="23" rx="1" fill="#5D4037"/>
+  <ellipse cx="33" cy="42" rx="7" ry="10" fill="#4CAF50" transform="rotate(-20 33 42)"/>
+  <ellipse cx="47" cy="43" rx="7" ry="10" fill="#66BB6A" transform="rotate(20 47 43)"/>
+  <ellipse cx="40" cy="38" rx="5" ry="8" fill="#81C784"/>
+
+  <!-- Мешок удобрений -->
+  <rect x="8" y="45" width="22" height="28" rx="3" fill="#A5D6A7"/>
+  <rect x="8" y="45" width="22" height="10" rx="3" fill="#66BB6A"/>
+  <text x="19" y="66" font-size="8" fill="#2E7D32" text-anchor="middle" font-family="sans-serif" font-weight="bold">NPK</text>
+
+  <!-- Гранулы удобрений рассыпаны -->
+  <circle cx="35" cy="62" r="2" fill="#8BC34A"/>
+  <circle cx="42" cy="64" r="2" fill="#7CB342"/>
+  <circle cx="48" cy="61" r="2" fill="#8BC34A"/>
+  <circle cx="55" cy="63" r="2" fill="#7CB342"/>
+  <circle cx="38" cy="66" r="1.5" fill="#9CCC65"/>
+  <circle cx="52" cy="66" r="1.5" fill="#9CCC65"/>
+  <circle cx="60" cy="60" r="2" fill="#8BC34A"/>
+  <circle cx="45" cy="59" r="1.5" fill="#AED581"/>
+
+  <!-- Рука сыплет удобрения -->
+  <ellipse cx="58" cy="42" rx="12" ry="8" fill="#FFCCBC" transform="rotate(15 58 42)"/>
+  <path d="M62 48 Q65 52 63 56" stroke="#FFCCBC" stroke-width="6" fill="none" stroke-linecap="round"/>
+
+  <!-- Капли/гранулы падают -->
+  <circle cx="64" cy="52" r="1.5" fill="#7CB342"/>
+  <circle cx="60" cy="55" r="1.5" fill="#8BC34A"/>
+  <circle cx="67" cy="56" r="1.5" fill="#9CCC65"/>
+</svg>

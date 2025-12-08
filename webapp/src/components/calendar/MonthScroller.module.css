@@ -1,0 +1,84 @@
+/* MonthScroller - iOS-style horizontal month picker */
+
+.container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 44px;
+  background-color: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-divider);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Градиентные маски по краям для 3D эффекта */
+.container::before,
+.container::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 80px;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.container::before {
+  left: 0;
+  background: linear-gradient(to right, var(--color-bg-secondary), transparent);
+}
+
+.container::after {
+  right: 0;
+  background: linear-gradient(to left, var(--color-bg-secondary), transparent);
+}
+
+/* Скроллер */
+.scroller {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x mandatory;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  height: 100%;
+  padding: 0 calc(50% - 60px);
+  touch-action: pan-x;
+}
+
+.scroller::-webkit-scrollbar {
+  display: none;
+}
+
+/* Элемент месяца */
+.monthItem {
+  scroll-snap-align: center;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 120px;
+  height: 100%;
+  font-size: 13px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  transition: transform 0.15s ease-out, opacity 0.15s ease-out, color 0.15s ease-out;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* Активный (центральный) месяц */
+.monthItem.active {
+  color: var(--color-text-primary);
+  font-weight: var(--font-weight-semibold);
+  font-size: 16px;
+  transform: scale(1.1);
+}
+
+/* Соседние элементы слегка уменьшены */
+.monthItem:not(.active) {
+  opacity: 0.5;
+  transform: scale(0.85);
+}

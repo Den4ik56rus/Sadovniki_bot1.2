@@ -1,0 +1,36 @@
+<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Посадка - руки сажают саженец -->
+  <defs>
+    <linearGradient id="plant-soil" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8D6E63"/>
+      <stop offset="100%" stop-color="#6D4C41"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Фон круглый -->
+  <circle cx="40" cy="40" r="38" fill="#E3F2FD"/>
+
+  <!-- Земля/ямка -->
+  <ellipse cx="40" cy="60" rx="25" ry="10" fill="url(#plant-soil)"/>
+  <ellipse cx="40" cy="58" rx="18" ry="6" fill="#5D4037"/>
+
+  <!-- Саженец -->
+  <rect x="38" y="35" width="4" height="25" rx="1" fill="#6D4C41"/>
+  <!-- Листики -->
+  <ellipse cx="33" cy="32" rx="8" ry="12" fill="#4CAF50" transform="rotate(-25 33 32)"/>
+  <ellipse cx="47" cy="33" rx="8" ry="12" fill="#66BB6A" transform="rotate(25 47 33)"/>
+  <ellipse cx="40" cy="28" rx="6" ry="10" fill="#81C784"/>
+
+  <!-- Рука слева -->
+  <ellipse cx="18" cy="50" rx="10" ry="7" fill="#FFCCBC" transform="rotate(-20 18 50)"/>
+  <rect x="5" y="48" width="15" height="8" rx="3" fill="#FFCCBC" transform="rotate(-10 5 48)"/>
+
+  <!-- Рука справа -->
+  <ellipse cx="62" cy="50" rx="10" ry="7" fill="#FFCCBC" transform="rotate(20 62 50)"/>
+  <rect x="60" y="48" width="15" height="8" rx="3" fill="#FFCCBC" transform="rotate(10 60 48)"/>
+
+  <!-- Корешки саженца -->
+  <path d="M38 58 Q35 65 32 68" stroke="#A1887F" stroke-width="1.5" fill="none"/>
+  <path d="M40 60 Q40 67 40 70" stroke="#A1887F" stroke-width="1.5" fill="none"/>
+  <path d="M42 58 Q45 65 48 68" stroke="#A1887F" stroke-width="1.5" fill="none"/>
+</svg>

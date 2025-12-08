@@ -1,0 +1,45 @@
+<svg viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Почва - мульчирование, рыхление -->
+  <defs>
+    <linearGradient id="soil-earth" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#8D6E63"/>
+      <stop offset="100%" stop-color="#5D4037"/>
+    </linearGradient>
+    <linearGradient id="soil-bg" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#EFEBE9"/>
+      <stop offset="100%" stop-color="#D7CCC8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Фон круглый -->
+  <circle cx="40" cy="40" r="38" fill="url(#soil-bg)"/>
+
+  <!-- Земля -->
+  <rect x="5" y="50" width="70" height="28" rx="3" fill="url(#soil-earth)"/>
+
+  <!-- Борозды рыхления -->
+  <path d="M10 55 Q20 52 30 55 Q40 58 50 55 Q60 52 70 55" stroke="#4E342E" stroke-width="2" fill="none"/>
+  <path d="M10 62 Q20 59 30 62 Q40 65 50 62 Q60 59 70 62" stroke="#4E342E" stroke-width="2" fill="none"/>
+  <path d="M10 69 Q20 66 30 69 Q40 72 50 69 Q60 66 70 69" stroke="#4E342E" stroke-width="2" fill="none"/>
+
+  <!-- Мульча (опилки/солома) -->
+  <ellipse cx="18" cy="54" rx="6" ry="2" fill="#BCAAA4" transform="rotate(-10 18 54)"/>
+  <ellipse cx="35" cy="56" rx="7" ry="2" fill="#A1887F" transform="rotate(5 35 56)"/>
+  <ellipse cx="55" cy="53" rx="6" ry="2" fill="#BCAAA4" transform="rotate(-8 55 53)"/>
+  <ellipse cx="25" cy="61" rx="5" ry="2" fill="#A1887F" transform="rotate(10 25 61)"/>
+  <ellipse cx="48" cy="60" rx="6" ry="2" fill="#BCAAA4" transform="rotate(-5 48 60)"/>
+  <ellipse cx="65" cy="62" rx="5" ry="2" fill="#A1887F" transform="rotate(8 65 62)"/>
+
+  <!-- Тяпка/мотыга -->
+  <rect x="55" y="15" width="5" height="40" rx="2" fill="#8D6E63"/>
+  <path d="M48 12 Q60 8 72 12 L68 22 Q60 18 52 22 Z" fill="#78909C"/>
+  <rect x="52" y="18" width="16" height="4" rx="1" fill="#607D8B"/>
+
+  <!-- Маленький росток -->
+  <path d="M25 50 L25 42" stroke="#5D4037" stroke-width="2"/>
+  <ellipse cx="22" cy="40" rx="5" ry="7" fill="#66BB6A" transform="rotate(-15 22 40)"/>
+  <ellipse cx="28" cy="41" rx="5" ry="7" fill="#81C784" transform="rotate(15 28 41)"/>
+
+  <!-- Червячок (для плодородия) -->
+  <path d="M38 65 Q42 62 45 65 Q48 68 52 65" stroke="#E91E63" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+</svg>

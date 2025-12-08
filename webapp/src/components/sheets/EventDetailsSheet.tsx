@@ -12,7 +12,7 @@ import { useEventsStore } from '@store/eventsStore';
 import { useTelegramBackButton } from '@hooks/useTelegramBackButton';
 import { useTelegramHaptic } from '@hooks/useTelegramHaptic';
 import { EVENT_TYPES } from '@constants/eventTypes';
-import { CULTURES } from '@constants/cultures';
+import { getCultureIconFromCode, getCultureTypeFromCode, getCultureConfig } from '@constants/plantingCultures';
 import { UI_TEXT } from '@constants/ui';
 import styles from './EventDetailsSheet.module.css';
 
@@ -53,7 +53,9 @@ export function EventDetailsSheet() {
   if (!event) return null;
 
   const typeInfo = EVENT_TYPES[event.type];
-  const cultureInfo = event.cultureCode ? CULTURES[event.cultureCode] : null;
+  const CultureIcon = event.cultureCode ? getCultureIconFromCode(event.cultureCode) : null;
+  const cultureType = event.cultureCode ? getCultureTypeFromCode(event.cultureCode) : null;
+  const cultureConfig = cultureType ? getCultureConfig(cultureType) : null;
 
   // Форматируем дату
   const startDate = parseLocalDateTime(event.startDateTime);
@@ -101,11 +103,12 @@ export function EventDetailsSheet() {
               </span>
             </div>
 
-            {cultureInfo && (
+            {CultureIcon && cultureConfig && (
               <div className={styles.row}>
                 <span className={styles.label}>Культура</span>
-                <span className={styles.value}>
-                  {cultureInfo.icon} {cultureInfo.label}
+                <span className={`${styles.value} ${styles.cultureValue}`}>
+                  <CultureIcon width={20} height={20} />
+                  {cultureConfig.label}
                 </span>
               </div>
             )}

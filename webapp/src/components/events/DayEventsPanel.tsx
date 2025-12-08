@@ -12,7 +12,7 @@ import { useEventsStore } from '@store/eventsStore';
 import { useUIStore } from '@store/uiStore';
 import { useTelegramHaptic, useFilteredEvents } from '@hooks/index';
 import { EVENT_TYPES } from '@constants/eventTypes';
-import { CULTURES } from '@constants/cultures';
+import { getCultureIconFromCode, getCultureTypeFromCode, getCultureConfig } from '@constants/plantingCultures';
 import { UI_TEXT } from '@constants/ui';
 import { EventCard } from './EventCard';
 import styles from './DayEventsPanel.module.css';
@@ -86,7 +86,9 @@ export function DayEventsPanel() {
   // Если выбрано событие - показываем его детали
   if (selectedEvent) {
     const typeInfo = EVENT_TYPES[selectedEvent.type];
-    const cultureInfo = selectedEvent.cultureCode ? CULTURES[selectedEvent.cultureCode] : null;
+    const CultureIcon = selectedEvent.cultureCode ? getCultureIconFromCode(selectedEvent.cultureCode) : null;
+    const cultureType = selectedEvent.cultureCode ? getCultureTypeFromCode(selectedEvent.cultureCode) : null;
+    const cultureConfig = cultureType ? getCultureConfig(cultureType) : null;
     const startDate = parseLocalDateTime(selectedEvent.startDateTime);
     const endDate = selectedEvent.endDateTime ? parseLocalDateTime(selectedEvent.endDateTime) : null;
     const startDateStr = format(startDate, 'd MMMM', { locale: ru });
@@ -131,11 +133,12 @@ export function DayEventsPanel() {
                 </span>
               </div>
 
-              {cultureInfo && (
+              {CultureIcon && cultureConfig && (
                 <div className={styles.detailRow}>
                   <span className={styles.detailLabel}>Культура</span>
-                  <span className={styles.detailValue}>
-                    {cultureInfo.icon} {cultureInfo.label}
+                  <span className={`${styles.detailValue} ${styles.cultureValue}`}>
+                    <CultureIcon width={20} height={20} />
+                    {cultureConfig.label}
                   </span>
                 </div>
               )}

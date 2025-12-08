@@ -172,3 +172,44 @@ export function getCultureIcon(type: CultureType): string {
 export function getCultureIconComponent(type: CultureType): FunctionComponent<SVGProps<SVGSVGElement>> {
   return CultureIconComponents[type];
 }
+
+/**
+ * Получить CultureType из cultureCode
+ * Обратный маппинг: "клубника ремонтантная" -> "strawberry"
+ */
+export function getCultureTypeFromCode(cultureCode: string): CultureType | null {
+  const cultureMap: Record<string, CultureType> = {
+    'клубника': 'strawberry',
+    'малина': 'raspberry',
+    'ежевика': 'blackberry',
+    'смородина': 'currant',
+    'голубика': 'blueberry',
+    'жимолость': 'honeysuckle',
+    'крыжовник': 'gooseberry',
+  };
+
+  // Проверяем полное совпадение
+  if (cultureMap[cultureCode]) {
+    return cultureMap[cultureCode];
+  }
+
+  // Проверяем, начинается ли с названия культуры (для "клубника ремонтантная" и т.д.)
+  for (const [name, type] of Object.entries(cultureMap)) {
+    if (cultureCode.startsWith(name)) {
+      return type;
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Получить SVG компонент иконки по cultureCode
+ */
+export function getCultureIconFromCode(cultureCode: string): FunctionComponent<SVGProps<SVGSVGElement>> | null {
+  const cultureType = getCultureTypeFromCode(cultureCode);
+  if (cultureType) {
+    return CultureIconComponents[cultureType];
+  }
+  return null;
+}

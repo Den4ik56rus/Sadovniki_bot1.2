@@ -1,0 +1,70 @@
+<svg viewBox="0 0 400 180" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Осенняя посадка, мульчирование -->
+  <defs>
+    <linearGradient id="sep-sky" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#90A4AE"/>
+      <stop offset="100%" stop-color="#B0BEC5"/>
+    </linearGradient>
+    <linearGradient id="sep-ground" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#795548"/>
+      <stop offset="100%" stop-color="#5D4037"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Небо -->
+  <rect width="400" height="180" fill="url(#sep-sky)"/>
+
+  <!-- Земля -->
+  <rect x="0" y="120" width="400" height="60" fill="url(#sep-ground)"/>
+
+  <!-- Мульча (опилки/солома) на грядке -->
+  <rect x="20" y="125" width="120" height="35" rx="3" fill="#D7CCC8" opacity="0.8"/>
+  <ellipse cx="40" cy="140" rx="8" ry="3" fill="#BCAAA4" transform="rotate(-10 40 140)"/>
+  <ellipse cx="60" cy="135" rx="10" ry="3" fill="#A1887F" transform="rotate(5 60 135)"/>
+  <ellipse cx="85" cy="142" rx="9" ry="3" fill="#BCAAA4" transform="rotate(-5 85 142)"/>
+  <ellipse cx="110" cy="138" rx="8" ry="3" fill="#A1887F" transform="rotate(10 110 138)"/>
+  <ellipse cx="50" cy="148" rx="10" ry="3" fill="#BCAAA4" transform="rotate(-8 50 148)"/>
+  <ellipse cx="95" cy="150" rx="9" ry="3" fill="#A1887F" transform="rotate(3 95 150)"/>
+
+  <!-- Саженец в мульче -->
+  <path d="M80 125 L80 100" stroke="#5D4037" stroke-width="4"/>
+  <ellipse cx="72" cy="95" rx="10" ry="14" fill="#689F38" transform="rotate(-15 72 95)"/>
+  <ellipse cx="88" cy="97" rx="10" ry="14" fill="#558B2F" transform="rotate(15 88 97)"/>
+  <ellipse cx="80" cy="90" rx="8" ry="12" fill="#7CB342"/>
+
+  <!-- Тачка с саженцами -->
+  <ellipse cx="220" cy="145" rx="35" ry="20" fill="#8D6E63"/>
+  <rect x="185" y="130" width="70" height="20" rx="5" fill="#A1887F"/>
+  <circle cx="190" cy="155" r="12" fill="#5D4037"/>
+  <circle cx="190" cy="155" r="8" fill="#6D4C41"/>
+  <circle cx="250" cy="155" r="12" fill="#5D4037"/>
+  <circle cx="250" cy="155" r="8" fill="#6D4C41"/>
+  <!-- Ручка тачки -->
+  <rect x="255" y="125" width="50" height="5" rx="2" fill="#6D4C41"/>
+  <!-- Саженцы в тачке -->
+  <path d="M200 130 L200 115" stroke="#5D4037" stroke-width="2"/>
+  <ellipse cx="197" cy="110" rx="6" ry="8" fill="#7CB342"/>
+  <ellipse cx="203" cy="112" rx="6" ry="8" fill="#689F38"/>
+  <path d="M225 130 L225 112" stroke="#5D4037" stroke-width="2"/>
+  <ellipse cx="222" cy="107" rx="7" ry="9" fill="#8BC34A"/>
+  <ellipse cx="228" cy="109" rx="7" ry="9" fill="#7CB342"/>
+
+  <!-- Куст (уже посаженный) -->
+  <ellipse cx="340" cy="115" rx="35" ry="28" fill="#689F38"/>
+  <ellipse cx="335" cy="110" rx="30" ry="23" fill="#7CB342"/>
+
+  <!-- Падающие листья -->
+  <ellipse cx="50" cy="50" rx="8" ry="5" fill="#FF8F00" transform="rotate(30 50 50)"/>
+  <ellipse cx="150" cy="40" rx="7" ry="4" fill="#F57C00" transform="rotate(-20 150 40)"/>
+  <ellipse cx="280" cy="55" rx="8" ry="5" fill="#EF6C00" transform="rotate(45 280 55)"/>
+  <ellipse cx="350" cy="45" rx="6" ry="4" fill="#FF8F00" transform="rotate(-35 350 45)"/>
+  <ellipse cx="100" cy="70" rx="7" ry="4" fill="#E65100" transform="rotate(15 100 70)"/>
+
+  <!-- Лопата воткнута в землю -->
+  <rect x="165" y="90" width="5" height="50" rx="2" fill="#8D6E63"/>
+  <path d="M155 88 Q167 70 180 88 L177 100 Q167 95 158 100 Z" fill="#78909C"/>
+
+  <!-- Облака -->
+  <ellipse cx="80" cy="30" rx="30" ry="15" fill="#CFD8DC" opacity="0.7"/>
+  <ellipse cx="105" cy="25" rx="25" ry="12" fill="#CFD8DC" opacity="0.7"/>
+</svg>

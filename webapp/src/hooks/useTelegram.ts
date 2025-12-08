@@ -24,6 +24,13 @@ export function useTelegram() {
     // Расширяем на весь экран
     tg.expand();
 
+    // Отключаем вертикальные свайпы для сворачивания
+    // (позволяет корректно скроллить список работ)
+    if (tg.disableVerticalSwipes) {
+      tg.disableVerticalSwipes();
+      console.log('[Telegram] Vertical swipes disabled');
+    }
+
     // Устанавливаем начальную тему
     setTheme(tg.colorScheme || 'light');
 

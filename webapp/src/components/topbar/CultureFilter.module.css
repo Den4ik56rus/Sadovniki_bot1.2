@@ -1,0 +1,177 @@
+/* CultureFilter - Dropdown фильтра по культурам */
+
+.container {
+  position: relative;
+}
+
+/* Кнопка фильтра - компактная pill */
+.filterButton {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border: none;
+  background: var(--color-bg-tertiary);
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: background-color var(--transition-fast),
+              transform var(--transition-fast);
+  max-width: 140px;
+}
+
+.filterButton:hover {
+  background-color: var(--color-accent-bg);
+}
+
+.filterButton:active {
+  transform: scale(0.97);
+}
+
+.filterButton.active {
+  background-color: var(--color-accent-bg);
+}
+
+.buttonIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.buttonIcon svg {
+  width: 100%;
+  height: 100%;
+}
+
+.buttonText {
+  font-family: var(--font-body);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  color: var(--color-text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 12px;
+  height: 12px;
+  color: var(--color-text-tertiary);
+  transition: transform var(--transition-normal);
+  flex-shrink: 0;
+}
+
+.chevronUp {
+  transform: rotate(180deg);
+}
+
+/* Dropdown меню */
+.dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  min-width: 200px;
+  max-width: 280px;
+  max-height: 300px;
+  overflow-y: auto;
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-dropdown);
+  border: 1px solid var(--color-divider);
+  z-index: var(--z-dropdown);
+  padding: var(--spacing-xs);
+  animation: dropdownFadeIn 0.15s ease-out;
+}
+
+@keyframes dropdownFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Опция в dropdown */
+.option {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  width: 100%;
+  padding: var(--spacing-sm) var(--spacing-md);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color var(--transition-fast);
+}
+
+.option:hover {
+  background-color: var(--color-bg-tertiary);
+}
+
+.option.selected {
+  background-color: var(--color-accent-bg);
+}
+
+.optionIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+.optionIcon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.optionLabel {
+  flex: 1;
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.option.selected .optionLabel {
+  font-weight: var(--font-weight-medium);
+  color: var(--color-accent);
+}
+
+/* Галочка выбора */
+.option svg:last-child {
+  color: var(--color-accent);
+  flex-shrink: 0;
+}
+
+/* Разделитель */
+.divider {
+  height: 1px;
+  background: var(--color-divider);
+  margin: var(--spacing-xs) var(--spacing-sm);
+}
+
+/* Подсказка когда нет посадок */
+.emptyHint {
+  padding: var(--spacing-md);
+  text-align: center;
+  font-size: var(--font-size-sm);
+  color: var(--color-text-tertiary);
+  line-height: 1.4;
+}

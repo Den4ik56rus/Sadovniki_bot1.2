@@ -1,4 +1,4 @@
-/* Global Styles */
+/* Global Styles - Botanical Garden Theme */
 
 @import './variables.css';
 @import './reset.css';
@@ -9,9 +9,45 @@
 #root {
   background-color: var(--color-bg-primary);
   color: var(--color-text-primary);
+  font-family: var(--font-body);
   min-height: 100%;
   display: flex;
   flex-direction: column;
+  position: relative;
+}
+
+/* Subtle botanical pattern overlay */
+#root::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-image: var(--pattern-leaves);
+  opacity: var(--pattern-opacity, 0.4);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ensure content is above pattern */
+#root > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Typography base */
+body {
+  font-family: var(--font-body);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Display headings use serif font */
+h1, h2, .display-text {
+  font-family: var(--font-display);
+  font-weight: var(--font-weight-semibold);
+  letter-spacing: -0.02em;
 }
 
 /* Utility classes */
@@ -56,6 +92,7 @@
 .text-center { text-align: center; }
 .text-secondary { color: var(--color-text-secondary); }
 .text-tertiary { color: var(--color-text-tertiary); }
+.text-accent { color: var(--color-text-accent); }
 
 /* Truncate text */
 .truncate {
@@ -73,7 +110,7 @@
   justify-content: center;
 }
 
-/* Ripple effect for touch feedback */
+/* Ripple effect for touch feedback - organic version */
 .ripple {
   position: relative;
   overflow: hidden;
@@ -83,14 +120,15 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: currentColor;
+  background: var(--color-accent);
   opacity: 0;
   transition: opacity var(--transition-fast);
   pointer-events: none;
+  border-radius: inherit;
 }
 
 .ripple:active::after {
-  opacity: 0.1;
+  opacity: 0.08;
 }
 
 /* Visually hidden (accessibility) */
@@ -106,30 +144,87 @@
   border: 0;
 }
 
-/* Animation classes */
+/* Animation classes - organic, natural motion */
 @keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
 @keyframes slideUp {
-  from { transform: translateY(100%); }
-  to { transform: translateY(0); }
+  from {
+    transform: translateY(100%);
+    opacity: 0.5;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
 }
 
 @keyframes slideDown {
-  from { transform: translateY(0); }
-  to { transform: translateY(100%); }
+  from {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateY(100%);
+    opacity: 0.5;
+  }
 }
 
 @keyframes slideInLeft {
-  from { transform: translateX(-100%); }
-  to { transform: translateX(0); }
+  from {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
 }
 
 @keyframes slideOutLeft {
-  from { transform: translateX(0); }
-  to { transform: translateX(-100%); }
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(-100%);
+    opacity: 0;
+  }
+}
+
+@keyframes grow {
+  from {
+    transform: scale(0.95);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes leafSway {
+  0%, 100% { transform: rotate(-1deg); }
+  50% { transform: rotate(1deg); }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.7;
+    transform: scale(0.98);
+  }
 }
 
 .animate-fade-in {
@@ -138,4 +233,100 @@
 
 .animate-slide-up {
   animation: slideUp var(--transition-normal);
+}
+
+.animate-grow {
+  animation: grow var(--transition-normal) ease-out;
+}
+
+/* Botanical card style - shared across components */
+.botanical-card {
+  background: var(--gradient-card);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  border: 1px solid var(--color-border);
+  transition: transform var(--transition-fast),
+              box-shadow var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.botanical-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-border-accent);
+}
+
+.botanical-card:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: var(--shadow-sm);
+}
+
+/* Accent button style */
+.botanical-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: var(--gradient-accent);
+  color: var(--color-text-inverse);
+  font-family: var(--font-body);
+  font-size: var(--font-size-base);
+  font-weight: var(--font-weight-semibold);
+  border: none;
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  box-shadow: var(--shadow-button);
+  transition: transform var(--transition-fast),
+              box-shadow var(--transition-fast),
+              filter var(--transition-fast);
+  min-height: 48px;
+}
+
+.botanical-button:hover {
+  filter: brightness(1.05);
+  box-shadow: var(--shadow-md);
+}
+
+.botanical-button:active {
+  transform: scale(0.98);
+  filter: brightness(0.95);
+}
+
+/* Decorative leaf accent */
+.leaf-accent {
+  position: relative;
+}
+
+.leaf-accent::before {
+  content: '';
+  position: absolute;
+  width: 20px;
+  height: 20px;
+  background: var(--color-accent);
+  opacity: 0.15;
+  border-radius: var(--radius-leaf);
+  top: -5px;
+  right: -5px;
+  transform: rotate(45deg);
+}
+
+/* Scrollbar styling - organic feel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--color-bg-secondary);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  transition: background var(--transition-fast);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-text-tertiary);
 }

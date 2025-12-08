@@ -6,10 +6,11 @@
  */
 
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
 import type { UserPlanting, Region, CreatePlantingData, UpdatePlantingData } from '@/types';
 import { getCultureCode, getPlantingLabel } from '@constants/plantingCultures';
 import { api } from '@services/api';
+// ВРЕМЕННО: демо-посадки - удалить после тестирования!
+import { getDemoPlantings } from '@/data/demoPlantings';
 
 // Полифил для crypto.randomUUID
 function generateUUID(): string {
@@ -154,12 +155,16 @@ const createApiStore = (
   getPlantingLabelForPlanting: (planting) => getPlantingLabel(planting),
 });
 
+// ВРЕМЕННО: кэшируем демо-посадки - удалить после тестирования!
+const DEMO_PLANTINGS = getDemoPlantings();
+
 // Store для локальной разработки (localStorage)
 const createLocalStore = (
   set: (fn: (state: PlantingsStore) => Partial<PlantingsStore>) => void,
   get: () => PlantingsStore
 ): PlantingsStore => ({
-  plantings: [],
+  // ВРЕМЕННО: используем демо-посадки - удалить после тестирования!
+  plantings: DEMO_PLANTINGS,
   region: null,
   isLoading: false,
   error: null,
@@ -226,18 +231,10 @@ const shouldUseApi = () => {
   return api.isTelegramWebApp() && api.isApiConfigured();
 };
 
-// Создаём store с условной персистенцией
+// ВРЕМЕННО: отключаем persist и используем демо-посадки напрямую
+// Удалить после тестирования и вернуть persist!
 export const usePlantingsStore = create<PlantingsStore>()(
   shouldUseApi()
     ? (set, get) => createApiStore(set, get)
-    : persist(
-        (set, get) => createLocalStore(set, get),
-        {
-          name: 'sadovniki-plantings',
-          version: 1,
-          migrate: (persistedState: unknown, _version: number) => {
-            return persistedState as PlantingsStore;
-          },
-        }
-      )
+    : (set, get) => createLocalStore(set, get)
 );

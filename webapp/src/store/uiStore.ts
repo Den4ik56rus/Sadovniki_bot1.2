@@ -74,7 +74,7 @@ export const useUIStore = create<UIStore>((set) => ({
   isSideMenuOpen: false,
   isEventFormOpen: false,
   isEventDetailsOpen: false,
-  isCalendarExpanded: true,
+  isCalendarExpanded: false, // ВРЕМЕННО: false для демо (показывать WorksList первым)
   isSearchOpen: false,
   editingEventId: null,
   viewingEventId: null,

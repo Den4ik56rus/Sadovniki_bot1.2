@@ -315,17 +315,23 @@ function EventBar({
       {timeLabel && <span className={styles.eventTime}>{timeLabel}</span>}
       <span className={styles.eventTitle}>{event.title}</span>
 
-      {/* Resize handles */}
+      {/* Resize handles - показываем только на реальных концах события */}
       {isSelected && !isDragging && (
         <>
-          <div
-            className={`${styles.resizeHandle} ${styles.resizeHandleStart}`}
-            onPointerDown={(e) => onResizePointerDown(event, 'start', e)}
-          />
-          <div
-            className={`${styles.resizeHandle} ${styles.resizeHandleEnd}`}
-            onPointerDown={(e) => onResizePointerDown(event, 'end', e)}
-          />
+          {/* Левый ползунок только если событие НЕ продолжается с предыдущей недели */}
+          {!continuesFromPrev && (
+            <div
+              className={`${styles.resizeHandle} ${styles.resizeHandleStart}`}
+              onPointerDown={(e) => onResizePointerDown(event, 'start', e)}
+            />
+          )}
+          {/* Правый ползунок только если событие НЕ продолжается в следующую неделю */}
+          {!continuesToNext && (
+            <div
+              className={`${styles.resizeHandle} ${styles.resizeHandleEnd}`}
+              onPointerDown={(e) => onResizePointerDown(event, 'end', e)}
+            />
+          )}
         </>
       )}
     </div>

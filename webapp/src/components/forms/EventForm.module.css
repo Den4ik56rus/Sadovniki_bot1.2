@@ -191,3 +191,109 @@
   outline: none;
   border-color: var(--color-accent);
 }
+
+/* Custom Culture Dropdown */
+.cultureDropdown {
+  position: relative;
+}
+
+.cultureButton {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-md);
+  padding-right: 40px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg-secondary);
+  color: var(--color-text-primary);
+  font-size: var(--font-size-base);
+  cursor: pointer;
+  text-align: left;
+  min-height: 48px;
+}
+
+.cultureButton:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.cultureButtonPlaceholder {
+  color: var(--color-text-tertiary);
+}
+
+.cultureButtonIcon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cultureButtonLabel {
+  flex: 1;
+}
+
+.cultureButtonChevron {
+  position: absolute;
+  right: var(--spacing-md);
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--color-text-secondary);
+  transition: transform var(--transition-fast);
+}
+
+.cultureButtonChevronOpen {
+  transform: translateY(-50%) rotate(180deg);
+}
+
+.cultureDropdownList {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  z-index: 100;
+  max-height: 280px;
+  overflow-y: auto;
+  list-style: none;
+  margin: 0;
+  padding: var(--spacing-xs) 0;
+}
+
+.cultureOption {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  padding: var(--spacing-sm) var(--spacing-md);
+  cursor: pointer;
+  transition: background-color var(--transition-fast);
+  min-height: 44px;
+}
+
+.cultureOption:hover {
+  background-color: var(--color-bg-secondary);
+}
+
+.cultureOption:active {
+  background-color: var(--color-bg-tertiary);
+}
+
+.cultureOptionSelected {
+  background-color: var(--color-accent-light);
+}
+
+.cultureOptionIcon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cultureOptionLabel {
+  font-size: var(--font-size-base);
+  color: var(--color-text-primary);
+}

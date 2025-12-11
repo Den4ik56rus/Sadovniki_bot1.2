@@ -38,11 +38,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Quick Commands
 
 ```bash
-# Webapp dev server (localhost:5173)
-cd webapp && npm run dev
+# Admin Panel dev server (localhost:5174)
+cd admin-webapp && npm run dev
 
-# Бот
-python -m src.entry
+# Бот + API сервер (localhost:8080)
+python -m src
 
 # База данных
 docker-compose up -d db
@@ -91,13 +91,23 @@ docker-compose up -d db
 - No pytest framework — run directly: `python test_*.py`
 - Requires DB setup: `docker-compose up -d db`
 
+### Admin Panel (admin-webapp/)
+- **Dev server:** `cd admin-webapp && npm run dev` (порт 5174)
+- **Backend:** `python -m src` (порт 8080)
+- **SSE:** Server-Sent Events для real-time обновлений
+  - Live Feed: мгновенное появление новых консультаций
+  - Consultation View: real-time обновления топика
+  - Проверка подключения: индикатор "🟢 Подключено" / "🔴 Отключено"
+- **Документация:** [docs/features/ADMIN_PANEL.md](docs/features/ADMIN_PANEL.md)
+
 ### Webapp UI Testing (Playwright MCP)
-- **Dev server:** `cd webapp && npm run dev` (порт 5173)
-- **Навигация:** `browser_navigate` → `http://localhost:5173`
+- **Dev server:** `cd admin-webapp && npm run dev` (порт 5174)
+- **Навигация:** `browser_navigate` → `http://localhost:5174`
 - **Snapshot:** `browser_snapshot` — получить структуру UI
 - **Клики:** `browser_click` с указанием ref элемента
 - **Скриншоты:** `browser_take_screenshot` для отладки
-- **Проверять после:** любых изменений в `webapp/src/`
+- **Проверять после:** любых изменений в `admin-webapp/src/`
+- **ВАЖНО:** Дождаться 5-10 сек для установки SSE соединения перед проверкой
 
 ### Webapp Design System
 - **Дизайн-система:** [webapp/DESIGN_SYSTEM.md](webapp/DESIGN_SYSTEM.md) — полное описание стиля

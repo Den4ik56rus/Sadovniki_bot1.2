@@ -96,16 +96,29 @@ async def cors_middleware(request: web.Request, handler):
     # Разрешаем запросы с любого origin (для разработки)
     # В production можно ограничить до конкретного домена GitHub Pages
     origin = request.headers.get("Origin", "*")
-    allowed_origins = [
-        settings.webapp_origin,  # GitHub Pages
-        "http://localhost:5173",  # Dev server
-        "http://127.0.0.1:5173",
-    ]
 
-    if origin in allowed_origins or settings.webapp_origin == "*":
-        response.headers["Access-Control-Allow-Origin"] = origin
+    # Для admin API разрешаем все origins
+    if request.path.startswith("/api/admin"):
+        response.headers["Access-Control-Allow-Origin"] = origin if origin else "*"
+
+        # Дополнительные headers для SSE endpoints
+        if request.path.startswith("/api/admin/events"):
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+            # SSE не триггерит preflight, но на всякий случай
+            response.headers["Cache-Control"] = "no-cache"
     else:
-        response.headers["Access-Control-Allow-Origin"] = settings.webapp_origin
+        allowed_origins = [
+            settings.webapp_origin,  # GitHub Pages
+            "http://localhost:5173",  # Dev server (calendar)
+            "http://127.0.0.1:5173",
+            "http://localhost:5174",  # Dev server (admin)
+            "http://127.0.0.1:5174",
+        ]
+
+        if origin in allowed_origins or settings.webapp_origin == "*":
+            response.headers["Access-Control-Allow-Origin"] = origin
+        else:
+            response.headers["Access-Control-Allow-Origin"] = settings.webapp_origin
 
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Telegram-Init-Data"
@@ -122,6 +135,10 @@ async def telegram_auth_middleware(request: web.Request, handler):
     """
     # Пропускаем OPTIONS запросы (CORS preflight)
     if request.method == "OPTIONS":
+        return await handler(request)
+
+    # Пропускаем admin API (без авторизации)
+    if request.path.startswith("/api/admin"):
         return await handler(request)
 
     # Получаем initData из заголовка

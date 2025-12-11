@@ -10,7 +10,7 @@ from aiogram.types import CallbackQuery
 from src.services.db.topics_repo import get_or_create_open_topic, set_topic_culture
 from src.services.db.users_repo import get_or_create_user
 from src.services.db.messages_repo import log_message, get_last_messages
-from src.services.llm.consultation_llm import ask_consultation_llm
+from src.services.llm.consultation_llm import ask_consultation_llm, compose_full_question
 from src.services.db.moderation_repo import moderation_add
 
 from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT
@@ -90,6 +90,9 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
     # Показываем статус "печатает"
     status_message = await callback.message.answer("⏳ Подождите, рекомендация формируется...")
 
+    # Формируем красивый вопрос для RAG (даже без уточнений)
+    composed_q, compose_cost, compose_tokens = await compose_full_question(user_text, [])
+
     # Вызов LLM с защитой
     try:
         reply_text: str = await ask_consultation_llm(
@@ -97,8 +100,12 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
             telegram_user_id=telegram_user_id,
             text=user_text,
             session_id=session_id,
+            topic_id=topic_id,
             culture=culture,
             consultation_category=consultation_category,
+            composed_question=composed_q,  # Красиво сформированный вопрос
+            compose_cost_usd=compose_cost,  # Стоимость формирования вопроса
+            compose_tokens=compose_tokens,  # Токены формирования вопроса
         )
     except Exception as e:
         print(f"ERROR in ask_consultation_llm: {e}")

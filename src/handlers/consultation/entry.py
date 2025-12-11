@@ -34,7 +34,7 @@ from src.services.db.tokens_repo import has_sufficient_tokens, deduct_tokens, ge
 from src.pricing import COST_NEW_TOPIC, COST_ADDITIONAL_QUESTIONS
 
 # LLM
-from src.services.llm.consultation_llm import ask_consultation_llm
+from src.services.llm.consultation_llm import ask_consultation_llm, compose_full_question
 from src.services.llm.classification_llm import detect_culture_name
 
 # Keyboards
@@ -262,9 +262,9 @@ async def handle_consultation_question_unified(message: Message) -> None:
 
     # Автоматически определяем категорию + культуру
     from src.services.llm.classification_llm import detect_category_and_culture
-    category, culture = await detect_category_and_culture(question_text)
+    category, culture, classification_cost, classification_tokens = await detect_category_and_culture(question_text)
 
-    print(f"[unified_entry] Detected category={category!r}, culture={culture!r}")
+    print(f"[unified_entry] Detected category={category!r}, culture={culture!r}, cost=${classification_cost:.6f}, tokens={classification_tokens}")
 
     # Списываем токен за консультацию
     await deduct_tokens(
@@ -286,6 +286,8 @@ async def handle_consultation_question_unified(message: Message) -> None:
             category=category,
             culture=culture,
             root_question=question_text,
+            classification_cost_usd=classification_cost,
+            classification_tokens=classification_tokens,
         )
     else:
         # Общий обработчик для остальных категорий
@@ -297,6 +299,8 @@ async def handle_consultation_question_unified(message: Message) -> None:
             category=category,
             culture=culture,
             root_question=question_text,
+            classification_cost_usd=classification_cost,
+            classification_tokens=classification_tokens,
         )
 
 
@@ -306,6 +310,8 @@ async def process_general_consultation(
     category: str,
     culture: str,
     root_question: str,
+    classification_cost_usd: float = 0.0,
+    classification_tokens: int = 0,
 ) -> None:
     """
     Обрабатывает общую консультацию (не питание растений).
@@ -356,9 +362,12 @@ async def process_general_consultation(
                 telegram_user_id=telegram_user_id,
                 text=root_question,
                 session_id=session_id,
+                topic_id=topic_id,
                 consultation_category=category,
                 culture=culture,
                 skip_rag=True,  # БЕЗ RAG для уточняющих вопросов!
+                classification_cost_usd=classification_cost_usd,
+                classification_tokens=classification_tokens,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
@@ -387,6 +396,8 @@ async def process_general_consultation(
                 "topic_id": topic_id,
                 "session_id": session_id,
                 "telegram_user_id": telegram_user_id,
+                "classification_cost_usd": classification_cost_usd,
+                "classification_tokens": classification_tokens,
             }
 
             # Логируем только ответ бота (уточняющий вопрос)
@@ -424,10 +435,20 @@ async def process_general_consultation(
             "topic_id": topic_id,
             "session_id": session_id,
             "telegram_user_id": telegram_user_id,
+            "classification_cost_usd": classification_cost_usd,
+            "classification_tokens": classification_tokens,
         }
 
         await message.answer(variety_question)
-        return  # Не логируем ответ бота здесь, т.к. это системный вопрос
+        # Логируем уточняющий вопрос бота
+        await log_message(
+            user_id=user_id,
+            direction="bot",
+            text=variety_question,
+            session_id=session_id,
+            topic_id=topic_id,
+        )
+        return
 
     # CASE 3: Культура конкретна → финальный ответ С RAG
     else:
@@ -441,9 +462,12 @@ async def process_general_consultation(
                 telegram_user_id=telegram_user_id,
                 text=root_question,
                 session_id=session_id,
+                topic_id=topic_id,
                 consultation_category=category,
                 culture=culture,
                 skip_rag=False,  # С RAG для финального ответа!
+                classification_cost_usd=classification_cost_usd,
+                classification_tokens=classification_tokens,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
@@ -522,8 +546,12 @@ async def handle_variety_clarification(message: Message) -> None:
     session_id = context["session_id"]
     root_question = context["root_question"]
     old_culture = context["culture"]
+    classification_cost_usd = context.get("classification_cost_usd", 0.0)
+    classification_tokens = context.get("classification_tokens", 0)
 
     # Определяем новую культуру на основе ответа
+    additional_class_cost = 0.0
+    additional_class_tokens = 0
     if "ремонтант" in variety_answer or "нсд" in variety_answer:
         if old_culture == "клубника общая":
             new_culture = "клубника ремонтантная"
@@ -537,7 +565,7 @@ async def handle_variety_clarification(message: Message) -> None:
     else:
         # Не удалось распознать - пробуем классификатор
         combined_text = f"{root_question} {variety_answer}"
-        new_culture = await detect_culture_name(combined_text)
+        new_culture, additional_class_cost, additional_class_tokens = await detect_culture_name(combined_text)
         print(f"[VARIETY_CLARIFICATION] Failed to parse answer, re-classified: {new_culture!r}")
 
     print(f"[VARIETY_CLARIFICATION] Refined culture: {old_culture!r} -> {new_culture!r}")
@@ -555,22 +583,35 @@ async def handle_variety_clarification(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    # Формируем полный вопрос (корневой + ответ)
-    full_question = f"{root_question} ({variety_answer})"
-
     # Показываем статус ожидания
     status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
+    # Формируем полный читабельный вопрос через LLM
+    clarifications = [{"user": variety_answer}]  # Ответ на вопрос о типе культуры
+    composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, clarifications)
+    if compose_cost > 0:
+        print(f"[VARIETY_CLARIFICATION] compose_full_question cost: ${compose_cost:.6f}")
+
     # Вызываем LLM с финальным ответом и RAG
+    # Суммируем все затраты на классификацию (из контекста + дополнительный вызов если был)
+    total_class_cost = classification_cost_usd + additional_class_cost
+    total_class_tokens = classification_tokens + additional_class_tokens
+
     try:
         reply_text = await ask_consultation_llm(
             user_id=user_id,
             telegram_user_id=telegram_user_id,
-            text=full_question,
+            text=composed_q,  # Используем сформированный вопрос
             session_id=session_id,
+            topic_id=topic_id,
             consultation_category="общая консультация",
             culture=new_culture,
             skip_rag=False,  # С RAG для финального ответа!
+            composed_question=composed_q,  # Передаём для логирования
+            compose_cost_usd=compose_cost,  # Стоимость формирования вопроса
+            compose_tokens=compose_tokens,  # Токены формирования вопроса
+            classification_cost_usd=total_class_cost,
+            classification_tokens=total_class_tokens,
         )
     except Exception as e:
         print(f"ERROR in ask_consultation_llm: {e}")
@@ -601,7 +642,7 @@ async def handle_variety_clarification(message: Message) -> None:
         await moderation_add(
             user_id=user_id,
             topic_id=topic_id,
-            question=full_question,
+            question=composed_q,  # Используем сформированный вопрос
             answer=reply_text,
             category_guess=None,
         )
@@ -646,6 +687,8 @@ async def handle_clarification_answer(message: Message) -> None:
     topic_id = context["topic_id"]
     session_id = context["session_id"]
     root_question = context["root_question"]
+    classification_cost_usd = context.get("classification_cost_usd", 0.0)
+    classification_tokens = context.get("classification_tokens", 0)
 
     # Логируем ответ пользователя
     await log_message(
@@ -658,8 +701,11 @@ async def handle_clarification_answer(message: Message) -> None:
 
     # Переопределяем культуру на основе комбинированного текста
     combined_text = f"{root_question} {clarification_answer}"
-    new_culture = await detect_culture_name(combined_text)
-    print(f"[CLARIFICATION_ANSWER] Re-classified culture: {new_culture!r}")
+    new_culture, new_class_cost, new_class_tokens = await detect_culture_name(combined_text)
+    # Суммируем с предыдущими затратами на классификацию
+    classification_cost_usd += new_class_cost
+    classification_tokens += new_class_tokens
+    print(f"[CLARIFICATION_ANSWER] Re-classified culture: {new_culture!r}, cost=${new_class_cost:.6f}")
 
     # Обновляем культуру в БД
     from src.services.db.topics_repo import set_topic_culture
@@ -690,6 +736,8 @@ async def handle_clarification_answer(message: Message) -> None:
         CONSULTATION_STATE[telegram_user_id] = "waiting_variety_clarification"
         CONSULTATION_CONTEXT[telegram_user_id]["culture"] = new_culture
         CONSULTATION_CONTEXT[telegram_user_id]["root_question"] = full_question
+        CONSULTATION_CONTEXT[telegram_user_id]["classification_cost_usd"] = classification_cost_usd
+        CONSULTATION_CONTEXT[telegram_user_id]["classification_tokens"] = classification_tokens
 
         await message.answer(variety_question)
         return
@@ -700,15 +748,27 @@ async def handle_clarification_answer(message: Message) -> None:
 
         status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
+        # Формируем полный читабельный вопрос через LLM
+        clarifications = [{"user": clarification_answer}]
+        composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, clarifications)
+        if compose_cost > 0:
+            print(f"[CLARIFICATION_ANSWER] compose_full_question cost: ${compose_cost:.6f}")
+
         try:
             reply_text = await ask_consultation_llm(
                 user_id=user_id,
                 telegram_user_id=telegram_user_id,
-                text=full_question,
+                text=composed_q,  # Используем сформированный вопрос
                 session_id=session_id,
+                topic_id=topic_id,
                 consultation_category="общая консультация",
                 culture=new_culture,
                 skip_rag=False,  # С RAG для финального ответа!
+                composed_question=composed_q,  # Передаём для логирования
+                compose_cost_usd=compose_cost,  # Стоимость формирования вопроса
+                compose_tokens=compose_tokens,  # Токены формирования вопроса
+                classification_cost_usd=classification_cost_usd,
+                classification_tokens=classification_tokens,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
@@ -739,7 +799,7 @@ async def handle_clarification_answer(message: Message) -> None:
             await moderation_add(
                 user_id=user_id,
                 topic_id=topic_id,
-                question=full_question,
+                question=composed_q,  # Используем сформированный вопрос
                 answer=reply_text,
                 category_guess=None,
             )
@@ -873,6 +933,9 @@ async def handle_consultation_root(message: Message) -> None:
     # Переменная для отслеживания смены темы
     topic_changed = False
     creating_message = None
+    # Накапливаем стоимость классификации
+    classification_cost_usd = 0.0
+    classification_tokens = 0
 
     # Если это потенциальный follow-up - проверяем смену темы через LLM
     if is_potential_followup:
@@ -893,17 +956,21 @@ async def handle_consultation_root(message: Message) -> None:
             context_text = await get_message_context(topic_id, limit=3)
 
             # Классифицируем новый вопрос ТОЛЬКО для определения культуры
-            new_category, new_culture = await detect_category_and_culture(user_text)
-            print(f"[entry] New classification: category={new_category!r}, culture={new_culture!r}")
+            new_category, new_culture, class_cost, class_tokens = await detect_category_and_culture(user_text)
+            classification_cost_usd += class_cost
+            classification_tokens += class_tokens
+            print(f"[entry] New classification: category={new_category!r}, culture={new_culture!r}, cost=${class_cost:.6f}")
             print(f"[entry] BUT keeping saved category: {detected_category!r}")
 
             # Сравниваем ТОЛЬКО культуры (категория фиксирована)
-            topic_change = await compare_topics_for_change(
+            topic_change, compare_cost, compare_tokens = await compare_topics_for_change(
                 old_category=detected_category,  # Используем СОХРАНЕННУЮ категорию
                 old_culture=culture,
                 new_question=user_text,
                 context_messages=context_text,
             )
+            classification_cost_usd += compare_cost
+            classification_tokens += compare_tokens
 
         print(f"[entry] Culture change decision: {topic_change!r}")
 
@@ -945,7 +1012,9 @@ async def handle_consultation_root(message: Message) -> None:
     else:
         # Это первый вопрос - переопределяем культуру И категорию
         print(f"[entry] First question or new consultation, detecting category and culture")
-        detected_category, detected_culture = await detect_category_and_culture(user_text)
+        detected_category, detected_culture, class_cost, class_tokens = await detect_category_and_culture(user_text)
+        classification_cost_usd += class_cost
+        classification_tokens += class_tokens
 
         # Сохраняем категорию в топике
         await set_topic_category(topic_id, detected_category)
@@ -953,7 +1022,7 @@ async def handle_consultation_root(message: Message) -> None:
         if detected_culture:
             await set_topic_culture(topic_id, detected_culture)
             culture = detected_culture
-            print(f"[entry] Detected: category={detected_category!r}, culture={culture}")
+            print(f"[entry] Detected: category={detected_category!r}, culture={culture}, cost=${class_cost:.6f}")
         else:
             await set_topic_culture(topic_id, "не определено")
             culture = "не определено"
@@ -994,9 +1063,12 @@ async def handle_consultation_root(message: Message) -> None:
                 telegram_user_id=telegram_user_id,
                 text=user_text,
                 session_id=session_id,
+                topic_id=topic_id,
                 consultation_category=detected_category,
                 culture=culture,
                 skip_rag=True,  # БЕЗ RAG для уточняющих вопросов!
+                classification_cost_usd=classification_cost_usd,
+                classification_tokens=classification_tokens,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
@@ -1025,6 +1097,8 @@ async def handle_consultation_root(message: Message) -> None:
                 "topic_id": topic_id,
                 "session_id": session_id,
                 "telegram_user_id": telegram_user_id,
+                "classification_cost_usd": classification_cost_usd,
+                "classification_tokens": classification_tokens,
             }
 
             # Логируем только ответ бота (уточняющий вопрос)
@@ -1062,10 +1136,20 @@ async def handle_consultation_root(message: Message) -> None:
             "topic_id": topic_id,
             "session_id": session_id,
             "telegram_user_id": telegram_user_id,
+            "classification_cost_usd": classification_cost_usd,
+            "classification_tokens": classification_tokens,
         }
 
         await message.answer(variety_question)
-        return  # Не логируем ответ бота здесь, т.к. это системный вопрос
+        # Логируем уточняющий вопрос бота
+        await log_message(
+            user_id=user_id,
+            direction="bot",
+            text=variety_question,
+            session_id=session_id,
+            topic_id=topic_id,
+        )
+        return
 
     # CASE 3: Культура конкретна → финальный ответ С RAG
     else:
@@ -1073,15 +1157,24 @@ async def handle_consultation_root(message: Message) -> None:
 
         status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
+        # Формируем красивый вопрос для RAG (даже без уточнений)
+        composed_q, compose_cost, compose_tokens = await compose_full_question(user_text, [])
+
         try:
             reply_text: str = await ask_consultation_llm(
                 user_id=user_id,
                 telegram_user_id=telegram_user_id,
                 text=user_text,
                 session_id=session_id,
+                topic_id=topic_id,
                 consultation_category=detected_category,
                 culture=culture,
                 skip_rag=False,  # С RAG для финального ответа!
+                composed_question=composed_q,  # Красиво сформированный вопрос
+                compose_cost_usd=compose_cost,  # Стоимость формирования вопроса
+                compose_tokens=compose_tokens,  # Токены формирования вопроса
+                classification_cost_usd=classification_cost_usd,
+                classification_tokens=classification_tokens,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")

@@ -17,10 +17,10 @@
       и используется отдельно при формировании category_guess.
 """
 
-from typing import Dict, List
+from typing import Dict, List, Tuple
 import re
 
-from src.services.llm.core_llm import create_chat_completion   # Асинхронный запрос к ChatGPT
+from src.services.llm.core_llm import create_chat_completion, create_chat_completion_with_usage, calculate_cost
 from src.config import settings                                # Настройки проекта (модель и т.п.)
 from src.services.db.kb_repo import kb_get_distinct_subcategories  # Живой список культур из базы знаний
 
@@ -180,16 +180,18 @@ def _keyword_fallback(raw_text: str) -> str:
     return "не определено"
 
 
-async def detect_culture_name(text: str) -> str:
+async def detect_culture_name(text: str) -> Tuple[str, float, int]:
     """
     Определяет КУЛЬТУРУ по тексту вопроса с помощью LLM.
 
     Контракт:
-        - возвращает КРАТКОЕ название культуры (в нормальном виде),
-          например: "малина", "голубика", "клубника садовая";
-        - либо "общая информация" — если вопрос общий для нескольких культур
-          или не привязан к одной конкретной;
-        - либо "не определено" — если понять, про что речь, нельзя.
+        - возвращает кортеж (culture, cost_usd, tokens):
+          - culture: КРАТКОЕ название культуры (в нормальном виде),
+            например: "малина", "голубика", "клубника садовая";
+            либо "общая информация" — если вопрос общий для нескольких культур;
+            либо "не определено" — если понять, про что речь, нельзя.
+          - cost_usd: стоимость LLM вызова в USD
+          - tokens: общее количество токенов
 
     Функция НЕ трогает тип консультации (питание/посадка и т.п.).
     """
@@ -261,12 +263,21 @@ async def detect_culture_name(text: str) -> str:
     ]
 
     try:
-        llm_answer = await create_chat_completion(
+        response = await create_chat_completion_with_usage(
             messages=messages,
             model=settings.openai_model,
             temperature=0.0,
         )
 
+        # Рассчитываем стоимость
+        cost_usd = calculate_cost(
+            model=response["model"],
+            prompt_tokens=response["prompt_tokens"],
+            completion_tokens=response["completion_tokens"],
+        )
+        tokens = response["total_tokens"]
+
+        llm_answer = response.get("content", "")
         raw = (llm_answer or "").strip()
         if not raw:
             print(f"[detect_culture_name][EMPTY] text={raw_text!r} -> raw=''")
@@ -275,7 +286,7 @@ async def detect_culture_name(text: str) -> str:
                 f"[detect_culture_name][EMPTY_FALLBACK] text={raw_text!r} "
                 f"-> keyword_fallback={fallback_culture!r}"
             )
-            return fallback_culture
+            return fallback_culture, cost_usd, tokens
 
         normalized = _cleanup_llm_answer(raw)
 
@@ -301,8 +312,8 @@ async def detect_culture_name(text: str) -> str:
                     f"[detect_culture_name][KEYWORD_OVERRIDE] text={raw_text!r} "
                     f"llm={normalized!r} -> keyword={keyword_culture!r}"
                 )
-                return keyword_culture
-            return normalized
+                return keyword_culture, cost_usd, tokens
+            return normalized, cost_usd, tokens
 
         # 2. Маппинг частых вариантов к нормальным названиям
         mapping: Dict[str, str] = {
@@ -410,7 +421,7 @@ async def detect_culture_name(text: str) -> str:
                 f"[detect_culture_name][ACCEPTED] text={raw_text!r} "
                 f"-> culture={final!r}"
             )
-            return final
+            return final, cost_usd, tokens
 
         # 5. Если мы сюда дошли, culture либо пустая/странная, либо спец-значение.
         #    В этом случае уже делегируем keyword_fallback окончательно.
@@ -419,7 +430,7 @@ async def detect_culture_name(text: str) -> str:
             f"[detect_culture_name][FINAL_FALLBACK] text={raw_text!r} "
             f"-> culture={culture!r} -> final={final_fallback!r}"
         )
-        return final_fallback
+        return final_fallback, cost_usd, tokens
 
     except Exception as e:
         print(f"[detect_culture_name][ERROR] {e} | text={raw_text!r}")
@@ -428,7 +439,7 @@ async def detect_culture_name(text: str) -> str:
             f"[detect_culture_name][ERROR_FALLBACK] text={raw_text!r} "
             f"-> keyword_fallback={fallback_culture!r}"
         )
-        return fallback_culture
+        return fallback_culture, 0.0, 0
 
 
 def _keyword_category_fallback(raw_text: str) -> str:
@@ -494,7 +505,7 @@ def _keyword_category_fallback(raw_text: str) -> str:
     return "не определена"
 
 
-async def detect_category_and_culture(text: str) -> tuple[str, str]:
+async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
     """
     Определяет КАТЕГОРИЮ консультации И КУЛЬТУРУ из текста вопроса.
 
@@ -505,10 +516,12 @@ async def detect_category_and_culture(text: str) -> tuple[str, str]:
         text: Текст вопроса пользователя
 
     Returns:
-        tuple[category, culture] where:
+        tuple[category, culture, cost_usd, tokens] where:
         - category: "питание растений", "посадка и уход", "защита растений",
                    "улучшение почвы", "подбор сорта", "другая тема" или "не определена"
         - culture: "клубника летняя", "малина общая", "не определено", etc.
+        - cost_usd: стоимость LLM вызова в USD
+        - tokens: общее количество токенов
     """
     import json
 
@@ -591,13 +604,21 @@ async def detect_category_and_culture(text: str) -> tuple[str, str]:
     ]
 
     try:
-        llm_answer = await create_chat_completion(
+        response = await create_chat_completion_with_usage(
             messages=messages,
             model=settings.openai_model,
             temperature=0.0,
         )
 
-        raw = (llm_answer or "").strip()
+        # Рассчитываем стоимость
+        cost_usd = calculate_cost(
+            model=response["model"],
+            prompt_tokens=response["prompt_tokens"],
+            completion_tokens=response["completion_tokens"],
+        )
+        tokens = response["total_tokens"]
+
+        raw = (response.get("content", "") or "").strip()
         if not raw:
             print(f"[detect_category_and_culture][EMPTY] text={raw_text!r}")
             category = _keyword_category_fallback(raw_text)
@@ -606,7 +627,7 @@ async def detect_category_and_culture(text: str) -> tuple[str, str]:
                 f"[detect_category_and_culture][FALLBACK] "
                 f"category={category!r}, culture={culture!r}"
             )
-            return (category, culture)
+            return (category, culture, cost_usd, tokens)
 
         # Пытаемся распарсить JSON
         try:
@@ -684,7 +705,7 @@ async def detect_category_and_culture(text: str) -> tuple[str, str]:
                 f"-> category={category!r}, culture={culture!r}"
             )
 
-            return (category, culture)
+            return (category, culture, cost_usd, tokens)
 
         except json.JSONDecodeError as je:
             print(f"[detect_category_and_culture][JSON_ERROR] {je} | raw={raw!r}")
@@ -695,7 +716,7 @@ async def detect_category_and_culture(text: str) -> tuple[str, str]:
                 f"[detect_category_and_culture][KEYWORD_FALLBACK] "
                 f"category={category!r}, culture={culture!r}"
             )
-            return (category, culture)
+            return (category, culture, cost_usd, tokens)
 
     except Exception as e:
         print(f"[detect_category_and_culture][ERROR] {e} | text={raw_text!r}")
@@ -705,7 +726,7 @@ async def detect_category_and_culture(text: str) -> tuple[str, str]:
             f"[detect_category_and_culture][ERROR_FALLBACK] "
             f"category={category!r}, culture={culture!r}"
         )
-        return (category, culture)
+        return (category, culture, 0.0, 0)
 
 
 async def compare_topics_for_change(
@@ -713,7 +734,7 @@ async def compare_topics_for_change(
     old_culture: str,
     new_question: str,
     context_messages: str = ""
-) -> str:
+) -> tuple[str, float, int]:
     """
     Определяет, является ли новый вопрос сменой темы относительно текущей.
 
@@ -724,9 +745,10 @@ async def compare_topics_for_change(
         context_messages: Контекст предыдущих сообщений (опционально)
 
     Returns:
-        "same_topic" - та же тема (уточняющий вопрос)
-        "clear_change" - явная смена темы (только если культура явно сменилась)
-        "unclear" - неопределенно (остаемся на той же теме)
+        tuple[decision, cost_usd, tokens] where:
+        - decision: "same_topic" | "clear_change" | "unclear"
+        - cost_usd: стоимость LLM вызова в USD
+        - tokens: общее количество токенов
     """
     system_prompt = f"""Ты - классификатор вопросов в консультационном боте по ягодным культурам.
 
@@ -782,13 +804,21 @@ async def compare_topics_for_change(
     ]
 
     try:
-        llm_answer = await create_chat_completion(
+        response = await create_chat_completion_with_usage(
             messages=messages,
             model=settings.openai_model,
             temperature=0.0,
         )
 
-        result = (llm_answer or "").strip().lower()
+        # Рассчитываем стоимость
+        cost_usd = calculate_cost(
+            model=response["model"],
+            prompt_tokens=response["prompt_tokens"],
+            completion_tokens=response["completion_tokens"],
+        )
+        tokens = response["total_tokens"]
+
+        result = (response.get("content", "") or "").strip().lower()
 
         # Нормализация ответа
         if "same" in result or result == "same_topic":
@@ -804,9 +834,9 @@ async def compare_topics_for_change(
             f"new={new_question[:50]!r}... -> {decision!r}"
         )
 
-        return decision
+        return decision, cost_usd, tokens
 
     except Exception as e:
         print(f"[compare_topics_for_change][ERROR] {e}")
         # При ошибке возвращаем "unclear" - остаемся на той же теме
-        return "unclear"
+        return "unclear", 0.0, 0

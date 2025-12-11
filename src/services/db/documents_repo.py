@@ -51,6 +51,9 @@ async def document_update_status(
     status: str,
     error: Optional[str] = None,
     total_chunks: Optional[int] = None,
+    embedding_tokens: Optional[int] = None,
+    embedding_cost_usd: Optional[float] = None,
+    embedding_model: Optional[str] = None,
 ) -> None:
     """
     Обновляет статус обработки документа.
@@ -64,13 +67,19 @@ async def document_update_status(
                 UPDATE documents
                 SET processing_status = $1,
                     processing_error = $2,
-                    total_chunks = $3
+                    total_chunks = $3,
+                    embedding_tokens = COALESCE($5, embedding_tokens),
+                    embedding_cost_usd = COALESCE($6, embedding_cost_usd),
+                    embedding_model = COALESCE($7, embedding_model)
                 WHERE id = $4;
                 """,
                 status,
                 error,
                 total_chunks,
                 document_id,
+                embedding_tokens,
+                embedding_cost_usd,
+                embedding_model,
             )
         else:
             await conn.execute(

@@ -1,0 +1,17 @@
+.usersView {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: var(--space-6);
+  height: 100%;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+  overflow-y: auto;
+}
+
+.main {
+  overflow-y: auto;
+}

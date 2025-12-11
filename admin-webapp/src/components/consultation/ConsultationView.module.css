@@ -1,0 +1,612 @@
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.loading,
+.error,
+.empty {
+  padding: var(--space-8);
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.error {
+  color: var(--accent-red);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.header h3 {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin: 0;
+}
+
+.culture {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(163, 113, 247, 0.15);
+  color: var(--accent-purple);
+}
+
+.userInfo {
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.messages {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.messagePair {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+}
+
+.messageIndex {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.message {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+.userMessage {
+  background: rgba(88, 166, 255, 0.08);
+  border-left: 3px solid var(--accent-blue);
+}
+
+.botMessage {
+  background: rgba(63, 185, 80, 0.08);
+  border-left: 3px solid var(--accent-green);
+}
+
+.ragQuery {
+  background: rgba(163, 113, 247, 0.1);
+  border-left: 3px solid var(--accent-purple);
+  border: 1px dashed var(--accent-purple);
+  border-left: 3px solid var(--accent-purple);
+}
+
+.ragIcon {
+  font-size: 14px;
+  margin-right: var(--space-1);
+}
+
+.messageLabel {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.messageText {
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  font-size: 13px;
+}
+
+.metaRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.metaLabel {
+  color: var(--text-muted);
+}
+
+.cost {
+  color: var(--accent-green);
+  font-weight: 500;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.codeBlock {
+  margin: 0;
+  font-size: 12px;
+  max-height: 400px;
+  overflow: auto;
+}
+
+.snippets {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.snippet {
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.snippetHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.snippetMeta {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.snippetContent {
+  margin: 0;
+  font-size: 12px;
+  max-height: 200px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.snippetCategory {
+  margin-top: var(--space-2);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Conversation (full chat messages) */
+.conversation {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+}
+
+.conversationMsg {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  max-width: 85%;
+}
+
+.conversationUser {
+  background: rgba(88, 166, 255, 0.12);
+  border-left: 3px solid var(--accent-blue);
+  align-self: flex-start;
+}
+
+.conversationBot {
+  background: rgba(63, 185, 80, 0.12);
+  border-left: 3px solid var(--accent-green);
+  align-self: flex-end;
+  border-left: none;
+  border-right: 3px solid var(--accent-green);
+}
+
+.conversationLabel {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: var(--space-1);
+}
+
+.conversationText {
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.conversationTime {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: var(--space-1);
+  text-align: right;
+}
+
+/* Unified Timeline */
+.timeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.timelineItem {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+}
+
+.timelineUser {
+  background: rgba(88, 166, 255, 0.1);
+  border-left: 3px solid var(--accent-blue);
+  margin-right: 15%;
+}
+
+.timelineBot {
+  background: rgba(63, 185, 80, 0.1);
+  border-left: 3px solid var(--accent-green);
+  margin-right: 15%;
+}
+
+.timelineLlm {
+  background: rgba(163, 113, 247, 0.08);
+  border: 1px dashed var(--accent-purple);
+  border-left: 3px solid var(--accent-purple);
+}
+
+.timelineClassification {
+  background: rgba(247, 186, 30, 0.1);
+  border: 1px dashed var(--accent-yellow, #f7ba1e);
+  border-left: 3px solid var(--accent-yellow, #f7ba1e);
+}
+
+.classificationInfo {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+  font-size: 13px;
+}
+
+.classificationCategory {
+  color: var(--accent-purple);
+}
+
+.classificationCulture {
+  color: var(--accent-green);
+}
+
+.classificationCostInline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(247, 186, 30, 0.08);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.classificationCostTokens {
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.classificationCostValue {
+  color: var(--accent-yellow, #f7ba1e);
+  font-weight: 600;
+}
+
+.timelineLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+.timelineTime {
+  font-weight: 400;
+  margin-left: auto;
+}
+
+.timelineText {
+  font-size: 14px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ragQueryInline {
+  font-size: 13px;
+  color: var(--accent-purple);
+  padding: var(--space-2);
+  background: rgba(163, 113, 247, 0.1);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2);
+}
+
+.metadataInline {
+  display: flex;
+  gap: var(--space-4);
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: var(--space-2);
+}
+
+/* LLM call cost inline - simplified */
+.llmCostInline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(63, 185, 80, 0.08);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.llmCostTokens {
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.llmCostValue {
+  color: var(--accent-green);
+  font-weight: 600;
+}
+
+.llmCostModel {
+  color: var(--accent-purple);
+  font-size: 11px;
+}
+
+.llmCostLatency {
+  color: var(--text-muted);
+  font-size: 11px;
+}
+
+/* RAG cost inline */
+.ragCostInline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(163, 113, 247, 0.08);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  margin-top: var(--space-2);
+}
+
+.ragCostTokens {
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.ragCostValue {
+  color: var(--accent-purple);
+  font-weight: 600;
+}
+
+.costBadge {
+  color: var(--accent-green);
+  font-weight: 500;
+}
+
+.runningTotal {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+  margin-top: var(--space-1);
+  padding-top: var(--space-1);
+  border-top: 1px dotted var(--border-muted);
+}
+
+/* Total cost for topic */
+.totalCost {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: linear-gradient(135deg, rgba(63, 185, 80, 0.1), rgba(63, 185, 80, 0.05));
+  border: 1px solid var(--accent-green);
+  border-radius: var(--radius-lg);
+  margin-top: var(--space-4);
+}
+
+.totalLabel {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.totalValue {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--accent-green);
+}
+
+.totalUsd {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Technical section at the end */
+.technicalSection {
+  margin-top: var(--space-6);
+  padding-top: var(--space-4);
+  border-top: 1px dashed var(--border-muted);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* Cost breakdown styles */
+.costBreakdown {
+  margin-top: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: rgba(63, 185, 80, 0.05);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.costBreakdownTitle {
+  font-weight: 600;
+  color: var(--text-secondary);
+  margin-bottom: var(--space-1);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.costBreakdownList {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.costBreakdownItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text-muted);
+}
+
+.costBreakdownItem::before {
+  content: '├─';
+  font-family: monospace;
+  color: var(--border-muted);
+}
+
+.costBreakdownItem:last-child::before {
+  content: '└─';
+}
+
+.costBreakdownLabel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.costBreakdownTokens {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: monospace;
+}
+
+.costBreakdownValue {
+  font-weight: 500;
+  font-family: monospace;
+  min-width: 70px;
+  text-align: right;
+}
+
+.costBreakdownDivider {
+  border-top: 1px dashed var(--border-muted);
+  margin: var(--space-1) 0;
+}
+
+.costBreakdownTotal {
+  display: flex;
+  justify-content: space-between;
+  font-weight: 600;
+  color: var(--accent-green);
+}
+
+/* Total cost summary at bottom */
+.totalCostSummary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  background: linear-gradient(135deg, rgba(63, 185, 80, 0.1), rgba(63, 185, 80, 0.05));
+  border: 1px solid var(--accent-green);
+  border-radius: var(--radius-lg);
+  margin-top: var(--space-4);
+}
+
+.totalCostHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-primary);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid rgba(63, 185, 80, 0.3);
+}
+
+.totalCostBreakdown {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.totalCostRow {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.totalCostRowLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.totalCostRowCount {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.totalCostRowValue {
+  font-weight: 500;
+  font-family: monospace;
+}
+
+.totalCostFinal {
+  display: flex;
+  justify-content: space-between;
+  padding-top: var(--space-2);
+  border-top: 2px solid rgba(63, 185, 80, 0.5);
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.totalCostFinalLabel {
+  color: var(--text-primary);
+}
+
+.totalCostFinalValue {
+  color: var(--accent-green);
+}
+
+.totalCostUsd {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: right;
+  margin-top: var(--space-1);
+}

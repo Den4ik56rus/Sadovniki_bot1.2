@@ -3,6 +3,7 @@
 from typing import Optional  # topic_id может быть Optional в других местах
 
 from src.services.db.pool import get_pool  # Пул подключений
+from src.api.sse_manager import sse_manager  # SSE Manager для broadcast
 
 
 async def get_or_create_open_topic(user_id: int, session_id: str, force_new: bool = False) -> int:
@@ -64,9 +65,19 @@ async def get_or_create_open_topic(user_id: int, session_id: str, force_new: boo
             session_id,  # $2 — идентификатор сессии
         )
 
-        print(f"[get_or_create_open_topic] Создан НОВЫЙ топик: topic_id={row['id']}, user_id={user_id}, follow_up_questions_left=3")
+        topic_id = row["id"]
+        print(f"[get_or_create_open_topic] Создан НОВЫЙ топик: topic_id={topic_id}, user_id={user_id}, follow_up_questions_left=3")
+
+        # Broadcast SSE event для нового топика
+        await sse_manager.broadcast(
+            event_type='new_topic',
+            data={'topic_id': topic_id, 'user_id': user_id, 'status': 'open'},
+            endpoint_type='users',
+            entity_id=user_id
+        )
+
         # Возвращаем id новой темы
-        return row["id"]
+        return topic_id
 
 
 async def get_topic_culture(topic_id: int) -> Optional[str]:

@@ -14,15 +14,126 @@
     ask_consultation_llm(...)
 """
 
+import time
+import asyncio
+import logging
 from typing import Optional, List, Dict
 
 from src.services.db.messages_repo import get_last_messages      # История сообщений
 from src.services.rag.unified_retriever import retrieve_unified_snippets  # Объединенный RAG-поиск (Q&A + документы)
-from src.services.llm.embeddings_llm import get_text_embedding   # Эмбеддинги текста
-from src.services.llm.core_llm import create_chat_completion     # Вызов ChatGPT
+from src.services.llm.embeddings_llm import get_text_embedding_with_usage   # Эмбеддинги текста с usage
+from src.services.llm.core_llm import (
+    create_chat_completion_with_usage,
+    calculate_cost,
+    calculate_embedding_cost,
+)
 from src.prompts.consultation_prompts import build_consultation_system_prompt  # Системный промпт
+from src.services.db.consultation_logs_repo import log_consultation  # Логирование консультаций
 
 from src.config import settings
+
+logger = logging.getLogger(__name__)
+
+
+async def compose_full_question(
+    root_question: str,
+    clarifications: List[Dict[str, str]],
+) -> tuple:
+    """
+    Формирует полный читабельный вопрос из root_question + уточнений.
+
+    Лёгкий LLM-вызов (gpt-4o-mini) без истории чата.
+    ВСЕГДА вызывает LLM для красивого форматирования вопроса.
+
+    Параметры:
+        root_question: Исходный вопрос пользователя
+        clarifications: Список уточнений [{"bot": "вопрос бота", "user": "ответ пользователя"}]
+
+    Возвращает:
+        Tuple: (composed_question, compose_cost_usd, compose_tokens)
+        - composed_question: Полный сформулированный вопрос для RAG-поиска
+        - compose_cost_usd: Стоимость вызова LLM в USD
+        - compose_tokens: Общее количество токенов (prompt + completion)
+    """
+    # Формируем контекст для LLM (может быть пустым если нет уточнений)
+    clarification_text = ""
+    if clarifications:
+        for idx, item in enumerate(clarifications, 1):
+            bot_q = item.get("bot", "")
+            user_a = item.get("user", "")
+            if bot_q and user_a:
+                clarification_text += f"\nУточнение {idx}:\n- Бот спросил: {bot_q}\n- Пользователь ответил: {user_a}"
+            elif user_a:
+                clarification_text += f"\nДополнение от пользователя: {user_a}"
+
+    system_prompt = """Ты помощник, который формулирует грамотный вопрос для поиска в базе знаний.
+
+Твоя задача: переформулировать исходный запрос пользователя в полный, читабельный вопрос.
+
+Правила:
+1. Результат должен быть одним предложением-вопросом
+2. Если есть уточнения — включи всю важную информацию из них
+3. Вопрос должен быть грамматически правильным и начинаться с заглавной буквы
+4. Если исходный запрос короткий (например "питание малины") — разверни его в полноценный вопрос
+5. Не добавляй лишней информации, которой не было в исходном запросе
+6. Отвечай ТОЛЬКО сформулированным вопросом, без пояснений
+
+Примеры:
+- "питание малины летней" → "Какое питание необходимо для летней малины?"
+- "обрезка голубики" → "Как правильно проводить обрезку голубики?"
+- "болезни клубники" → "Какие болезни бывают у клубники и как с ними бороться?" """
+
+    if clarification_text:
+        user_prompt = f"""Исходный вопрос: {root_question}
+{clarification_text}
+
+Сформулируй полный вопрос:"""
+    else:
+        user_prompt = f"""Исходный запрос пользователя: {root_question}
+
+Сформулируй этот запрос в виде полного грамотного вопроса:"""
+
+    try:
+        response = await create_chat_completion_with_usage(
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            model="gpt-4o-mini",  # Быстрая и дешёвая модель
+            temperature=0.3,
+        )
+
+        composed = response["content"].strip()
+
+        # Убираем кавычки если LLM обернула ответ
+        if composed.startswith('"') and composed.endswith('"'):
+            composed = composed[1:-1]
+        if composed.startswith('«') and composed.endswith('»'):
+            composed = composed[1:-1]
+
+        # Рассчитываем стоимость вызова
+        compose_cost = calculate_cost(
+            model=response["model"],
+            prompt_tokens=response["prompt_tokens"],
+            completion_tokens=response["completion_tokens"],
+        )
+        compose_tokens = response["total_tokens"]
+
+        print(f"[compose_full_question] Root: {root_question[:50]}...")
+        print(f"[compose_full_question] Clarifications: {len(clarifications)}")
+        print(f"[compose_full_question] Result: {composed}")
+        print(f"[compose_full_question] Tokens: {compose_tokens}, Cost: ${compose_cost:.6f}")
+
+        return composed, compose_cost, compose_tokens
+
+    except Exception as e:
+        logger.error(f"[compose_full_question] Error: {e}")
+        # Fallback: простая склейка
+        parts = [root_question]
+        for item in clarifications:
+            if item.get("user"):
+                parts.append(item["user"])
+        return " ".join(parts), 0.0, 0
 
 
 def _detect_category_legacy(text: str) -> Optional[str]:
@@ -79,12 +190,18 @@ async def ask_consultation_llm(
     telegram_user_id: int,
     text: str,
     session_id: str,
+    topic_id: Optional[int] = None,               # ID топика для логирования
     consultation_category: Optional[str] = None,  # Тип консультации: 'питание растений', 'посадка и уход' и т.п.
     culture: Optional[str] = None,                # Культура: 'малина', 'голубика' и т.п. (может быть 'не определено')
     default_location: str = "средняя полоса",     # Местоположение по умолчанию
     default_growing_type: str = "открытый грунт", # Тип выращивания по умолчанию
     is_first_llm_call: bool = False,              # DEPRECATED: больше не используется
     skip_rag: bool = False,                       # Флаг пропуска RAG-поиска
+    composed_question: Optional[str] = None,      # Сформированный вопрос для RAG (если есть)
+    compose_cost_usd: float = 0.0,                # Стоимость форматирования вопроса (добавляется к общей)
+    compose_tokens: int = 0,                      # Токены форматирования вопроса
+    classification_cost_usd: float = 0.0,         # Стоимость классификации (detect_culture, detect_category_and_culture)
+    classification_tokens: int = 0,               # Токены классификации
 ) -> str:
     """
     Основной вызов LLM.
@@ -152,6 +269,11 @@ async def ask_consultation_llm(
 
     # 4. RAG: подтягиваем выдержки из базы знаний
     kb_snippets: List[Dict] = []
+    embedding_tokens: int = 0
+    embedding_model: Optional[str] = None
+
+    # Определяем текст для RAG-поиска (приоритет: composed_question > recent_for_category > text)
+    rag_query_text = composed_question or recent_for_category or text
 
     # Пропускаем RAG, если явно указано (например, на этапе уточняющих вопросов)
     if skip_rag:
@@ -164,13 +286,16 @@ async def ask_consultation_llm(
         print(f"[RAG] Начинаем поиск в базе знаний")
         print(f"[RAG] Категория: {rag_category}")
         print(f"[RAG] Подкатегория (культура): {rag_subcategory or 'не указана'}")
-        print(f"[RAG] Запрос пользователя: {text[:100]}...")
+        if composed_question:
+            print(f"[RAG] Сформированный вопрос: {composed_question}")
+        else:
+            print(f"[RAG] Запрос пользователя: {text[:100]}...")
 
         try:
-            query_embedding: List[float] = await get_text_embedding(
-                recent_for_category or text
+            query_embedding, embedding_tokens, embedding_model = await get_text_embedding_with_usage(
+                rag_query_text
             )
-            print(f"[RAG] Получен эмбеддинг запроса (размер: {len(query_embedding)})")
+            print(f"[RAG] Получен эмбеддинг запроса (размер: {len(query_embedding)}, токенов: {embedding_tokens}, модель: {embedding_model})")
 
             kb_snippets = await retrieve_unified_snippets(
                 category=rag_category,
@@ -254,19 +379,121 @@ async def ask_consultation_llm(
         }
     )
 
-    # 6. Вызов модели
+    # 6. Вызов модели с логированием
+    start_time = time.perf_counter()
+
     try:
-        response_text = await create_chat_completion(
+        llm_response = await create_chat_completion_with_usage(
             messages=messages,
             model=settings.openai_model,
             temperature=0.4,
         )
 
+        latency_ms = int((time.perf_counter() - start_time) * 1000)
+        response_text = llm_response["content"]
+
         if not response_text:
             return "Не удалось получить ответ от модели. Попробуйте ещё раз позже."
+
+        # Логирование консультации (fire-and-forget, не блокирует ответ)
+        asyncio.create_task(_log_consultation_async(
+            user_id=user_id,
+            topic_id=topic_id,
+            user_message=text,
+            bot_response=response_text,
+            system_prompt=system_prompt,
+            rag_snippets=kb_snippets,
+            llm_response=llm_response,
+            latency_ms=latency_ms,
+            consultation_category=consultation_category,
+            culture=culture,
+            embedding_tokens=embedding_tokens,
+            embedding_model=embedding_model,
+            composed_question=composed_question,
+            compose_cost_usd=compose_cost_usd,
+            compose_tokens=compose_tokens,
+            classification_cost_usd=classification_cost_usd,
+            classification_tokens=classification_tokens,
+        ))
 
         return response_text.strip()
 
     except Exception as e:
         print(f"[ask_consultation_llm][OpenAI error] {e}")
+        logger.error(f"[ask_consultation_llm][OpenAI error] {e}")
         return "Сейчас не получается связаться с моделью. Попробуйте ещё раз чуть позже."
+
+
+async def _log_consultation_async(
+    user_id: int,
+    topic_id: Optional[int],
+    user_message: str,
+    bot_response: str,
+    system_prompt: str,
+    rag_snippets: List[Dict],
+    llm_response: Dict,
+    latency_ms: int,
+    consultation_category: Optional[str],
+    culture: Optional[str],
+    embedding_tokens: int = 0,
+    embedding_model: Optional[str] = None,
+    composed_question: Optional[str] = None,
+    compose_cost_usd: float = 0.0,
+    compose_tokens: int = 0,
+    classification_cost_usd: float = 0.0,
+    classification_tokens: int = 0,
+) -> None:
+    """
+    Асинхронно логирует консультацию в БД.
+    Выполняется в фоне, чтобы не замедлять ответ пользователю.
+    """
+    try:
+        # Стоимость основного LLM вызова
+        llm_cost_usd = calculate_cost(
+            model=llm_response["model"],
+            prompt_tokens=llm_response["prompt_tokens"],
+            completion_tokens=llm_response["completion_tokens"],
+        )
+
+        # Расчёт стоимости embeddings
+        embedding_cost_usd = 0.0
+        if embedding_tokens > 0 and embedding_model:
+            embedding_cost_usd = calculate_embedding_cost(embedding_model, embedding_tokens)
+
+        # Общая стоимость = classification + compose_question + embeddings + LLM
+        total_cost_usd = classification_cost_usd + compose_cost_usd + embedding_cost_usd + llm_cost_usd
+
+        await log_consultation(
+            user_id=user_id,
+            topic_id=topic_id,
+            user_message=user_message,
+            bot_response=bot_response,
+            system_prompt=system_prompt,
+            rag_snippets=rag_snippets,
+            llm_params={
+                "model": llm_response["model"],
+                "temperature": 0.4,
+            },
+            prompt_tokens=llm_response["prompt_tokens"],
+            completion_tokens=llm_response["completion_tokens"],
+            cost_usd=total_cost_usd,  # Общая стоимость включает classification + compose + embeddings + LLM
+            latency_ms=latency_ms,
+            consultation_category=consultation_category,
+            culture=culture,
+            embedding_tokens=embedding_tokens,
+            embedding_cost_usd=embedding_cost_usd,
+            embedding_model=embedding_model,
+            composed_question=composed_question,
+            compose_cost_usd=compose_cost_usd,  # Стоимость форматирования вопроса отдельно
+            compose_tokens=compose_tokens,      # Токены форматирования вопроса
+            classification_cost_usd=classification_cost_usd,  # Стоимость классификации
+            classification_tokens=classification_tokens,      # Токены классификации
+        )
+
+        logger.debug(
+            f"[consultation_log] Записан лог: user={user_id}, topic={topic_id}, "
+            f"tokens={llm_response['total_tokens']}, cost=${total_cost_usd:.6f}, latency={latency_ms}ms"
+        )
+
+    except Exception as e:
+        logger.error(f"[consultation_log] Ошибка записи лога: {e}")

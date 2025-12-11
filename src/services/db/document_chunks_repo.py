@@ -85,16 +85,14 @@ async def chunks_bulk_insert(chunks: List[Dict]) -> None:
 async def chunks_search(
     *,
     query_embedding: List[float],
-    subcategory: Optional[str] = None,
-    limit: int = 2,
+    limit: int = 5,
     distance_threshold: Optional[float] = 0.35,
 ):
     """
     Поиск похожих фрагментов документов по эмбеддингу.
 
-    Фильтрация:
-        - ТОЛЬКО по subcategory (культуре), если передана
-        - Если subcategory не передана, поиск по всем документам
+    Поиск по всем документам без фильтрации по категории/культуре.
+    Релевантность определяется только векторным сходством.
 
     Возвращает список записей с полями:
         - id, document_id, chunk_text, page_number, distance, subcategory
@@ -118,12 +116,56 @@ async def chunks_search(
             JOIN documents d ON c.document_id = d.id
             WHERE c.is_active = TRUE
               AND d.is_active = TRUE
-              AND ($2::text IS NULL OR c.subcategory = $2)
             ORDER BY c.embedding <=> $1::vector
-            LIMIT $3;
+            LIMIT $2;
             """,
             vector_str,
-            subcategory,
+            limit,
+        )
+
+    # Фильтрация по distance_threshold
+    if distance_threshold is not None:
+        rows = [r for r in rows if r["distance"] <= distance_threshold]
+
+    return rows
+
+
+async def chunks_search_priority(
+    *,
+    query_embedding: List[float],
+    limit: int = 3,
+    distance_threshold: Optional[float] = 0.35,
+):
+    """
+    Поиск похожих фрагментов из ПРИОРИТЕТНЫХ документов (subcategory='приоритет').
+
+    Возвращает список записей с полями:
+        - id, document_id, chunk_text, page_number, distance, subcategory
+    """
+    pool = get_pool()
+
+    norm_embedding = _normalize_embedding(query_embedding)
+    vector_str = "[" + ",".join(f"{x:.6f}" for x in norm_embedding) + "]"
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                c.id,
+                c.document_id,
+                c.chunk_text,
+                c.page_number,
+                c.subcategory,
+                c.embedding <=> $1::vector AS distance
+            FROM document_chunks c
+            JOIN documents d ON c.document_id = d.id
+            WHERE c.is_active = TRUE
+              AND d.is_active = TRUE
+              AND c.subcategory = 'приоритет'
+            ORDER BY c.embedding <=> $1::vector
+            LIMIT $2;
+            """,
+            vector_str,
             limit,
         )
 

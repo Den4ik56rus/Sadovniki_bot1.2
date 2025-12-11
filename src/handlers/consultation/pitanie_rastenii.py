@@ -46,7 +46,7 @@ from src.services.db.topics_repo import (
 from src.services.db.messages_repo import log_message
 from src.services.db.moderation_repo import moderation_add
 
-from src.services.llm.consultation_llm import ask_consultation_llm
+from src.services.llm.consultation_llm import ask_consultation_llm, compose_full_question
 from src.services.llm.classification_llm import detect_culture_name
 
 # Импортируем функции для отправки информации о счётчике и проверки отказа
@@ -74,6 +74,8 @@ async def process_nutrition_consultation(
     category: str,
     culture: str,
     root_question: str,
+    classification_cost_usd: float = 0.0,
+    classification_tokens: int = 0,
 ) -> None:
     """
     Обрабатывает консультацию по питанию растений.
@@ -85,6 +87,8 @@ async def process_nutrition_consultation(
         category: Категория консультации (должна быть "питание растений")
         culture: Определенная культура
         root_question: Текст вопроса пользователя
+        classification_cost_usd: Стоимость классификации в USD (из unified_entry)
+        classification_tokens: Токены классификации
     """
     user = message.from_user
     if user is None:
@@ -124,6 +128,8 @@ async def process_nutrition_consultation(
         "topic_id": topic_id,
         "session_id": session_id,
         "telegram_user_id": telegram_user_id,
+        "classification_cost_usd": classification_cost_usd,
+        "classification_tokens": classification_tokens,
     }
 
     # Проверяем, нужно ли уточнять тип культуры
@@ -135,6 +141,14 @@ async def process_nutrition_consultation(
             variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
 
         await message.answer(variety_question)
+        # Логируем уточняющий вопрос бота
+        await log_message(
+            user_id=user_id,
+            direction="bot",
+            text=variety_question,
+            session_id=session_id,
+            topic_id=topic_id,
+        )
         CONSULTATION_STATE[telegram_user_id] = "waiting_variety_clarification"
         print(f"[process_nutrition] Asking variety, state -> waiting_variety_clarification")
         return
@@ -148,17 +162,26 @@ async def process_nutrition_consultation(
     # Показываем сообщение ожидания
     status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
+    # Формируем красивый вопрос для RAG (даже без уточнений)
+    composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, [])
+
     try:
         answer_text = await ask_consultation_llm(
             user_id=user_id,
             telegram_user_id=telegram_user_id,
             text=root_question,
             session_id=session_id,
+            topic_id=topic_id,
             consultation_category=base_category,
             culture=culture,
             default_location="средняя полоса",
             default_growing_type="открытый грунт",
             skip_rag=not use_rag,
+            composed_question=composed_q,
+            compose_cost_usd=compose_cost,
+            compose_tokens=compose_tokens,
+            classification_cost_usd=classification_cost_usd,
+            classification_tokens=classification_tokens,
         )
     finally:
         try:
@@ -287,11 +310,17 @@ async def handle_nutrition_root(message: Message) -> None:
         topic_id=topic_id,
     )
 
+    # Инициализируем стоимость классификации
+    classification_cost_usd = 0.0
+    classification_tokens = 0
+
     # Если это первое сообщение в топике - переопределяем культуру
     # Даже если культура есть (это означает, что топик был создан заново после закрытия старого)
     if is_first_message:
         print(f"[nutrition] Это первое сообщение (count_before={message_count_before}), переопределяем культуру (было: {culture!r})")
-        detected_culture = await detect_culture_name(root_question)
+        detected_culture, class_cost, class_tokens = await detect_culture_name(root_question)
+        classification_cost_usd += class_cost
+        classification_tokens += class_tokens
         if detected_culture and detected_culture != "не определено":
             await set_topic_culture(topic_id, detected_culture)
             culture = detected_culture
@@ -314,6 +343,8 @@ async def handle_nutrition_root(message: Message) -> None:
         "topic_id": topic_id,
         "session_id": session_id,
         "telegram_user_id": telegram_user_id,
+        "classification_cost_usd": classification_cost_usd,
+        "classification_tokens": classification_tokens,
     }
 
     # Проверяем, нужно ли уточнять тип культуры
@@ -325,6 +356,14 @@ async def handle_nutrition_root(message: Message) -> None:
             variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
 
         await message.answer(variety_question)
+        # Логируем уточняющий вопрос бота
+        await log_message(
+            user_id=user_id,
+            direction="bot",
+            text=variety_question,
+            session_id=session_id,
+            topic_id=topic_id,
+        )
         CONSULTATION_STATE[user.id] = "waiting_variety_clarification"
         print(f"[nutrition] STEP1 done, state -> waiting_variety_clarification, user_id={user.id}")
     else:
@@ -339,17 +378,26 @@ async def handle_nutrition_root(message: Message) -> None:
         # Показываем сообщение ожидания
         status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
+        # Формируем красивый вопрос для RAG (даже без уточнений)
+        composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, [])
+
         try:
             answer_text = await ask_consultation_llm(
                 user_id=user_id,
                 telegram_user_id=telegram_user_id,
                 text=root_question,
                 session_id=session_id,
+                topic_id=topic_id,
                 consultation_category=base_category,
                 culture=culture,
                 default_location="средняя полоса",
                 default_growing_type="открытый грунт",
                 skip_rag=not use_rag,  # Используем RAG только если культура определена
+                composed_question=composed_q,
+                compose_cost_usd=compose_cost,
+                compose_tokens=compose_tokens,
+                classification_cost_usd=classification_cost_usd,
+                classification_tokens=classification_tokens,
             )
         finally:
             # Удаляем сообщение ожидания
@@ -468,14 +516,22 @@ async def handle_nutrition_clarification(message: Message) -> None:
         topic_id=topic_id,
     )
 
+    # Получаем накопленную стоимость классификации из контекста
+    classification_cost_usd: float = ctx.get("classification_cost_usd", 0.0)
+    classification_tokens: int = ctx.get("classification_tokens", 0)
+
     # Переопределяем культуру на основе ответа
     combined_text = root_question + "\n" + clarification_answer
-    culture = await detect_culture_name(combined_text)
+    culture, class_cost, class_tokens = await detect_culture_name(combined_text)
+    classification_cost_usd += class_cost
+    classification_tokens += class_tokens
     print(f"[nutrition] STEP1.5 re-classified culture: {ctx.get('culture')!r} -> {culture!r}")
 
     # Обновляем культуру в БД и контексте
     await set_topic_culture(topic_id, culture)
     ctx["culture"] = culture
+    ctx["classification_cost_usd"] = classification_cost_usd
+    ctx["classification_tokens"] = classification_tokens
     CONSULTATION_CONTEXT[user.id] = ctx
 
     # Проверяем, нужно ли уточнять тип культуры
@@ -487,6 +543,14 @@ async def handle_nutrition_clarification(message: Message) -> None:
             variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
 
         await message.answer(variety_question)
+        # Логируем уточняющий вопрос бота
+        await log_message(
+            user_id=user_id,
+            direction="bot",
+            text=variety_question,
+            session_id=session_id,
+            topic_id=topic_id,
+        )
         CONSULTATION_STATE[user.id] = "waiting_variety_clarification"
         print(f"[nutrition] STEP1.5 done, state -> waiting_variety_clarification")
         return
@@ -498,17 +562,26 @@ async def handle_nutrition_clarification(message: Message) -> None:
     # Показываем сообщение ожидания
     status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
+    # Формируем красивый вопрос для RAG
+    composed_q, compose_cost, compose_tokens = await compose_full_question(combined_question, [])
+
     try:
         answer_text = await ask_consultation_llm(
             user_id=user_id,
             telegram_user_id=telegram_user_id,
             text=combined_question,
             session_id=session_id,
+            topic_id=topic_id,
             consultation_category=base_category,
             culture=culture,
             default_location="средняя полоса",
             default_growing_type="открытый грунт",
             skip_rag=False,  # Теперь используем RAG для финального ответа
+            composed_question=composed_q,
+            compose_cost_usd=compose_cost,
+            compose_tokens=compose_tokens,
+            classification_cost_usd=classification_cost_usd,
+            classification_tokens=classification_tokens,
         )
     finally:
         # Удаляем сообщение ожидания
@@ -608,6 +681,10 @@ async def handle_variety_clarification(message: Message) -> None:
         topic_id=topic_id,
     )
 
+    # Получаем накопленную стоимость классификации из контекста
+    classification_cost_usd: float = ctx.get("classification_cost_usd", 0.0)
+    classification_tokens: int = ctx.get("classification_tokens", 0)
+
     # Определяем тип культуры на основе ответа пользователя
     variety_answer_lower = variety_answer.lower()
 
@@ -619,7 +696,9 @@ async def handle_variety_clarification(message: Message) -> None:
             culture = "клубника летняя"
         else:
             # Если не смогли определить - пробуем через классификатор с контекстом
-            culture = await detect_culture_name(f"клубника {variety_answer}")
+            culture, class_cost, class_tokens = await detect_culture_name(f"клубника {variety_answer}")
+            classification_cost_usd += class_cost
+            classification_tokens += class_tokens
             if culture == "общая информация" or culture == "не определено":
                 culture = old_culture  # Оставляем как есть
     elif old_culture == "малина общая":
@@ -629,12 +708,16 @@ async def handle_variety_clarification(message: Message) -> None:
             culture = "малина летняя"
         else:
             # Если не смогли определить - пробуем через классификатор с контекстом
-            culture = await detect_culture_name(f"малина {variety_answer}")
+            culture, class_cost, class_tokens = await detect_culture_name(f"малина {variety_answer}")
+            classification_cost_usd += class_cost
+            classification_tokens += class_tokens
             if culture == "общая информация" or culture == "не определено":
                 culture = old_culture  # Оставляем как есть
     else:
         # Если это не клубника/малина общая - используем классификатор
-        culture = await detect_culture_name(root_question + "\n" + variety_answer)
+        culture, class_cost, class_tokens = await detect_culture_name(root_question + "\n" + variety_answer)
+        classification_cost_usd += class_cost
+        classification_tokens += class_tokens
 
     print(f"[nutrition] STEP2 (variety) re-classified culture: {old_culture!r} -> {culture!r}")
 
@@ -642,11 +725,18 @@ async def handle_variety_clarification(message: Message) -> None:
     await set_topic_culture(topic_id, culture)
     ctx["culture"] = culture
     ctx["variety_answer"] = variety_answer
+    ctx["classification_cost_usd"] = classification_cost_usd
+    ctx["classification_tokens"] = classification_tokens
     CONSULTATION_CONTEXT[user.id] = ctx
 
     # Вызываем LLM с уточненной культурой для финального ответа
     base_category = ctx.get("category", "питание растений")
-    combined_question = root_question + "\n\nТип культуры: " + variety_answer
+
+    # Формируем читабельный вопрос через LLM
+    clarifications = [{"user": f"Тип культуры: {variety_answer}"}]
+    composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, clarifications)
+    if compose_cost > 0:
+        print(f"[nutrition] compose_full_question cost: ${compose_cost:.6f}")
 
     # Показываем сообщение ожидания
     status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
@@ -655,13 +745,19 @@ async def handle_variety_clarification(message: Message) -> None:
         answer_text = await ask_consultation_llm(
             user_id=user_id,
             telegram_user_id=ctx.get("telegram_user_id", user.id),
-            text=combined_question,
+            text=composed_q,  # Используем сформированный вопрос
             session_id=session_id,
+            topic_id=topic_id,
             consultation_category=base_category,
             culture=culture,
             default_location="средняя полоса",
             default_growing_type="открытый грунт",
             skip_rag=False,  # Используем RAG для финального ответа
+            composed_question=composed_q,
+            compose_cost_usd=compose_cost,
+            compose_tokens=compose_tokens,
+            classification_cost_usd=classification_cost_usd,
+            classification_tokens=classification_tokens,
         )
     finally:
         # Удаляем сообщение ожидания
@@ -692,7 +788,7 @@ async def handle_variety_clarification(message: Message) -> None:
         await moderation_add(
             user_id=user_id,
             topic_id=topic_id,
-            question=combined_question,
+            question=composed_q,
             answer=answer_text,
             category_guess=category_guess,
         )
@@ -703,7 +799,7 @@ async def handle_variety_clarification(message: Message) -> None:
         await send_followup_count_message(message, questions_left, topic_id)
 
     # Сохраняем полный вопрос в контекст для кнопок
-    ctx["full_question"] = combined_question
+    ctx["full_question"] = composed_q
     CONSULTATION_CONTEXT[user.id] = ctx
 
     # Очищаем состояние (контекст сохраняем для кнопок)
@@ -847,16 +943,23 @@ async def handle_param_replacement(message: Message) -> None:
     # Показываем сообщение ожидания
     status_message = await message.answer("⏳ Подождите, формирую ответ с новыми параметрами...")
 
+    # Формируем красивый вопрос для RAG (даже без уточнений)
+    composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, [])
+
     try:
         answer_text = await ask_consultation_llm(
             user_id=user_id,
             telegram_user_id=user.id,
             text=root_question,
             session_id=session_id,
+            topic_id=ctx.get("topic_id"),
             consultation_category=category,
             culture=culture,
             default_location=location,
             default_growing_type=growing_type,
+            composed_question=composed_q,
+            compose_cost_usd=compose_cost,
+            compose_tokens=compose_tokens,
         )
     finally:
         try:
@@ -934,16 +1037,23 @@ async def handle_detailed_plan(message: Message) -> None:
     # Показываем сообщение ожидания
     status_message = await message.answer("⏳ Формирую детальный план...")
 
+    # Формируем красивый вопрос для RAG
+    composed_q, compose_cost, compose_tokens = await compose_full_question(detailed_plan_request, [])
+
     try:
         detailed_plan = await ask_consultation_llm(
             user_id=user_id,
             telegram_user_id=telegram_user_id,
             text=detailed_plan_request,
             session_id=session_id,
+            topic_id=topic_id,
             consultation_category=category,
             culture=culture,
             default_location="средняя полоса",
             default_growing_type="открытый грунт",
+            composed_question=composed_q,
+            compose_cost_usd=compose_cost,
+            compose_tokens=compose_tokens,
         )
     finally:
         try:

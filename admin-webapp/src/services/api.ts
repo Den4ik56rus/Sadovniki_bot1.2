@@ -19,6 +19,7 @@ async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> 
   const response = await fetch(`${API_BASE}${endpoint}`, {
     headers: {
       'Content-Type': 'application/json',
+      'ngrok-skip-browser-warning': 'true',  // Skip ngrok interstitial page
       ...options?.headers,
     },
     ...options,
@@ -118,6 +119,9 @@ export const api = {
 
     const response = await fetch(`${API_BASE}/documents/upload`, {
       method: 'POST',
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      },
       body: formData,
     })
 
@@ -132,6 +136,9 @@ export const api = {
   async deleteDocument(id: number): Promise<{ success: boolean; message: string }> {
     const response = await fetch(`${API_BASE}/documents/${id}`, {
       method: 'DELETE',
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      },
     })
 
     if (!response.ok) {

@@ -12,7 +12,7 @@ import type {
   UploadResponse,
 } from '@/types'
 
-const API_BASE = '/api/admin'
+const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
 const CBR_API = 'https://www.cbr-xml-daily.ru/daily_json.js'
 
 async function fetchApi<T>(endpoint: string, options?: RequestInit): Promise<T> {

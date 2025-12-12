@@ -43,7 +43,7 @@ export function useSSE({
   enabled = true,
   reconnectInterval = 3000,
   maxReconnectAttempts = 5,
-  lastEventId
+  lastEventId: _lastEventId
 }: UseSSEOptions): UseSSEReturn {
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)

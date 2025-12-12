@@ -150,7 +150,7 @@ export const useLogsStore = create<LogsState>((set) => ({
 
       return {
         logs: [...state.logs, log].sort((a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
         ),
       }
     })
@@ -165,7 +165,7 @@ export const useLogsStore = create<LogsState>((set) => ({
 
       return {
         messages: [...state.messages, message].sort((a, b) =>
-          new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+          new Date(a.created_at || 0).getTime() - new Date(b.created_at || 0).getTime()
         ),
       }
     })

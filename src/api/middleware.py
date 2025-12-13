@@ -121,7 +121,7 @@ async def cors_middleware(request: web.Request, handler):
             response.headers["Access-Control-Allow-Origin"] = settings.webapp_origin
 
     response.headers["Access-Control-Allow-Methods"] = "GET, POST, PUT, DELETE, PATCH, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Telegram-Init-Data"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Telegram-Init-Data, ngrok-skip-browser-warning"
     response.headers["Access-Control-Max-Age"] = "3600"
 
     return response

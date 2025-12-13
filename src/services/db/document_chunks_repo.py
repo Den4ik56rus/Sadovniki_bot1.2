@@ -176,6 +176,52 @@ async def chunks_search_priority(
     return rows
 
 
+async def chunks_search_all(
+    *,
+    query_embedding: List[float],
+    limit: int = 5,
+    distance_threshold: Optional[float] = 0.35,
+):
+    """
+    Поиск похожих фрагментов документов БЕЗ фильтрации по subcategory.
+    Используется в режиме написания статей для администратора.
+
+    Идентичен chunks_search(), но явно указано назначение.
+
+    Возвращает список записей с полями:
+        - id, document_id, chunk_text, page_number, distance, subcategory
+    """
+    # Просто вызываем chunks_search, так как она уже ищет по всем документам
+    return await chunks_search(
+        query_embedding=query_embedding,
+        limit=limit,
+        distance_threshold=distance_threshold,
+    )
+
+
+async def chunks_search_priority_all(
+    *,
+    query_embedding: List[float],
+    limit: int = 3,
+    distance_threshold: Optional[float] = 0.35,
+):
+    """
+    Поиск приоритетных chunks БЕЗ фильтрации (только subcategory='приоритет').
+    Используется в режиме написания статей для администратора.
+
+    Идентичен chunks_search_priority(), но явно указано назначение.
+
+    Возвращает список записей с полями:
+        - id, document_id, chunk_text, page_number, distance, subcategory
+    """
+    # Просто вызываем chunks_search_priority, так как она уже ищет без фильтрации
+    return await chunks_search_priority(
+        query_embedding=query_embedding,
+        limit=limit,
+        distance_threshold=distance_threshold,
+    )
+
+
 async def chunks_count_by_document(document_id: int) -> int:
     """
     Возвращает количество чанков для документа.

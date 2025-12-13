@@ -1,0 +1,508 @@
+# PROJECT MAP — Source of Truth
+
+**Last Updated:** 2025-12-13
+**Project:** Sadovniki-bot v1.2.1
+**Status:** Production-ready with ongoing enhancements
+
+## Quick Navigation
+
+- **Architecture:** See [Architecture Overview](#architecture-overview)
+- **Features:** See [Feature Status](#feature-status)
+- **Current Work:** See [Active Context](#active-context)
+- **Documentation Index:** See [Documentation](#documentation)
+
+---
+
+## Project Overview
+
+**Sadovniki-bot** — Professional Telegram consultation bot for berry crops (strawberry, raspberry, blackberry, currant, blueberry, honeysuckle, gooseberry) using RAG (Retrieval-Augmented Generation) with vector search and OpenAI GPT.
+
+**Core Technologies:**
+- Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
+- PostgreSQL 16 + pgvector (vector search)
+- React + TypeScript (Admin Panel)
+- RAG: 3-level priority search (Q&A → priority docs → general docs)
+
+**Key Capabilities:**
+- 12 culture types classification
+- 6 consultation categories
+- Multi-turn context-aware dialogues
+- Culture-specific prompts with detailed agronomic instructions
+- Real-time admin monitoring via SSE
+- Article generation mode for administrators
+
+---
+
+## Architecture Overview
+
+### System Components
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    TELEGRAM USERS                           │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│              TELEGRAM BOT (Aiogram 3.x)                     │
+│  ┌──────────────────────────────────────────────────────┐   │
+│  │ Handlers                                             │   │
+│  │ • consultation/entry.py — main consultation logic    │   │
+│  │ • consultation/pitanie_rastenii.py — nutrition mode  │   │
+│  │ • admin/moderation.py — KB moderation                │   │
+│  │ • admin/terminology.py — terminology management      │   │
+│  │ • admin/article_writing.py — article generation      │   │
+│  │ • menu/ — user menu handlers                         │   │
+│  └──────────────────────────────────────────────────────┘   │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│                     SERVICES LAYER                          │
+│  ┌──────────────────┐  ┌──────────────────┐                │
+│  │ LLM Services     │  │ RAG System       │                │
+│  │ • consultation   │  │ • unified        │                │
+│  │ • classification │  │   retriever      │                │
+│  │ • article        │  │ • 3-level search │                │
+│  │ • embeddings     │  └──────────────────┘                │
+│  └──────────────────┘                                       │
+│  ┌──────────────────┐  ┌──────────────────┐                │
+│  │ DB Repositories  │  │ Document Pipeline│                │
+│  │ • kb_repo        │  │ • PDF extraction │                │
+│  │ • topics_repo    │  │ • chunking       │                │
+│  │ • messages_repo  │  │ • embedding      │                │
+│  └──────────────────┘  └──────────────────┘                │
+└────────────────────┬────────────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────────────┐
+│              POSTGRESQL + pgvector                          │
+│  • users, topics, messages                                  │
+│  • knowledge_base (Q&A pairs)                               │
+│  • documents, document_chunks (RAG corpus)                  │
+│  • moderation_queue, terminology                            │
+│  • consultation_logs (monitoring)                           │
+└─────────────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│                    ADMIN PANEL (React)                      │
+│  • Live Feed (SSE) — real-time consultations                │
+│  • Consultation View — detailed view with RAG snippets      │
+│  • Cost Tracking — tokens, pricing, latency                 │
+│  • SSE Manager — server-sent events for real-time updates   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Data Flow: Consultation Request
+
+```
+User Question
+    ↓
+1. Classification (detect_category_and_culture)
+    ↓
+2. Topic Management (create or continue topic)
+    ↓
+3. Clarification Check (need more info?)
+    ↓ (if sufficient info)
+4. Question Composition (compose_full_question with culture context)
+    ↓
+5. Embedding Generation (get_text_embedding_with_usage)
+    ↓
+6. RAG Search (retrieve_unified_snippets)
+    ├── Level 1: Q&A pairs (kb)
+    ├── Level 2: Priority documents (subcategory-specific)
+    └── Level 3: General documents (category-wide)
+    ↓
+7. Prompt Building (culture-specific prompt + RAG context)
+    ↓
+8. LLM Generation (OpenAI GPT-4o)
+    ↓
+9. Markdown → HTML Formatting (markdown_to_telegram_html)
+    ↓
+10. Response Delivery (with follow-up buttons)
+    ↓
+11. Logging (consultation_logs, messages, SSE broadcast)
+```
+
+---
+
+## Feature Status
+
+### Core Features
+
+| Feature | Status | Documentation | Notes |
+|---------|--------|---------------|-------|
+| Multi-turn Consultations | ✅ Production | [CONSULTATION_FLOW.md](features/CONSULTATION_FLOW.md) | State machine with context |
+| Culture Classification | ✅ Production | [CLASSIFICATION.md](features/CLASSIFICATION.md) | 12 culture types |
+| RAG System | ✅ Production | [RAG_SYSTEM.md](../architecture/RAG_SYSTEM.md) | 3-level priority search |
+| Culture-Specific Prompts | ✅ Production | [PROMPTS.md](features/PROMPTS.md) | Detailed for strawberry/raspberry |
+| Markdown Formatting | ✅ Production | - | Bot responses support MD → HTML |
+| Topic Management | ✅ Production | [TOPIC_MANAGEMENT.md](TOPIC_MANAGEMENT.md) | Session tracking |
+| KB Moderation | ✅ Production | [MODERATION.md](features/MODERATION.md) | Queue system |
+| Terminology Management | ✅ Production | [TERMINOLOGY.md](features/TERMINOLOGY.md) | Preferred wording |
+| Admin Panel (SSE) | ✅ Production | [ADMIN_PANEL.md](features/ADMIN_PANEL.md) | Real-time monitoring |
+| Article Writing Mode | ✅ Production | - | Admin feature, needs docs |
+| Document Upload | ✅ Production | [DOCUMENT_PIPELINE.md](features/DOCUMENT_PIPELINE.md) | PDF/TXT/MD/DOCX |
+
+### Consultation Categories
+
+| Category | Status | Culture-Specific Prompts | Documentation |
+|----------|--------|--------------------------|---------------|
+| Питание растений | ✅ Production | ✅ group_strawberry, group_raspberry, group_b_berries | nutrition.py (900+ lines) |
+| Посадка и уход | ✅ Production | ⏳ Generic prompt | planting_care.py |
+| Защита растений | ✅ Production | ⏳ Technical template | diseases_pests.py (250+ lines) |
+| Улучшение почвы | ✅ Production | ⏳ Generic prompt | soil_improvement.py |
+| Подбор сортов | ✅ Production | ⏳ Generic prompt | variety_selection.py |
+| Другие вопросы | ✅ Production | ❌ No specific prompt | Uses base prompt only |
+
+### Culture Support
+
+| Culture Type | Classification | Nutrition Prompts | Protection Prompts |
+|-------------|----------------|-------------------|-------------------|
+| Клубника летняя | ✅ | ✅ group_strawberry | ⏳ |
+| Клубника ремонтантная | ✅ | ✅ group_strawberry | ⏳ |
+| Малина летняя | ✅ | ✅ group_raspberry | ⏳ |
+| Малина ремонтантная | ✅ | ✅ group_raspberry | ⏳ |
+| Ежевика | ✅ | ✅ group_raspberry | ⏳ |
+| Смородина | ✅ | ✅ group_b_berries | ⏳ |
+| Голубика | ✅ | ✅ group_b_berries | ⏳ |
+| Жимолость | ✅ | ✅ group_b_berries | ⏳ |
+| Крыжовник | ✅ | ✅ group_b_berries | ⏳ |
+| Ирга | ✅ | ✅ group_b_berries | ⏳ |
+| Арония | ✅ | ✅ group_b_berries | ⏳ |
+
+**Legend:**
+- ✅ Implemented and working
+- ⏳ In progress or needs improvement
+- ❌ Not implemented
+
+---
+
+## Active Context
+
+### Current Phase: Prompt Enhancement & UI Improvements
+
+**Focus Areas:**
+1. Culture-specific prompts for all consultation categories
+2. Markdown formatting for better UX
+3. Admin Panel real-time features
+4. Article generation for content creation
+
+**Last Session Changes (2025-12-13):**
+- Implemented detailed prompts for nutrition category (strawberry, raspberry, berries)
+- Added Markdown → HTML formatting for all bot responses
+- Moved RAG snippets inline in Admin Panel
+- Created Article Writing mode for administrators
+- Enhanced RAG system with culture context for follow-up questions
+- Improved SSE error handling and logging
+
+### Constraints & Invariants
+
+**MUST NOT CHANGE:**
+1. Database schema (without migration files in `db/schema_*.sql`)
+2. OpenAI API models (gpt-4o for consultations, text-embedding-3-large for vectors)
+3. Telegram API limits (4096 chars per message, auto-split with `send_long_message`)
+4. RAG 3-level priority structure (Level 1: Q&A, Level 2: Priority Docs, Level 3: General Docs)
+5. Async patterns (all services use `async def`, never blocking calls)
+
+**SAFE TO CHANGE:**
+1. Prompt texts (but preserve structure for culture-specific prompts)
+2. RAG search parameters (limits, thresholds)
+3. UI components in Admin Panel (CSS, React components)
+4. Keyboard layouts (inline buttons)
+5. Logging levels and messages
+
+**TECHNICAL DEBT TO ADDRESS:**
+1. Split large prompt files (`nutrition.py` 900+ lines → separate files per culture group)
+2. Add automated tests for Markdown formatting
+3. Add automated tests for culture-specific prompts
+4. Move culture groups mapping to config/database
+5. Implement prompt versioning system
+
+---
+
+## Documentation
+
+### Architecture Documents
+
+- [OVERVIEW.md](architecture/OVERVIEW.md) — System architecture, components, data flow
+- [DATABASE.md](architecture/DATABASE.md) — Schema, indices, connection pooling
+- [LLM_INTEGRATION.md](architecture/LLM_INTEGRATION.md) — OpenAI API integration, token management
+- [RAG_SYSTEM.md](architecture/RAG_SYSTEM.md) — Retrieval-Augmented Generation, 3-level search
+
+### Feature Documents
+
+- [CONSULTATION_FLOW.md](features/CONSULTATION_FLOW.md) — Multi-turn dialogues, state machine
+- [CLASSIFICATION.md](features/CLASSIFICATION.md) — Culture classification (12 types)
+- [PROMPTS.md](features/PROMPTS.md) — Prompt system, culture-specific prompts
+- [MODERATION.md](features/MODERATION.md) — Knowledge base moderation
+- [TERMINOLOGY.md](features/TERMINOLOGY.md) — Terminology management
+- [ADMIN_PANEL.md](features/ADMIN_PANEL.md) — Admin monitoring, SSE, cost tracking
+- [DOCUMENT_PIPELINE.md](features/DOCUMENT_PIPELINE.md) — PDF processing, chunking, embedding
+- [TOPIC_MANAGEMENT.md](TOPIC_MANAGEMENT.md) — Session tracking, topic continuation
+
+### Development Documents
+
+- [SETUP.md](development/SETUP.md) — Installation, environment setup
+- [TESTING.md](development/TESTING.md) — Test scripts, validation
+- [CHANGELOG.md](development/CHANGELOG.md) — Version history
+
+### Missing Documents (TO CREATE)
+
+- [ ] `docs/features/ARTICLE_MODE.md` — Article generation feature
+- [ ] `docs/features/MARKDOWN_FORMATTING.md` — Markdown → HTML conversion
+- [ ] `docs/architecture/PROMPT_SYSTEM.md` — Detailed prompt architecture
+- [ ] `docs/development/CONTRIBUTING.md` — Contribution guidelines
+
+---
+
+## File Structure Reference
+
+### Handlers (src/handlers/)
+
+**Consultation Handlers:**
+- `consultation/entry.py` (681 lines) — Main consultation logic, culture classification, RAG orchestration
+- `consultation/pitanie_rastenii.py` (400+ lines) — Nutrition category handler (legacy, being phased out)
+- `consultation/router.py` — Consultation router setup
+
+**Admin Handlers:**
+- `admin/moderation.py` (1000+ lines) — KB moderation, Q&A approval/rejection
+- `admin/terminology.py` (200+ lines) — Terminology CRUD
+- `admin/article_writing.py` (155 lines) — Article generation mode
+
+**Menu Handlers:**
+- `menu/start.py` — /start command
+- `menu/help.py` — /help command
+- `menu/profile.py` — User profile
+
+### Services (src/services/)
+
+**LLM Services (services/llm/):**
+- `consultation_llm.py` (500+ lines) — Main consultation LLM service
+- `classification_llm.py` (1000+ lines) — Culture/category classification
+- `article_llm.py` (177 lines) — Article generation
+- `embeddings_llm.py` (100 lines) — Text embedding generation
+- `core_llm.py` (200 lines) — Core OpenAI API calls
+- `question_builder_llm.py` (200 lines) — Question composition
+
+**RAG Services (services/rag/):**
+- `unified_retriever.py` (681 lines) — Unified 3-level RAG search
+
+**Database Repositories (services/db/):**
+- `kb_repo.py` — Knowledge base (Q&A) operations
+- `topics_repo.py` — Topics (sessions) CRUD
+- `messages_repo.py` — Messages logging
+- `document_chunks_repo.py` — Document chunks search
+- `consultation_logs_repo.py` — Consultation logs for admin panel
+- `users_repo.py` — User management
+- `moderation_queue_repo.py` — Moderation queue
+- `terminology_repo.py` — Terminology CRUD
+
+**Document Pipeline (services/documents/):**
+- `pdf_extractor.py` — PDF text extraction
+- `chunker.py` — Text chunking for RAG
+
+### Prompts (src/prompts/)
+
+**Base Prompts:**
+- `base_prompt.py` — Base system prompt (full and minimal versions)
+- `consultation_prompts.py` — Consultation-specific prompts
+- `article_prompt.py` — Article generation prompt
+
+**Category Prompts (prompts/category_prompts/):**
+- `nutrition.py` (900+ lines) — Nutrition category with culture-specific prompts
+- `diseases_pests.py` (250+ lines) — Plant protection technical template
+- `planting_care.py` — Planting and care category
+- `soil_improvement.py` — Soil improvement category
+- `variety_selection.py` — Variety selection category
+- `_culture_groups.py` — Culture → prompt group mapping
+- `_fertilizers_reference.py` — Fertilizers and pesticides reference
+
+### Utilities (src/utils/)
+
+- `formatting.py` (195 lines) — Markdown → Telegram HTML conversion
+- `message_utils.py` — Message splitting, text utils
+- `date_utils.py` — Date formatting
+
+### API (src/api/)
+
+**Handlers:**
+- `handlers/sse.py` — Server-Sent Events endpoints
+- `handlers/documents.py` — Document upload API
+- `handlers/consultations.py` — Consultations API
+
+**Infrastructure:**
+- `sse_manager.py` — SSE connection management
+- `middleware.py` — CORS, auth, logging
+- `server.py` — aiohttp server setup
+
+### Admin Panel (admin-webapp/)
+
+**Components:**
+- `components/consultation/ConsultationView.tsx` — Consultation detail view
+- `components/consultation/LiveFeed.tsx` — Real-time feed
+- `components/common/CollapsibleSection.tsx` — Collapsible UI element
+
+**Services:**
+- `services/api.ts` — API client
+- `services/sse.ts` — SSE client
+
+---
+
+## Key Code Patterns
+
+### Pattern 1: Async Database Access
+
+```python
+from src.services.db.database import get_pool
+
+async def my_function():
+    pool = get_pool()  # NEVER create new connections
+    async with pool.acquire() as conn:
+        result = await conn.fetch(
+            "SELECT * FROM table WHERE id = $1",  # Parameterized queries
+            some_id
+        )
+```
+
+**Rules:**
+- Always use `get_pool()`, never create connections
+- Use `$1, $2, ...` for parameters (never f-strings)
+- Use `async with pool.acquire()` for transactions
+
+### Pattern 2: LLM Service Calls
+
+```python
+from src.services.llm.core_llm import create_chat_completion_with_usage
+
+response = await create_chat_completion_with_usage(
+    messages=[
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_question}
+    ],
+    model=settings.openai_model,
+    temperature=0.3
+)
+
+answer = response["content"]
+tokens = response["total_tokens"]
+cost = response["cost_usd"]
+```
+
+**Rules:**
+- Always use `create_chat_completion_with_usage` (includes token tracking)
+- Temperature: 0.3 for consultations, 0.4 for articles
+- Log tokens and cost for monitoring
+
+### Pattern 3: Culture-Specific Prompts
+
+```python
+from src.prompts.category_prompts._culture_groups import get_prompt_group_for_culture
+from src.prompts.category_prompts.nutrition import get_nutrition_category_prompt
+
+# Get prompt group for culture
+group = get_prompt_group_for_culture("питание растений", "малина летняя")
+# group = "group_raspberry"
+
+# Get category-specific prompt
+category_prompt, use_minimal_base = get_nutrition_category_prompt(
+    culture="малина летняя",
+    default_location="средняя полоса",
+    default_growing_type="открытый грунт"
+)
+
+# Combine with base prompt
+if use_minimal_base:
+    base = get_base_system_prompt_minimal()
+else:
+    base = get_base_system_prompt()
+
+full_prompt = f"{base}\n\n{category_prompt}"
+```
+
+**Rules:**
+- Always check if culture has specific prompt via `get_prompt_group_for_culture`
+- Respect `use_minimal_base` flag (detailed prompts already have format instructions)
+- Culture groups are defined in `_culture_groups.py`
+
+### Pattern 4: Markdown Formatting
+
+```python
+from src.utils.formatting import markdown_to_telegram_html
+
+# LLM returns Markdown
+answer_text = "**Important:** Use `Azofоска` for feeding."
+
+# Convert before sending to Telegram
+html_text = markdown_to_telegram_html(answer_text)
+# Result: "<b>Important:</b> Use <code>Azofоска</code> for feeding."
+
+await message.answer(html_text, parse_mode="HTML")
+```
+
+**Rules:**
+- ALWAYS convert LLM responses with `markdown_to_telegram_html` before sending
+- Parse mode MUST be "HTML" (not "Markdown")
+- Tables are converted to vertical cards automatically
+
+### Pattern 5: SSE Broadcasting
+
+```python
+from src.api.sse_manager import sse_manager
+
+await sse_manager.broadcast_event(
+    event_type="consultation_update",
+    data={
+        "topic_id": topic_id,
+        "message": {...}
+    },
+    topic_id=topic_id  # Optional filter
+)
+```
+
+**Rules:**
+- Use `broadcast_event` for all real-time updates
+- Event types: `new_consultation`, `consultation_update`, `message_added`
+- Always include relevant IDs for filtering
+
+---
+
+## Development Checklist
+
+### Before Making Changes
+
+- [ ] Read relevant docs from `docs/` folder
+- [ ] Check if similar code exists elsewhere (avoid duplication)
+- [ ] Verify database schema if touching repositories
+- [ ] Check if changes affect Admin Panel (frontend rebuild needed)
+
+### After Making Changes
+
+- [ ] Update relevant docs in `docs/`
+- [ ] Update this PROJECT_MAP.md if architecture changed
+- [ ] Run existing tests (if applicable)
+- [ ] Test manually in Telegram (if bot logic changed)
+- [ ] Test Admin Panel (if API/SSE changed)
+- [ ] Update `session-summary.md` with changes
+
+### Before Committing
+
+- [ ] Review all changed files
+- [ ] Ensure no secrets in code (.env only)
+- [ ] Check git status for untracked files
+- [ ] Write descriptive commit message
+- [ ] Update version in README.md if needed (1.2.1 → 1.2.2)
+
+---
+
+## Contact & Support
+
+**Documentation Questions:** Check `docs/` folder first
+**Code Questions:** Read this PROJECT_MAP.md and relevant .md files
+**Issues:** Create detailed bug reports with logs
+
+**Key Files to Read:**
+1. This file (`docs/PROJECT_MAP.md`) — overall map
+2. `CLAUDE.md` — AI collaboration rules
+3. `docs/architecture/OVERVIEW.md` — system design
+4. `session-summary.md` — latest session changes

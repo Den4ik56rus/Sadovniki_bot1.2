@@ -51,10 +51,16 @@ async def send_sse_event(
     try:
         await response.write(message.encode('utf-8'))
         await response.drain()
+    except (ConnectionResetError, RuntimeError) as e:
+        # Нормальное закрытие соединения - не засоряем логи
+        error_msg = str(e)
+        if "closing transport" in error_msg or "Connection lost" in error_msg:
+            logger.debug(f"SSE connection closed: {e}")
+        else:
+            logger.warning(f"SSE connection error: {e}")
     except Exception as e:
-        logger.error(f"Error sending SSE event: {e}")
-        # НЕ поднимаем исключение - соединение может быть закрыто клиентом
-        # Handler сам обработает закрытие соединения
+        # Неожиданная ошибка - это действительно проблема
+        logger.error(f"Unexpected SSE error: {e}", exc_info=True)
 
 
 async def live_feed_stream(request: web.Request) -> web.StreamResponse:

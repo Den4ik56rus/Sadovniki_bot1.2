@@ -38,9 +38,10 @@ logger = logging.getLogger(__name__)
 async def compose_full_question(
     root_question: str,
     clarifications: List[Dict[str, str]],
+    culture_context: Optional[str] = None,
 ) -> tuple:
     """
-    Формирует полный читабельный вопрос из root_question + уточнений.
+    Формирует полный читабельный вопрос из root_question + уточнений + культуры.
 
     Лёгкий LLM-вызов (gpt-4o-mini) без истории чата.
     ВСЕГДА вызывает LLM для красивого форматирования вопроса.
@@ -48,6 +49,7 @@ async def compose_full_question(
     Параметры:
         root_question: Исходный вопрос пользователя
         clarifications: Список уточнений [{"bot": "вопрос бота", "user": "ответ пользователя"}]
+        culture_context: Контекст культуры для follow-up вопросов (например, "малина ремонтантная")
 
     Возвращает:
         Tuple: (composed_question, compose_cost_usd, compose_tokens)
@@ -73,23 +75,31 @@ async def compose_full_question(
 Правила:
 1. Результат должен быть одним предложением-вопросом
 2. Если есть уточнения — включи всю важную информацию из них
-3. Вопрос должен быть грамматически правильным и начинаться с заглавной буквы
-4. Если исходный запрос короткий (например "питание малины") — разверни его в полноценный вопрос
-5. Не добавляй лишней информации, которой не было в исходном запросе
-6. Отвечай ТОЛЬКО сформулированным вопросом, без пояснений
+3. ОБЯЗАТЕЛЬНО включи контекст культуры, если он указан
+4. Вопрос должен быть грамматически правильным и начинаться с заглавной буквы
+5. Если исходный запрос короткий (например "питание малины") — разверни его в полноценный вопрос
+6. Не добавляй лишней информации, которой не было в исходном запросе
+7. Отвечай ТОЛЬКО сформулированным вопросом, без пояснений
 
 Примеры:
 - "питание малины летней" → "Какое питание необходимо для летней малины?"
 - "обрезка голубики" → "Как правильно проводить обрезку голубики?"
-- "болезни клубники" → "Какие болезни бывают у клубники и как с ними бороться?" """
+- "болезни клубники" → "Какие болезни бывают у клубники и как с ними бороться?"
+- "как поливать" + контекст: "малина ремонтантная" → "Как правильно поливать малину ремонтантную?" """
+
+    # Добавляем контекст культуры, если он указан
+    if culture_context:
+        context_note = f"\nКонтекст культуры: {culture_context}"
+    else:
+        context_note = ""
 
     if clarification_text:
         user_prompt = f"""Исходный вопрос: {root_question}
-{clarification_text}
+{clarification_text}{context_note}
 
 Сформулируй полный вопрос:"""
     else:
-        user_prompt = f"""Исходный запрос пользователя: {root_question}
+        user_prompt = f"""Исходный запрос пользователя: {root_question}{context_note}
 
 Сформулируй этот запрос в виде полного грамотного вопроса:"""
 
@@ -222,6 +232,10 @@ async def ask_consultation_llm(
     старая логика _detect_category_legacy (в основном для совместимости).
     """
 
+    # Инициализируем счетчики стоимости (добавляем к переданным значениям)
+    total_classification_cost = classification_cost_usd
+    total_classification_tokens = classification_tokens
+
     # 1. История диалога
     history: List[Dict] = await get_last_messages(
         user_id=user_id,
@@ -239,6 +253,7 @@ async def ask_consultation_llm(
     if text and (not user_history_texts or user_history_texts[-1] != text):
         user_history_texts.append(text)
 
+    # Контекст для RAG
     if user_history_texts:
         # Склеиваем последние 2–3 сообщения пользователя — контекст для RAG
         recent_for_category = " ".join(user_history_texts[-3:])
@@ -269,10 +284,12 @@ async def ask_consultation_llm(
 
     # 4. RAG: подтягиваем выдержки из базы знаний
     kb_snippets: List[Dict] = []
+    qa_found: bool = False  # НОВОЕ: флаг найденных Q&A
     embedding_tokens: int = 0
     embedding_model: Optional[str] = None
 
-    # Определяем текст для RAG-поиска (приоритет: composed_question > recent_for_category > text)
+    # Определяем текст для RAG-поиска
+    # Приоритет: composed_question > recent_for_category > text
     rag_query_text = composed_question or recent_for_category or text
 
     # Пропускаем RAG, если явно указано (например, на этапе уточняющих вопросов)
@@ -286,10 +303,7 @@ async def ask_consultation_llm(
         print(f"[RAG] Начинаем поиск в базе знаний")
         print(f"[RAG] Категория: {rag_category}")
         print(f"[RAG] Подкатегория (культура): {rag_subcategory or 'не указана'}")
-        if composed_question:
-            print(f"[RAG] Сформированный вопрос: {composed_question}")
-        else:
-            print(f"[RAG] Запрос пользователя: {text[:100]}...")
+        print(f"[RAG] Запрос для поиска: {rag_query_text}")
 
         try:
             query_embedding, embedding_tokens, embedding_model = await get_text_embedding_with_usage(
@@ -297,16 +311,18 @@ async def ask_consultation_llm(
             )
             print(f"[RAG] Получен эмбеддинг запроса (размер: {len(query_embedding)}, токенов: {embedding_tokens}, модель: {embedding_model})")
 
-            kb_snippets = await retrieve_unified_snippets(
+            kb_snippets, qa_found = await retrieve_unified_snippets(
                 category=rag_category,
                 subcategory=rag_subcategory,
                 query_embedding=query_embedding,
-                qa_limit=20,          # Уровень 1: Q&A (увеличено в 10 раз)
-                doc_limit=30,         # Уровень 2: Документы по культуре (увеличено в 10 раз)
+                qa_limit=3,           # Уровень 1: Q&A (2-3 лучших результата)
+                doc_limit=30,         # Уровень 3: Документы по культуре
+                priority_doc_limit=10, # Уровень 2: Приоритетные документы
                 qa_distance_threshold=0.6,    # Увеличен порог для Q&A
                 doc_distance_threshold=0.75,  # Увеличен порог для документов
             )
 
+            print(f"[RAG] Q&A найдены на уровне 1: {qa_found}")
             print(f"[RAG] Найдено фрагментов: {len(kb_snippets)}")
 
             if kb_snippets:
@@ -343,6 +359,7 @@ async def ask_consultation_llm(
     system_prompt = await build_consultation_system_prompt(
         culture=culture or "не определено",
         kb_snippets=kb_snippets,
+        qa_found=qa_found,  # НОВОЕ: передаем флаг найденных Q&A
         consultation_category=consultation_category or "",
         default_location=default_location,
         default_growing_type=default_growing_type,
@@ -412,8 +429,8 @@ async def ask_consultation_llm(
             composed_question=composed_question,
             compose_cost_usd=compose_cost_usd,
             compose_tokens=compose_tokens,
-            classification_cost_usd=classification_cost_usd,
-            classification_tokens=classification_tokens,
+            classification_cost_usd=total_classification_cost,
+            classification_tokens=total_classification_tokens,
         ))
 
         return response_text.strip()

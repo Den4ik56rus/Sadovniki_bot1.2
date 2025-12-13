@@ -168,6 +168,8 @@ class SSEManager:
 
         # Отправляем событие в очереди всех подходящих клиентов
         sent_count = 0
+        clients_to_remove = []
+
         for client in target_clients:
             try:
                 # Проверяем что очередь не переполнена
@@ -179,10 +181,21 @@ class SSEManager:
                         f"Queue full for client {client.client_id}, "
                         f"dropping event"
                     )
+            except (ConnectionResetError, RuntimeError) as e:
+                error_msg = str(e)
+                if "closing" in error_msg or "closed" in error_msg:
+                    logger.debug(f"Client {client.client_id} disconnected: {e}")
+                    clients_to_remove.append(client.client_id)
+                else:
+                    logger.warning(f"Failed to send to client {client.client_id}: {e}")
+                    clients_to_remove.append(client.client_id)
             except Exception as e:
-                logger.error(
-                    f"Error broadcasting to {client.client_id}: {e}"
-                )
+                logger.error(f"Unexpected error sending to client {client.client_id}: {e}")
+                clients_to_remove.append(client.client_id)
+
+        # Удаляем отключенных клиентов
+        for client_id in clients_to_remove:
+            await self.remove_client(client_id)
 
         logger.debug(
             f"Broadcast event '{event_type}' to {sent_count} clients "

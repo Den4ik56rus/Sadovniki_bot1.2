@@ -2,6 +2,21 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## CRITICAL: Read This First
+
+**SOURCE OF TRUTH:** [docs/PROJECT_MAP.md](docs/PROJECT_MAP.md)
+
+Before making ANY changes:
+1. Read `docs/PROJECT_MAP.md` — contains architecture, active context, constraints
+2. Read `session-summary.md` — contains latest session changes
+3. Check relevant docs in `docs/features/` or `docs/architecture/`
+
+**Current Project State (2025-12-13):**
+- Version: 1.2.1
+- Phase: Prompt enhancement & UI improvements
+- Latest changes: Culture-specific prompts, Markdown formatting, Article mode
+- See: `session-summary.md` for details
+
 ## Collaboration Rules
 
 1. Execute the task immediately. No intros, no summaries, no extra comments.

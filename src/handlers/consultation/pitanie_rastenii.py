@@ -56,6 +56,9 @@ from src.handlers.consultation.entry import (
     is_rejection_response,
 )
 
+# Утилита форматирования Markdown → HTML
+from src.utils.formatting import markdown_to_telegram_html
+
 from src.keyboards.consultation.common import get_followup_keyboard
 
 from aiogram import F
@@ -422,6 +425,8 @@ async def handle_nutrition_root(message: Message) -> None:
             is_clarification = False
 
         # Отправляем ответ (с кнопками только если это финальный ответ)
+        # Конвертируем Markdown → HTML для Telegram
+        answer_text = markdown_to_telegram_html(answer_text)
         if is_clarification:
             await message.answer(answer_text)
             # Переводим в состояние ожидания ответа на уточняющий вопрос

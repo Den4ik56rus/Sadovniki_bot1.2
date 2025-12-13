@@ -610,3 +610,38 @@
   text-align: right;
   margin-top: var(--space-1);
 }
+
+/* Technical data embedded within bot messages */
+.technicalDataInline {
+  margin-top: var(--space-3);
+  margin-left: calc(-1 * var(--space-3));
+  margin-right: calc(-1 * var(--space-3));
+  margin-bottom: calc(-1 * var(--space-3));
+  border-top: 1px dashed rgba(63, 185, 80, 0.3);
+  padding-top: var(--space-3);
+}
+
+/* Ensure nested content fits properly */
+.technicalDataInline .snippets {
+  margin: 0;
+}
+
+.technicalDataInline .codeBlock {
+  margin: 0;
+  max-width: 100%;
+}
+
+/* Mobile responsiveness for inline technical sections */
+@media (max-width: 768px) {
+  .technicalDataInline {
+    font-size: 11px;
+  }
+
+  .technicalDataInline .snippetContent {
+    font-size: 11px;
+  }
+
+  .technicalDataInline .codeBlock {
+    font-size: 11px;
+  }
+}

@@ -35,8 +35,8 @@ ALLOWED_SUBCATEGORIES = [
     "общая информация",
 ]
 
-# Максимальный размер файла (50 МБ)
-MAX_UPLOAD_SIZE = 50 * 1024 * 1024
+# Максимальный размер файла (отключено)
+MAX_UPLOAD_SIZE = None
 
 # Поддерживаемые расширения файлов (для отображения)
 SUPPORTED_FORMATS = ["PDF", "TXT", "MD", "DOCX", "DOC"]
@@ -102,13 +102,8 @@ async def upload_document(request: web.Request) -> web.Response:
                         text=f"Unsupported file format. Allowed: {', '.join(SUPPORTED_FORMATS)}"
                     )
 
-                # Читаем файл в память (с ограничением размера)
+                # Читаем файл в память
                 file_data = await field.read(decode=False)
-
-                if len(file_data) > MAX_UPLOAD_SIZE:
-                    raise web.HTTPBadRequest(
-                        text=f"File too large. Max size: {MAX_UPLOAD_SIZE // (1024*1024)} MB"
-                    )
 
             elif field.name == "subcategory":
                 subcategory = (await field.read(decode=True)).decode("utf-8")

@@ -207,3 +207,55 @@ async def kb_get_distinct_subcategories(limit: int = 200) -> List[str]:
         )
 
     return [r["subcategory"] for r in rows]
+
+
+async def kb_search_all(
+    *,
+    query_embedding: List[float],
+    limit: int = 3,
+    distance_threshold: Optional[float] = 0.4,
+):
+    """
+    Поиск Q&A пар БЕЗ фильтрации по category/subcategory.
+    Используется в режиме написания статей для администратора.
+
+    Параметры:
+        query_embedding: Эмбеддинг запроса
+        limit: Максимум записей
+        distance_threshold: Порог расстояния (чем меньше, тем ближе)
+
+    Возвращает:
+        Список словарей с найденными Q&A записями
+    """
+    pool = get_pool()
+
+    # Нормализуем эмбеддинг запроса под VECTOR(1536)
+    norm_embedding = _normalize_embedding(query_embedding)
+
+    # Строка формата "[0.1234,0.5678,...]" для pgvector
+    vector_str = "[" + ",".join(f"{x:.6f}" for x in norm_embedding) + "]"
+
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT
+                id,
+                category,
+                subcategory,
+                question,
+                answer,
+                embedding <=> $1::vector AS distance
+            FROM knowledge_base
+            WHERE is_active = TRUE
+            ORDER BY embedding <=> $1::vector
+            LIMIT $2;
+            """,
+            vector_str,  # $1 — эмбеддинг запроса
+            limit,       # $2 — лимит количества строк
+        )
+
+    # Фильтруем по порогу расстояния, если задан
+    if distance_threshold is not None:
+        rows = [r for r in rows if r["distance"] <= distance_threshold]
+
+    return rows

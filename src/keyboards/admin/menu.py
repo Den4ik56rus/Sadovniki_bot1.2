@@ -24,6 +24,12 @@ def admin_main_menu_kb() -> InlineKeyboardMarkup:
             ],
             [
                 InlineKeyboardButton(
+                    text="📝 Написать статью",
+                    callback_data="admin_write_article",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
                     text="❌ Закрыть меню",
                     callback_data="admin_close_menu",
                 )

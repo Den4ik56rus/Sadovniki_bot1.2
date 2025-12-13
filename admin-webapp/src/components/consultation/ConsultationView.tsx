@@ -291,16 +291,60 @@ export function ConsultationView() {
                 <div className={styles.timelineText}>{msg.text}</div>
                 {/* Стоимость LLM консультации — только для ответов бота */}
                 {msg.direction === 'bot' && linkedLog && (
-                  <div className={styles.llmCostInline}>
-                    <span className={styles.llmCostTokens}>
-                      {(linkedLog.prompt_tokens || 0).toLocaleString()} → {(linkedLog.completion_tokens || 0).toLocaleString()} tok
-                    </span>
-                    <span className={styles.llmCostValue}>
-                      💰 {toRub(linkedLog.llm_cost_usd || 0)}
-                    </span>
-                    <span className={styles.llmCostModel}>{linkedLog.llm_params?.model || 'gpt-4o'}</span>
-                    <span className={styles.llmCostLatency}>{linkedLog.latency_ms || 0}ms</span>
-                  </div>
+                  <>
+                    <div className={styles.llmCostInline}>
+                      <span className={styles.llmCostTokens}>
+                        {(linkedLog.prompt_tokens || 0).toLocaleString()} → {(linkedLog.completion_tokens || 0).toLocaleString()} tok
+                      </span>
+                      <span className={styles.llmCostValue}>
+                        💰 {toRub(linkedLog.llm_cost_usd || 0)}
+                      </span>
+                      <span className={styles.llmCostModel}>{linkedLog.llm_params?.model || 'gpt-4o'}</span>
+                      <span className={styles.llmCostLatency}>{linkedLog.latency_ms || 0}ms</span>
+                    </div>
+
+                    {/* RAG Сниппеты для этого ответа */}
+                    {linkedLog.rag_snippets && linkedLog.rag_snippets.length > 0 && (
+                      <div className={styles.technicalDataInline}>
+                        <CollapsibleSection
+                          title="RAG Сниппеты"
+                          badge={`${linkedLog.rag_snippets.length}`}
+                          defaultOpen={false}
+                        >
+                          <div className={styles.snippets}>
+                            {linkedLog.rag_snippets.map((snippet, idx) => (
+                              <div key={idx} className={styles.snippet}>
+                                <div className={styles.snippetHeader}>
+                                  <span
+                                    className={`badge ${snippet.source_type === 'qa' ? 'badge-info' : 'badge-warning'}`}
+                                  >
+                                    {snippet.source_type === 'qa' ? 'Q&A' : 'Doc'}
+                                  </span>
+                                  <span className={styles.snippetMeta}>
+                                    L{snippet.priority_level} | {snippet.distance.toFixed(3)}
+                                  </span>
+                                </div>
+                                <pre className={styles.snippetContent}>{snippet.content}</pre>
+                              </div>
+                            ))}
+                          </div>
+                        </CollapsibleSection>
+                      </div>
+                    )}
+
+                    {/* Системный промпт для этого ответа */}
+                    {linkedLog.system_prompt && (
+                      <div className={styles.technicalDataInline}>
+                        <CollapsibleSection
+                          title="Системный промпт"
+                          badge={`${linkedLog.system_prompt.length}`}
+                          defaultOpen={false}
+                        >
+                          <pre className={styles.codeBlock}>{linkedLog.system_prompt}</pre>
+                        </CollapsibleSection>
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             )
@@ -391,47 +435,6 @@ export function ConsultationView() {
           <div className={styles.totalCostUsd}>
             (${costSummary.total.toFixed(6)} за {costSummary.count} LLM вызов{costSummary.count === 1 ? '' : costSummary.count < 5 ? 'а' : 'ов'})
           </div>
-        </div>
-      )}
-
-      {/* Техническая информация в конце */}
-      {logs.length > 0 && (
-        <div className={styles.technicalSection}>
-          {logs.map((log, index) => (
-            <div key={log.id}>
-              {log.rag_snippets && log.rag_snippets.length > 0 && (
-                <CollapsibleSection
-                  title={`RAG Сниппеты #${index + 1}`}
-                  badge={`${log.rag_snippets.length}`}
-                >
-                  <div className={styles.snippets}>
-                    {log.rag_snippets.map((snippet, idx) => (
-                      <div key={idx} className={styles.snippet}>
-                        <div className={styles.snippetHeader}>
-                          <span
-                            className={`badge ${snippet.source_type === 'qa' ? 'badge-info' : 'badge-warning'}`}
-                          >
-                            {snippet.source_type === 'qa' ? 'Q&A' : 'Doc'}
-                          </span>
-                          <span className={styles.snippetMeta}>
-                            L{snippet.priority_level} | {snippet.distance.toFixed(3)}
-                          </span>
-                        </div>
-                        <pre className={styles.snippetContent}>{snippet.content}</pre>
-                      </div>
-                    ))}
-                  </div>
-                </CollapsibleSection>
-              )}
-
-              <CollapsibleSection
-                title={`Системный промпт #${index + 1}`}
-                badge={`${log.system_prompt.length}`}
-              >
-                <pre className={styles.codeBlock}>{log.system_prompt}</pre>
-              </CollapsibleSection>
-            </div>
-          ))}
         </div>
       )}
     </div>

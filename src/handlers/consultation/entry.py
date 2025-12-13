@@ -47,6 +47,9 @@ from src.handlers.common import (
     CONSULTATION_CONTEXT,
 )
 
+# Утилита форматирования Markdown → HTML
+from src.utils.formatting import markdown_to_telegram_html
+
 
 router = Router()
 
@@ -114,7 +117,11 @@ async def send_long_message(message: Message, text: str) -> None:
         message: Сообщение от пользователя (для ответа)
         text: Текст для отправки
     """
-    parts = split_long_message(text)
+    # Конвертируем Markdown → HTML для Telegram
+    text = markdown_to_telegram_html(text)
+
+    # Резервируем место для префикса "[Часть X/Y]\n\n" (максимум ~20 символов)
+    parts = split_long_message(text, max_length=4070)
 
     if len(parts) > 1:
         print(f"[send_long_message] Сообщение разбито на {len(parts)} частей")
@@ -335,8 +342,9 @@ async def process_general_consultation(
         session_id=session_id,
     )
 
-    # Обновляем культуру в БД
-    from src.services.db.topics_repo import set_topic_culture
+    # Обновляем категорию и культуру в БД
+    from src.services.db.topics_repo import set_topic_culture, set_topic_category
+    await set_topic_category(topic_id, category)
     await set_topic_culture(topic_id, culture)
 
     # Логируем вопрос пользователя
@@ -484,6 +492,7 @@ async def process_general_consultation(
         # ВАЖНО: В CASE 3 (конкретная культура) НЕ проверяем на уточняющий вопрос!
         # Культура уже определена, поэтому отправляем ответ как финальный
         # Добавляем follow-up кнопки (новый вопрос, заменить параметры, детальный план)
+        reply_text = markdown_to_telegram_html(reply_text)
         await message.answer(reply_text, reply_markup=get_followup_keyboard(category))
 
     # Логируем ответ бота
@@ -604,7 +613,7 @@ async def handle_variety_clarification(message: Message) -> None:
             text=composed_q,  # Используем сформированный вопрос
             session_id=session_id,
             topic_id=topic_id,
-            consultation_category="общая консультация",
+            consultation_category=context.get("category", "не определена"),
             culture=new_culture,
             skip_rag=False,  # С RAG для финального ответа!
             composed_question=composed_q,  # Передаём для логирования
@@ -761,7 +770,7 @@ async def handle_clarification_answer(message: Message) -> None:
                 text=composed_q,  # Используем сформированный вопрос
                 session_id=session_id,
                 topic_id=topic_id,
-                consultation_category="общая консультация",
+                consultation_category=context.get("category", "не определена"),
                 culture=new_culture,
                 skip_rag=False,  # С RAG для финального ответа!
                 composed_question=composed_q,  # Передаём для логирования
@@ -943,7 +952,7 @@ async def handle_consultation_root(message: Message) -> None:
         print(f"[entry] Saved category: {saved_category!r}, saved culture: {culture!r}")
 
         # ВАЖНО: Категория НЕ меняется для follow-up, используем сохраненную
-        detected_category = saved_category or "общая консультация"
+        detected_category = saved_category or "не определена"
 
         # Если культура ещё не определена - НЕ проверяем смену темы,
         # просто продолжаем как same_topic (уточняющий вопрос)
@@ -1002,13 +1011,13 @@ async def handle_consultation_root(message: Message) -> None:
             # ТА ЖЕ ТЕМА - уточняющий вопрос
             print(f"[entry] SAME TOPIC - follow-up question")
             # Используем сохраненную категорию из топика
-            detected_category = saved_category or "общая консультация"
+            detected_category = saved_category or "не определена"
 
         else:  # unclear
             # НЕОПРЕДЕЛЕННО - остаемся на той же теме
             print(f"[entry] UNCLEAR - staying on same topic")
             # Используем сохраненную категорию из топика
-            detected_category = saved_category or "общая консультация"
+            detected_category = saved_category or "не определена"
     else:
         # Это первый вопрос - переопределяем культуру И категорию
         print(f"[entry] First question or new consultation, detecting category and culture")
@@ -1158,7 +1167,13 @@ async def handle_consultation_root(message: Message) -> None:
         status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
         # Формируем красивый вопрос для RAG (даже без уточнений)
-        composed_q, compose_cost, compose_tokens = await compose_full_question(user_text, [])
+        # Для follow-up вопросов добавляем культурный контекст
+        culture_context = culture if (is_potential_followup and not topic_changed) else None
+        composed_q, compose_cost, compose_tokens = await compose_full_question(
+            user_text,
+            [],
+            culture_context=culture_context
+        )
 
         try:
             reply_text: str = await ask_consultation_llm(

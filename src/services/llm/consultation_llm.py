@@ -17,7 +17,7 @@
 import time
 import asyncio
 import logging
-from typing import Optional, List, Dict
+from typing import Optional, List, Dict, Callable, Awaitable
 
 from src.services.db.messages_repo import get_last_messages      # История сообщений
 from src.services.rag.unified_retriever import retrieve_unified_snippets  # Объединенный RAG-поиск (Q&A + документы)
@@ -109,7 +109,7 @@ async def compose_full_question(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            model="gpt-4o-mini",  # Быстрая и дешёвая модель (не зависит от settings)
+            model=settings.openai_model_utility,
         )
 
         composed = response["content"].strip()
@@ -211,6 +211,7 @@ async def ask_consultation_llm(
     compose_tokens: int = 0,                      # Токены форматирования вопроса
     classification_cost_usd: float = 0.0,         # Стоимость классификации (detect_culture, detect_category_and_culture)
     classification_tokens: int = 0,               # Токены классификации
+    status_updater: Optional[Callable[[str], Awaitable[None]]] = None,  # Callback для обновления статуса
 ) -> str:
     """
     Основной вызов LLM.
@@ -235,7 +236,20 @@ async def ask_consultation_llm(
     total_classification_cost = classification_cost_usd
     total_classification_tokens = classification_tokens
 
+    # Хелпер для безопасного обновления статуса
+    async def update_status(text: str) -> None:
+        if status_updater:
+            try:
+                await status_updater(text)
+            except Exception:
+                pass  # Ошибки статуса не должны ломать консультацию
+
     # 1. История диалога
+    if skip_rag:
+        await update_status("📚 Анализирую Ваш вопрос...")
+    else:
+        await update_status("📚 Загружаю историю диалога...")
+
     history: List[Dict] = await get_last_messages(
         user_id=user_id,
         limit=6,
@@ -305,10 +319,14 @@ async def ask_consultation_llm(
         print(f"[RAG] Запрос для поиска: {rag_query_text}")
 
         try:
+            await update_status("🔍 Готовлю запрос для поиска...")
+
             query_embedding, embedding_tokens, embedding_model = await get_text_embedding_with_usage(
                 rag_query_text
             )
             print(f"[RAG] Получен эмбеддинг запроса (размер: {len(query_embedding)}, токенов: {embedding_tokens}, модель: {embedding_model})")
+
+            await update_status("📖 Ищу подходящую литературу...")
 
             kb_snippets, qa_found = await retrieve_unified_snippets(
                 category=rag_category,
@@ -354,6 +372,9 @@ async def ask_consultation_llm(
     # 5. Собираем messages для LLM
     messages: List[Dict[str, str]] = []
 
+    if kb_snippets:
+        await update_status("🧠 Изучаю найденные материалы...")
+
     # Используем новый улучшенный системный промпт со стандартными параметрами
     system_prompt = await build_consultation_system_prompt(
         culture=culture or "не определено",
@@ -398,10 +419,15 @@ async def ask_consultation_llm(
     # 6. Вызов модели с логированием
     start_time = time.perf_counter()
 
+    if skip_rag:
+        await update_status("✍️ Формирую уточняющий вопрос...")
+    else:
+        await update_status("✍️ Формирую ответ...")
+
     try:
         llm_response = await create_chat_completion_with_usage(
             messages=messages,
-            model=settings.openai_model,
+            model=settings.openai_model_consultation,
             # temperature берётся из settings.openai_temperature
         )
 

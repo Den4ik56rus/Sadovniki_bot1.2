@@ -59,9 +59,21 @@ class Settings(BaseSettings):
         ...,
         description="API-ключ OpenAI",
     )
-    openai_model: str = Field(
-        "gpt-4.1-mini",  # можешь поменять на нужную модель
-        description="Имя модели OpenAI для чат-ответов",
+    openai_model_consultation: str = Field(
+        ...,
+        description="Модель для консультаций (OPENAI_MODEL_CONSULTATION)",
+    )
+    openai_model_article: str = Field(
+        ...,
+        description="Модель для статей (OPENAI_MODEL_ARTICLE)",
+    )
+    openai_model_classification: str = Field(
+        ...,
+        description="Модель для классификации (OPENAI_MODEL_CLASSIFICATION)",
+    )
+    openai_model_utility: str = Field(
+        ...,
+        description="Модель для вспомогательных задач (OPENAI_MODEL_UTILITY)",
     )
     openai_embeddings_model: str = Field(
         "text-embedding-3-small",  # модель эмбеддингов (1536 dimensions)

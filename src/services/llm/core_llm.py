@@ -1,15 +1,28 @@
 # src/services/llm/core_llm.py
 
+import logging
 from typing import List, Dict, Any, TypedDict  # Типы для аннотаций
 from openai import AsyncOpenAI                  # Асинхронный клиент OpenAI
+import httpx                                     # Для кастомного таймаута
 
 from src.config import settings                 # Берём настройки проекта (ключи, модели)
 
+logger = logging.getLogger(__name__)
+
+# Увеличенный таймаут для reasoning моделей (gpt-5.x, o1, o3)
+# Reasoning модели могут думать дольше обычных — особенно при генерации статей
+REASONING_TIMEOUT = httpx.Timeout(
+    connect=60.0,    # Таймаут на подключение (сек)
+    read=600.0,      # Таймаут на чтение ответа (10 минут для reasoning статей)
+    write=60.0,      # Таймаут на запись
+    pool=60.0,       # Таймаут на получение соединения из пула
+)
 
 # Создаём один экземпляр клиента OpenAI.
 # Он будет переиспользоваться во всех запросах.
 _client = AsyncOpenAI(
-    api_key=settings.openai_api_key  # Секретный API-ключ OpenAI из конфига
+    api_key=settings.openai_api_key,  # Секретный API-ключ OpenAI из конфига
+    timeout=REASONING_TIMEOUT,         # Увеличенный таймаут для reasoning моделей
 )
 
 
@@ -114,7 +127,29 @@ async def create_chat_completion_with_usage(
     if effective_temp is not None:
         kwargs["temperature"] = effective_temp
 
-    response = await client.chat.completions.create(**kwargs)
+    try:
+        logger.info(f"[core_llm] Вызов OpenAI API: model={model_name}, temp={effective_temp}")
+        response = await client.chat.completions.create(**kwargs)
+    except Exception as e:
+        # Детальное логирование ошибки
+        error_type = type(e).__name__
+        error_msg = str(e)
+        logger.error(f"[core_llm] Ошибка OpenAI API: {error_type}: {error_msg}")
+        logger.error(f"[core_llm] Модель: {model_name}, Temperature: {effective_temp}")
+
+        # Проверяем типичные ошибки
+        if "timeout" in error_msg.lower() or "timed out" in error_msg.lower():
+            logger.error("[core_llm] Причина: Таймаут — модель думает слишком долго")
+        elif "connection" in error_msg.lower():
+            logger.error("[core_llm] Причина: Проблема с подключением к OpenAI API")
+        elif "401" in error_msg or "unauthorized" in error_msg.lower():
+            logger.error("[core_llm] Причина: Неверный API-ключ")
+        elif "model" in error_msg.lower() and "not found" in error_msg.lower():
+            logger.error(f"[core_llm] Причина: Модель {model_name} не найдена или недоступна")
+        elif "temperature" in error_msg.lower():
+            logger.error("[core_llm] Причина: Модель не поддерживает temperature (reasoning модель)")
+
+        raise
 
     content = response.choices[0].message.content
     usage = response.usage

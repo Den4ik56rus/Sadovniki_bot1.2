@@ -14,6 +14,7 @@ from src.services.llm.consultation_llm import ask_consultation_llm, compose_full
 from src.services.db.moderation_repo import moderation_add
 
 from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT
+from src.utils.status_manager import StatusMessageManager
 
 router = Router()
 
@@ -87,8 +88,9 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
     # Получаем категорию из контекста (если есть)
     consultation_category = CONSULTATION_CONTEXT.get(telegram_user_id, {}).get("category")
 
-    # Показываем статус "печатает"
-    status_message = await callback.message.answer("⏳ Подождите, рекомендация формируется...")
+    # Показываем статус с динамическими обновлениями
+    status_mgr = StatusMessageManager(callback)
+    await status_mgr.start()
 
     # Формируем красивый вопрос для RAG (даже без уточнений)
     composed_q, compose_cost, compose_tokens = await compose_full_question(user_text, [])
@@ -106,6 +108,7 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
             composed_question=composed_q,  # Красиво сформированный вопрос
             compose_cost_usd=compose_cost,  # Стоимость формирования вопроса
             compose_tokens=compose_tokens,  # Токены формирования вопроса
+            status_updater=status_mgr.update,
         )
     except Exception as e:
         print(f"ERROR in ask_consultation_llm: {e}")
@@ -114,11 +117,7 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
             "Попробуйте ещё раз чуть позже."
         )
     finally:
-        # Удаляем сообщение ожидания
-        try:
-            await status_message.delete()
-        except Exception:
-            pass
+        await status_mgr.complete()
 
     # Ответ пользователю
     await callback.message.answer(reply_text)

@@ -257,6 +257,24 @@ User Question
 - [ ] `docs/architecture/PROMPT_SYSTEM.md` — Detailed prompt architecture
 - [ ] `docs/development/CONTRIBUTING.md` — Contribution guidelines
 
+### CRM Development Documents
+
+**Roadmap & Models:**
+- [CRM_ROADMAP.md](crm/CRM_ROADMAP.md) — Мастер-документ: все 10 этапов разработки CRM
+- [DATA_MODELS.md](crm/DATA_MODELS.md) — Единые справочники: статусы, культуры, типы событий
+
+**Stage Specifications:**
+- [STAGE_0_PREPARATION.md](crm/specs/STAGE_0_PREPARATION.md) — Скелет данных и событий
+- [STAGE_1_CLIENT_CARD.md](crm/specs/STAGE_1_CLIENT_CARD.md) — Карточка клиента v1
+- [STAGE_2_SUPPORT.md](crm/specs/STAGE_2_SUPPORT.md) — Kanban поддержки
+- [STAGE_3_FINANCES.md](crm/specs/STAGE_3_FINANCES.md) — Подписки/лимиты/деньги
+- [STAGE_4_BUYERS.md](crm/specs/STAGE_4_BUYERS.md) — Покупатели + сегменты
+- [STAGE_5_AI_INTERESTS.md](crm/specs/STAGE_5_AI_INTERESTS.md) — AI-выдержки интересов
+- [STAGE_6_TRIGGERS.md](crm/specs/STAGE_6_TRIGGERS.md) — Триггеры + задачи
+- [STAGE_7_REFERRALS.md](crm/specs/STAGE_7_REFERRALS.md) — Реферальная программа
+- [STAGE_8_DASHBOARDS.md](crm/specs/STAGE_8_DASHBOARDS.md) — Управленческие дашборды
+- [STAGE_9_POLISH.md](crm/specs/STAGE_9_POLISH.md) — Полировка и защита
+
 ---
 
 ## File Structure Reference

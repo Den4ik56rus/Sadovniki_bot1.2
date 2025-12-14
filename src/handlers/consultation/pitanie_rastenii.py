@@ -60,6 +60,7 @@ from src.handlers.consultation.entry import (
 from src.utils.formatting import markdown_to_telegram_html
 
 from src.keyboards.consultation.common import get_followup_keyboard
+from src.utils.status_manager import StatusMessageManager
 
 from aiogram import F
 from aiogram.types import CallbackQuery
@@ -162,8 +163,9 @@ async def process_nutrition_consultation(
     # Определяем, нужен ли RAG
     use_rag = culture not in ("общая информация", "не определено", None)
 
-    # Показываем сообщение ожидания
-    status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+    # Показываем сообщение ожидания с динамическими обновлениями
+    status_mgr = StatusMessageManager(message, use_rag=use_rag)
+    await status_mgr.start()
 
     # Формируем красивый вопрос для RAG ТОЛЬКО если RAG используется
     # (не тратим токены на compose когда будем задавать уточняющие вопросы)
@@ -191,12 +193,10 @@ async def process_nutrition_consultation(
             compose_tokens=compose_tokens,
             classification_cost_usd=classification_cost_usd,
             classification_tokens=classification_tokens,
+            status_updater=status_mgr.update,
         )
     finally:
-        try:
-            await status_message.delete()
-        except Exception:
-            pass
+        await status_mgr.complete()
 
     # Проверяем, является ли ответ уточняющим вопросом
     if not use_rag:
@@ -384,8 +384,9 @@ async def handle_nutrition_root(message: Message) -> None:
         # Если культура неопределённая - сначала без RAG (для уточняющих вопросов)
         use_rag = culture not in ("общая информация", "не определено", None)
 
-        # Показываем сообщение ожидания
-        status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+        # Показываем сообщение ожидания с динамическими обновлениями
+        status_mgr = StatusMessageManager(message, use_rag=use_rag)
+        await status_mgr.start()
 
         # Формируем красивый вопрос для RAG ТОЛЬКО если RAG используется
         # (не тратим токены на compose когда будем задавать уточняющие вопросы)
@@ -413,13 +414,10 @@ async def handle_nutrition_root(message: Message) -> None:
                 compose_tokens=compose_tokens,
                 classification_cost_usd=classification_cost_usd,
                 classification_tokens=classification_tokens,
+                status_updater=status_mgr.update,
             )
         finally:
-            # Удаляем сообщение ожидания
-            try:
-                await status_message.delete()
-            except Exception:
-                pass
+            await status_mgr.complete()
 
         # Проверяем, является ли ответ уточняющим вопросом (только если RAG не использовался)
         if not use_rag:
@@ -576,8 +574,9 @@ async def handle_nutrition_clarification(message: Message) -> None:
     base_category = ctx.get("category", "питание растений")
     combined_question = root_question + "\n\n" + clarification_answer
 
-    # Показываем сообщение ожидания
-    status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+    # Показываем сообщение ожидания с динамическими обновлениями
+    status_mgr = StatusMessageManager(message)
+    await status_mgr.start()
 
     # Формируем красивый вопрос для RAG
     composed_q, compose_cost, compose_tokens = await compose_full_question(combined_question, [])
@@ -599,13 +598,10 @@ async def handle_nutrition_clarification(message: Message) -> None:
             compose_tokens=compose_tokens,
             classification_cost_usd=classification_cost_usd,
             classification_tokens=classification_tokens,
+            status_updater=status_mgr.update,
         )
     finally:
-        # Удаляем сообщение ожидания
-        try:
-            await status_message.delete()
-        except Exception:
-            pass
+        await status_mgr.complete()
 
     # Отправляем ответ
     await send_long_message(message, answer_text)
@@ -755,8 +751,9 @@ async def handle_variety_clarification(message: Message) -> None:
     if compose_cost > 0:
         print(f"[nutrition] compose_full_question cost: ${compose_cost:.6f}")
 
-    # Показываем сообщение ожидания
-    status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+    # Показываем сообщение ожидания с динамическими обновлениями
+    status_mgr = StatusMessageManager(message)
+    await status_mgr.start()
 
     try:
         answer_text = await ask_consultation_llm(
@@ -775,13 +772,10 @@ async def handle_variety_clarification(message: Message) -> None:
             compose_tokens=compose_tokens,
             classification_cost_usd=classification_cost_usd,
             classification_tokens=classification_tokens,
+            status_updater=status_mgr.update,
         )
     finally:
-        # Удаляем сообщение ожидания
-        try:
-            await status_message.delete()
-        except Exception:
-            pass
+        await status_mgr.complete()
 
     # Отправляем ответ
     await send_long_message(message, answer_text)
@@ -957,8 +951,9 @@ async def handle_param_replacement(message: Message) -> None:
     user_id = ctx.get("user_id")
     session_id = ctx.get("session_id", "")
 
-    # Показываем сообщение ожидания
-    status_message = await message.answer("⏳ Подождите, формирую ответ с новыми параметрами...")
+    # Показываем сообщение ожидания с динамическими обновлениями
+    status_mgr = StatusMessageManager(message)
+    await status_mgr.start("⏳ Подождите, формирую ответ с новыми параметрами...")
 
     # Формируем красивый вопрос для RAG (даже без уточнений)
     composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, [])
@@ -977,12 +972,10 @@ async def handle_param_replacement(message: Message) -> None:
             composed_question=composed_q,
             compose_cost_usd=compose_cost,
             compose_tokens=compose_tokens,
+            status_updater=status_mgr.update,
         )
     finally:
-        try:
-            await status_message.delete()
-        except Exception:
-            pass
+        await status_mgr.complete()
 
     # Отправляем ответ
     await send_long_message(message, answer_text)
@@ -1051,8 +1044,9 @@ async def handle_detailed_plan(message: Message) -> None:
         f"На основе предыдущего вопроса:\n{full_question}\n\n{plan_request_text}"
     )
 
-    # Показываем сообщение ожидания
-    status_message = await message.answer("⏳ Формирую детальный план...")
+    # Показываем сообщение ожидания с динамическими обновлениями
+    status_mgr = StatusMessageManager(message)
+    await status_mgr.start("⏳ Формирую детальный план...")
 
     # Формируем красивый вопрос для RAG
     composed_q, compose_cost, compose_tokens = await compose_full_question(detailed_plan_request, [])
@@ -1071,12 +1065,10 @@ async def handle_detailed_plan(message: Message) -> None:
             composed_question=composed_q,
             compose_cost_usd=compose_cost,
             compose_tokens=compose_tokens,
+            status_updater=status_mgr.update,
         )
     finally:
-        try:
-            await status_message.delete()
-        except Exception:
-            pass
+        await status_mgr.complete()
 
     # Отправляем детальный план
     await send_long_message(message, detailed_plan)

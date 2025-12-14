@@ -50,6 +50,9 @@ from src.handlers.common import (
 # Утилита форматирования Markdown → HTML
 from src.utils.formatting import markdown_to_telegram_html
 
+# Менеджер статусных сообщений
+from src.utils.status_manager import StatusMessageManager
+
 
 router = Router()
 
@@ -153,7 +156,8 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
     if culture in ("не определено", "общая информация"):
         print(f"[_process_culture] CASE 1: Vague culture - asking clarification WITHOUT RAG")
 
-        status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+        status_mgr = StatusMessageManager(message, use_rag=False)
+        await status_mgr.start()
 
         try:
             reply_text: str = await ask_consultation_llm(
@@ -167,15 +171,13 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
                 skip_rag=True,  # БЕЗ RAG!
                 classification_cost_usd=context["classification_cost_usd"],
                 classification_tokens=context["classification_tokens"],
+                status_updater=status_mgr.update,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
             reply_text = "Сейчас не получается обработать запрос. Попробуйте позже."
         finally:
-            try:
-                await status_message.delete()
-            except Exception:
-                pass
+            await status_mgr.complete()
 
         await send_long_message(message, reply_text)
 
@@ -220,7 +222,8 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
     else:
         print(f"[_process_culture] CASE 3: Specific culture - final answer WITH RAG")
 
-        status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+        status_mgr = StatusMessageManager(message)
+        await status_mgr.start()
 
         # Формируем полный вопрос из root + ВСЕ уточнения (ОДИН раз в конце!)
         clarifications = context.get("clarifications", [])
@@ -251,19 +254,18 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
                 compose_tokens=compose_tokens,
                 classification_cost_usd=context["classification_cost_usd"],
                 classification_tokens=context["classification_tokens"],
+                status_updater=status_mgr.update,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
             reply_text = "Сейчас не получается обработать запрос. Попробуйте позже."
         finally:
-            try:
-                await status_message.delete()
-            except Exception:
-                pass
+            await status_mgr.complete()
 
-        # Отправляем финальный ответ с кнопками follow-up
-        reply_text_html = markdown_to_telegram_html(reply_text)
-        await message.answer(reply_text_html, reply_markup=get_followup_keyboard(category))
+        # Отправляем финальный ответ (разбиваем на части если длинный)
+        await send_long_message_with_keyboard(
+            message, reply_text, keyboard=get_followup_keyboard(category)
+        )
 
         # Логируем ответ бота
         await log_message(
@@ -371,6 +373,45 @@ async def send_long_message(message: Message, text: str) -> None:
             part_text = part
 
         await message.answer(part_text)
+
+
+async def send_long_message_with_keyboard(
+    message: Message,
+    text: str,
+    keyboard=None
+) -> None:
+    """
+    Отправляет длинное сообщение, разбивая на части.
+    Клавиатура добавляется только к последней части.
+
+    Args:
+        message: Сообщение от пользователя (для ответа)
+        text: Текст для отправки
+        keyboard: Клавиатура (InlineKeyboardMarkup), добавляется к последнему сообщению
+    """
+    # Конвертируем Markdown → HTML для Telegram
+    text = markdown_to_telegram_html(text)
+
+    # Резервируем место для префикса "[Часть X/Y]\n\n" (максимум ~20 символов)
+    parts = split_long_message(text, max_length=4070)
+
+    if len(parts) > 1:
+        print(f"[send_long_message_with_keyboard] Сообщение разбито на {len(parts)} частей")
+
+    for i, part in enumerate(parts, 1):
+        is_last = (i == len(parts))
+
+        if len(parts) > 1:
+            # Добавляем номер части, если сообщение разбито
+            part_text = f"[Часть {i}/{len(parts)}]\n\n{part}"
+        else:
+            part_text = part
+
+        # Клавиатуру добавляем только к последней части
+        if is_last and keyboard:
+            await message.answer(part_text, reply_markup=keyboard)
+        else:
+            await message.answer(part_text)
 
 
 async def send_followup_count_message(
@@ -996,7 +1037,8 @@ async def handle_consultation_root(message: Message) -> None:
     if culture in ("не определено", "общая информация") and not should_skip_clarification:
         print(f"[HYBRID_FLOW] CASE 1: Vague culture - asking clarification WITHOUT RAG")
 
-        status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+        status_mgr = StatusMessageManager(message, use_rag=False)
+        await status_mgr.start()
 
         try:
             reply_text: str = await ask_consultation_llm(
@@ -1010,6 +1052,7 @@ async def handle_consultation_root(message: Message) -> None:
                 skip_rag=True,  # БЕЗ RAG для уточняющих вопросов!
                 classification_cost_usd=classification_cost_usd,
                 classification_tokens=classification_tokens,
+                status_updater=status_mgr.update,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
@@ -1018,10 +1061,7 @@ async def handle_consultation_root(message: Message) -> None:
                 "Попробуйте ещё раз чуть позже."
             )
         finally:
-            try:
-                await status_message.delete()
-            except Exception:
-                pass
+            await status_mgr.complete()
 
         # Отправляем ответ (уточняющий вопрос или финальный ответ)
         await send_long_message(message, reply_text)
@@ -1100,7 +1140,8 @@ async def handle_consultation_root(message: Message) -> None:
     else:
         print(f"[HYBRID_FLOW] CASE 3: Specific culture - final answer WITH RAG")
 
-        status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
+        status_mgr = StatusMessageManager(message)
+        await status_mgr.start()
 
         # Формируем красивый вопрос для RAG (даже без уточнений)
         # Для follow-up вопросов добавляем культурный контекст
@@ -1126,6 +1167,7 @@ async def handle_consultation_root(message: Message) -> None:
                 compose_tokens=compose_tokens,  # Токены формирования вопроса
                 classification_cost_usd=classification_cost_usd,
                 classification_tokens=classification_tokens,
+                status_updater=status_mgr.update,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
@@ -1134,10 +1176,7 @@ async def handle_consultation_root(message: Message) -> None:
                 "Попробуйте ещё раз чуть позже."
             )
         finally:
-            try:
-                await status_message.delete()
-            except Exception:
-                pass
+            await status_mgr.complete()
 
             # Удаляем сообщение "Создается новая тема" если оно есть
             if creating_message:

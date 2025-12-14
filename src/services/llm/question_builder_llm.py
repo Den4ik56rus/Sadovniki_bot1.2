@@ -87,7 +87,7 @@ async def build_full_question(
     try:
         llm_answer = await create_chat_completion(
             messages=messages,
-            model=settings.openai_model,
+            model=settings.openai_model_utility,
             # temperature берётся из settings.openai_temperature
         )
 

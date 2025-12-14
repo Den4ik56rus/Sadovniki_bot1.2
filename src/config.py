@@ -67,6 +67,10 @@ class Settings(BaseSettings):
         "text-embedding-3-small",  # модель эмбеддингов (1536 dimensions)
         description="Имя модели OpenAI для эмбеддингов",
     )
+    openai_temperature: float | None = Field(
+        None,  # None = не передавать temperature (для o1/gpt-5 моделей)
+        description="Temperature для OpenAI (None = не передавать, 0.0-1.0 = конкретное значение)",
+    )
 
     # --- Администраторы ---
     admin_ids: str = Field(

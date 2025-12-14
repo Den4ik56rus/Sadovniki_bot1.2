@@ -1,6 +1,6 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2025-12-13
+**Last Updated:** 2025-12-14
 **Project:** Sadovniki-bot v1.2.1
 **Status:** Production-ready with ongoing enhancements
 
@@ -180,21 +180,21 @@ User Question
 
 ## Active Context
 
-### Current Phase: Prompt Enhancement & UI Improvements
+### Current Phase: Prompt System Enhancements & OpenAI Model Flexibility
 
 **Focus Areas:**
-1. Culture-specific prompts for all consultation categories
-2. Markdown formatting for better UX
-3. Admin Panel real-time features
-4. Article generation for content creation
+1. Knowledge base fallback behavior (answer even when KB is empty)
+2. Configurable temperature support for different OpenAI models
+3. Modular prompt system architecture
+4. Better handling of insufficient information
 
-**Last Session Changes (2025-12-13):**
-- Implemented detailed prompts for nutrition category (strawberry, raspberry, berries)
-- Added Markdown → HTML formatting for all bot responses
-- Moved RAG snippets inline in Admin Panel
-- Created Article Writing mode for administrators
-- Enhanced RAG system with culture context for follow-up questions
-- Improved SSE error handling and logging
+**Last Session Changes (2025-12-14):**
+- Added KB usage rules section to base prompt (3-level priority system)
+- Implemented fallback behavior for empty knowledge base with moderation notices
+- Added configurable temperature support (None = don't pass to API for o1/gpt-5 models)
+- Refactored core_llm.py to handle optional temperature parameter
+- Temporarily disabled LEVEL 2 universal adaptation (needs testing)
+- Updated all LLM services to use temperature from settings
 
 ### Constraints & Invariants
 
@@ -216,8 +216,11 @@ User Question
 1. Split large prompt files (`nutrition.py` 900+ lines → separate files per culture group)
 2. Add automated tests for Markdown formatting
 3. Add automated tests for culture-specific prompts
-4. Move culture groups mapping to config/database
-5. Implement prompt versioning system
+4. Add automated tests for temperature configuration
+5. Add automated tests for KB fallback behavior
+6. Move culture groups mapping to config/database
+7. Implement prompt versioning system
+8. Track moderation notices in database (needs_kb_improvement field)
 
 ---
 

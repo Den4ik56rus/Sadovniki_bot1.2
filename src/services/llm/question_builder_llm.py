@@ -88,7 +88,7 @@ async def build_full_question(
         llm_answer = await create_chat_completion(
             messages=messages,
             model=settings.openai_model,
-            temperature=0.3,
+            # temperature берётся из settings.openai_temperature
         )
 
         full = (llm_answer or "").strip()

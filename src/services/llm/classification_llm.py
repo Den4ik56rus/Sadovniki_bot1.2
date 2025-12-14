@@ -266,7 +266,7 @@ async def detect_culture_name(text: str) -> Tuple[str, float, int]:
         response = await create_chat_completion_with_usage(
             messages=messages,
             model=settings.openai_model,
-            temperature=0.0,
+            # temperature берётся из settings.openai_temperature
         )
 
         # Рассчитываем стоимость
@@ -607,7 +607,7 @@ async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
         response = await create_chat_completion_with_usage(
             messages=messages,
             model=settings.openai_model,
-            temperature=0.0,
+            # temperature берётся из settings.openai_temperature
         )
 
         # Рассчитываем стоимость
@@ -807,7 +807,7 @@ async def compare_topics_for_change(
         response = await create_chat_completion_with_usage(
             messages=messages,
             model=settings.openai_model,
-            temperature=0.0,
+            # temperature берётся из settings.openai_temperature
         )
 
         # Рассчитываем стоимость

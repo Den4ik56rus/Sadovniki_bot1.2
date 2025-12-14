@@ -109,8 +109,7 @@ async def compose_full_question(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            model="gpt-4o-mini",  # Быстрая и дешёвая модель
-            temperature=0.3,
+            model="gpt-4o-mini",  # Быстрая и дешёвая модель (не зависит от settings)
         )
 
         composed = response["content"].strip()
@@ -403,7 +402,7 @@ async def ask_consultation_llm(
         llm_response = await create_chat_completion_with_usage(
             messages=messages,
             model=settings.openai_model,
-            temperature=0.4,
+            # temperature берётся из settings.openai_temperature
         )
 
         latency_ms = int((time.perf_counter() - start_time) * 1000)
@@ -489,7 +488,7 @@ async def _log_consultation_async(
             rag_snippets=rag_snippets,
             llm_params={
                 "model": llm_response["model"],
-                "temperature": 0.4,
+                "temperature": settings.openai_temperature,
             },
             prompt_tokens=llm_response["prompt_tokens"],
             completion_tokens=llm_response["completion_tokens"],

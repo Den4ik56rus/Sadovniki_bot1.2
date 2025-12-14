@@ -131,13 +131,13 @@ async def generate_article(
 
         print(f"[article_llm] Параметры LLM:")
         print(f"  - Модель: {settings.openai_model}")
-        print(f"  - Temperature: 0.4")
+        print(f"  - Temperature: {settings.openai_temperature}")
         print(f"  - Сообщений: {len(messages)}")
 
         response = await create_chat_completion_with_usage(
             messages=messages,
             model=settings.openai_model,
-            temperature=0.4,  # Немного выше чем для консультаций (0.3) для креативности
+            # temperature берётся из settings.openai_temperature
         )
 
         article_text = response["content"]

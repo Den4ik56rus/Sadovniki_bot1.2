@@ -11,10 +11,10 @@ Before making ANY changes:
 2. Read `session-summary.md` — contains latest session changes
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
-**Current Project State (2025-12-13):**
+**Current Project State (2025-12-14):**
 - Version: 1.2.1
-- Phase: Prompt enhancement & UI improvements
-- Latest changes: Culture-specific prompts, Markdown formatting, Article mode
+- Phase: Prompt system enhancements & OpenAI model flexibility
+- Latest changes: KB fallback behavior, configurable temperature support, modular base prompt
 - See: `session-summary.md` for details
 
 ## Collaboration Rules

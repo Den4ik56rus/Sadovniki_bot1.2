@@ -35,7 +35,7 @@ class ChatCompletionResult(TypedDict):
 async def create_chat_completion(
     messages: List[Dict[str, Any]],  # Список сообщений формата {'role': 'user'/'assistant'/'system', 'content': '...'}
     model: str | None = None,        # Какую модель использовать; если None — берём из настроек
-    temperature: float = 0.3,        # "Креативность" ответа (0–1)
+    temperature: float | None = None,  # "Креативность" ответа (None = из settings или не передавать)
 ) -> str:
     """
     Выполняет чат-комплишн (диалоговый запрос к модели) и возвращает только текст ответа.
@@ -43,7 +43,7 @@ async def create_chat_completion(
     Параметры:
         messages   — список сообщений (system + user + assistant)
         model      — имя модели (по умолчанию settings.openai_model)
-        temperature — параметр "креативности"
+        temperature — параметр "креативности" (None = берём из settings.openai_temperature)
 
     Возвращает:
         Строку с ответом ассистента.
@@ -54,12 +54,20 @@ async def create_chat_completion(
     # Получаем клиента
     client = get_client()
 
+    # Определяем temperature: явно заданный > из settings > не передавать
+    effective_temp = temperature if temperature is not None else settings.openai_temperature
+
+    # Формируем параметры запроса
+    kwargs: Dict[str, Any] = {
+        "model": model_name,
+        "messages": messages,
+    }
+    # Добавляем temperature только если он задан (для o1/gpt-5 моделей не передаём)
+    if effective_temp is not None:
+        kwargs["temperature"] = effective_temp
+
     # Отправляем запрос к OpenAI
-    response = await client.chat.completions.create(
-        model=model_name,         # Имя модели
-        messages=messages,        # Контекст диалога
-        temperature=temperature,  # Насколько вариативный ответ
-    )
+    response = await client.chat.completions.create(**kwargs)
 
     # Берём первый вариант ответа (choices[0]) и оттуда сам текст
     content = response.choices[0].message.content
@@ -71,7 +79,7 @@ async def create_chat_completion(
 async def create_chat_completion_with_usage(
     messages: List[Dict[str, Any]],
     model: str | None = None,
-    temperature: float = 0.3,
+    temperature: float | None = None,
 ) -> ChatCompletionResult:
     """
     Выполняет чат-комплишн и возвращает результат с информацией об использовании токенов.
@@ -81,7 +89,7 @@ async def create_chat_completion_with_usage(
     Параметры:
         messages    — список сообщений (system + user + assistant)
         model       — имя модели (по умолчанию settings.openai_model)
-        temperature — параметр "креативности"
+        temperature — параметр "креативности" (None = берём из settings.openai_temperature)
 
     Возвращает:
         ChatCompletionResult с полями:
@@ -94,11 +102,19 @@ async def create_chat_completion_with_usage(
     model_name = model or settings.openai_model
     client = get_client()
 
-    response = await client.chat.completions.create(
-        model=model_name,
-        messages=messages,
-        temperature=temperature,
-    )
+    # Определяем temperature: явно заданный > из settings > не передавать
+    effective_temp = temperature if temperature is not None else settings.openai_temperature
+
+    # Формируем параметры запроса
+    kwargs: Dict[str, Any] = {
+        "model": model_name,
+        "messages": messages,
+    }
+    # Добавляем temperature только если он задан (для o1/gpt-5 моделей не передаём)
+    if effective_temp is not None:
+        kwargs["temperature"] = effective_temp
+
+    response = await client.chat.completions.create(**kwargs)
 
     content = response.choices[0].message.content
     usage = response.usage
@@ -120,6 +136,8 @@ def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> fl
         - gpt-4o: $2.50 input, $10.00 output
         - gpt-4o-mini: $0.15 input, $0.60 output
         - gpt-4.1-mini: $0.15 input, $0.60 output (алиас для gpt-4o-mini)
+        - gpt-5-mini: $0.25 input, $2.00 output
+        - gpt-5.1: $1.25 input, $10.00 output
         - gpt-4-turbo: $10 input, $30 output
     """
     pricing = {
@@ -131,6 +149,9 @@ def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> fl
         "gpt-4o-mini": {"input": 0.15, "output": 0.60},
         "gpt-4o-mini-2024-07-18": {"input": 0.15, "output": 0.60},
         "gpt-4.1-mini": {"input": 0.15, "output": 0.60},  # Алиас
+        # GPT-5 серия
+        "gpt-5-mini": {"input": 0.25, "output": 2.0},
+        "gpt-5.1": {"input": 1.25, "output": 10.0},
         # Старые модели
         "gpt-4-turbo": {"input": 10.0, "output": 30.0},
         "gpt-4": {"input": 30.0, "output": 60.0},

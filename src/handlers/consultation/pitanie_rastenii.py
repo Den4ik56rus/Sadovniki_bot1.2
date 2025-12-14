@@ -165,8 +165,14 @@ async def process_nutrition_consultation(
     # Показываем сообщение ожидания
     status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
-    # Формируем красивый вопрос для RAG (даже без уточнений)
-    composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, [])
+    # Формируем красивый вопрос для RAG ТОЛЬКО если RAG используется
+    # (не тратим токены на compose когда будем задавать уточняющие вопросы)
+    if use_rag:
+        composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, [])
+    else:
+        composed_q = root_question
+        compose_cost = 0.0
+        compose_tokens = 0
 
     try:
         answer_text = await ask_consultation_llm(
@@ -180,7 +186,7 @@ async def process_nutrition_consultation(
             default_location="средняя полоса",
             default_growing_type="открытый грунт",
             skip_rag=not use_rag,
-            composed_question=composed_q,
+            composed_question=composed_q if use_rag else None,
             compose_cost_usd=compose_cost,
             compose_tokens=compose_tokens,
             classification_cost_usd=classification_cost_usd,
@@ -381,8 +387,14 @@ async def handle_nutrition_root(message: Message) -> None:
         # Показываем сообщение ожидания
         status_message = await message.answer("⏳ Подождите, рекомендация формируется...")
 
-        # Формируем красивый вопрос для RAG (даже без уточнений)
-        composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, [])
+        # Формируем красивый вопрос для RAG ТОЛЬКО если RAG используется
+        # (не тратим токены на compose когда будем задавать уточняющие вопросы)
+        if use_rag:
+            composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, [])
+        else:
+            composed_q = root_question
+            compose_cost = 0.0
+            compose_tokens = 0
 
         try:
             answer_text = await ask_consultation_llm(
@@ -396,7 +408,7 @@ async def handle_nutrition_root(message: Message) -> None:
                 default_location="средняя полоса",
                 default_growing_type="открытый грунт",
                 skip_rag=not use_rag,  # Используем RAG только если культура определена
-                composed_question=composed_q,
+                composed_question=composed_q if use_rag else None,
                 compose_cost_usd=compose_cost,
                 compose_tokens=compose_tokens,
                 classification_cost_usd=classification_cost_usd,

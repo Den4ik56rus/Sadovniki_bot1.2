@@ -1,8 +1,8 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2025-12-14
-**Project:** Sadovniki-bot v1.2.1
-**Status:** Production-ready with ongoing enhancements
+**Last Updated:** 2025-12-15
+**Project:** Sadovniki-bot v1.2.2
+**Status:** Production-ready with advanced CRM functionality
 
 ## Quick Navigation
 
@@ -82,6 +82,8 @@
 │  • documents, document_chunks (RAG corpus)                  │
 │  • moderation_queue, terminology                            │
 │  • consultation_logs (monitoring)                           │
+│  • CRM: client_funnel_status, client_funnel_columns        │
+│  • Buyers: buyer_status, buyer_funnel_columns              │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
@@ -89,6 +91,8 @@
 │  • Live Feed (SSE) — real-time consultations                │
 │  • Consultation View — detailed view with RAG snippets      │
 │  • Cost Tracking — tokens, pricing, latency                 │
+│  • CRM — Client Kanban (Deals funnel)                       │
+│  • Buyers — Subscription lifecycle management               │
 │  • SSE Manager — server-sent events for real-time updates   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -143,6 +147,8 @@ User Question
 | Admin Panel (SSE) | ✅ Production | [ADMIN_PANEL.md](features/ADMIN_PANEL.md) | Real-time monitoring |
 | Article Writing Mode | ✅ Production | - | Admin feature, needs docs |
 | Document Upload | ✅ Production | [DOCUMENT_PIPELINE.md](features/DOCUMENT_PIPELINE.md) | PDF/TXT/MD/DOCX |
+| CRM Deals Kanban | ✅ Production | - | Sales funnel management, needs docs |
+| Buyers Section | ✅ Production | - | Subscription lifecycle, needs docs |
 
 ### Consultation Categories
 
@@ -180,21 +186,23 @@ User Question
 
 ## Active Context
 
-### Current Phase: Prompt System Enhancements & OpenAI Model Flexibility
+### Current Phase: CRM Enhancement — Buyers Section
 
 **Focus Areas:**
-1. Knowledge base fallback behavior (answer even when KB is empty)
-2. Configurable temperature support for different OpenAI models
-3. Modular prompt system architecture
-4. Better handling of insufficient information
+1. Complete CRM lifecycle: Deals (sales) → Buyers (subscription management)
+2. Auto-move from Deals to Buyers on "paid" status
+3. Kanban boards for both sections with settings mode
+4. Subscription lifecycle tracking (pending → paid → active → expired)
 
-**Last Session Changes (2025-12-14):**
-- Added KB usage rules section to base prompt (3-level priority system)
-- Implemented fallback behavior for empty knowledge base with moderation notices
-- Added configurable temperature support (None = don't pass to API for o1/gpt-5 models)
-- Refactored core_llm.py to handle optional temperature parameter
-- Temporarily disabled LEVEL 2 universal adaptation (needs testing)
-- Updated all LLM services to use temperature from settings
+**Last Session Changes (2025-12-15):**
+- Implemented Buyers section with full Kanban board
+- Database: schema_18_buyers.sql (buyer_status, buyer_funnel_columns)
+- Backend: buyer_repo.py, buyers.py API handlers (7 endpoints)
+- Frontend: 4 new components (BuyersKanbanBoard, BuyerColumn, BuyerCard, BuyerCardFull)
+- Auto-move logic: Deals "paid" status triggers Buyers "pending_payment"
+- Settings mode: Works for both CRM and Buyers sections
+- System vs custom columns: System columns cannot be deleted
+- Version bump: 1.2.1 → 1.2.2
 
 ### Constraints & Invariants
 

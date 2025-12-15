@@ -10,7 +10,8 @@ interface CustomFieldsSectionProps {
   onChange: (fields: Record<number, unknown>) => void
 }
 
-export function CustomFieldsSection({ fields, clientId, onChange }: CustomFieldsSectionProps) {
+export function CustomFieldsSection({ fields, clientId: _clientId, onChange }: CustomFieldsSectionProps) {
+  void _clientId // Reserved for future use
   const [editingField, setEditingField] = useState<number | null>(null)
   const [editValue, setEditValue] = useState<unknown>(null)
   const [isAddingField, setIsAddingField] = useState(false)

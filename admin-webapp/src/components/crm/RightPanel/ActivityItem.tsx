@@ -10,6 +10,7 @@ interface ActivityItemProps {
   onTaskComplete?: (taskId: number) => void
   onTaskDelete?: (taskId: number) => void
   onNoteDelete?: (noteId: number) => void
+  onTopicClick?: (topicId: number) => void
 }
 
 export function ActivityItem({
@@ -17,6 +18,7 @@ export function ActivityItem({
   onTaskComplete,
   onTaskDelete,
   onNoteDelete,
+  onTopicClick,
 }: ActivityItemProps) {
   const { usdRate } = useCurrencyStore()
 
@@ -57,31 +59,47 @@ export function ActivityItem({
     }
   }
 
+  const handleConsultationClick = () => {
+    const topicId = event.event_data.topic_id as number | undefined
+    if (topicId && onTopicClick) {
+      onTopicClick(topicId)
+    }
+  }
+
   const renderContent = () => {
     const data = event.event_data
 
     switch (event.event_type) {
       case 'consultation':
         return (
-          <div className={styles.consultation}>
+          <div
+            className={`${styles.consultation} ${onTopicClick ? styles.clickable : ''}`}
+            onClick={handleConsultationClick}
+            role={onTopicClick ? 'button' : undefined}
+            tabIndex={onTopicClick ? 0 : undefined}
+            onKeyDown={(e) => e.key === 'Enter' && handleConsultationClick()}
+          >
             <div className={styles.consultationHeader}>
               <span className={styles.consultationCategory}>
                 {(data.category as string) || 'Консультация'}
               </span>
-              {data.culture && (
+              {data.culture ? (
                 <span className={styles.consultationCulture}>
-                  {data.culture as string}
+                  {String(data.culture)}
                 </span>
+              ) : null}
+              {onTopicClick && (
+                <span className={styles.clickHint}>→</span>
               )}
             </div>
-            {data.first_question && (
+            {data.first_question ? (
               <div className={styles.consultationQuestion}>
-                {data.first_question as string}
-                {(data.first_question as string).length >= 150 && '...'}
+                {String(data.first_question)}
+                {String(data.first_question).length >= 150 && '...'}
               </div>
-            )}
+            ) : null}
             <div className={styles.consultationMeta}>
-              <span>{data.message_count} сообщ.</span>
+              <span>{String(data.message_count)} сообщ.</span>
               <span className={styles.consultationCost}>
                 {formatCost((data.total_cost_usd as number) || 0)}
               </span>
@@ -92,17 +110,17 @@ export function ActivityItem({
       case 'task_created':
         return (
           <div className={styles.task}>
-            <div className={styles.taskTitle}>{data.title as string}</div>
-            {data.due_date && (
+            <div className={styles.taskTitle}>{String(data.title)}</div>
+            {data.due_date ? (
               <div className={styles.taskDue}>
                 📅 {formatDate(data.due_date as string)}
               </div>
-            )}
-            {data.priority && data.priority !== 'medium' && (
-              <span className={`${styles.priority} ${styles[data.priority as string]}`}>
+            ) : null}
+            {data.priority && data.priority !== 'medium' ? (
+              <span className={`${styles.priority} ${styles[String(data.priority)]}`}>
                 {data.priority === 'high' ? '🔴 Высокий' : '🔵 Низкий'}
               </span>
-            )}
+            ) : null}
             <div className={styles.taskActions}>
               <button
                 className={styles.completeBtn}

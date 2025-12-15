@@ -8,14 +8,16 @@ interface ActivityFiltersProps {
   onChange: (filters: ActivityEventType[]) => void
 }
 
-const FILTER_LABELS: Record<ActivityEventType, { label: string; icon: string }> = {
+const _FILTER_LABELS: Record<ActivityEventType, { label: string; icon: string }> = {
   consultation: { label: 'Консультации', icon: '💬' },
   task_created: { label: 'Задачи', icon: '✅' },
   task_completed: { label: 'Задачи', icon: '✅' },
   note: { label: 'Заметки', icon: '📝' },
   status_change: { label: 'Статус', icon: '🔄' },
   tag_change: { label: 'Теги', icon: '🏷️' },
+  field_change: { label: 'Поля', icon: '✏️' },
 }
+void _FILTER_LABELS // Available for future use
 
 // Group task_created and task_completed into one filter
 const VISIBLE_FILTERS: { type: ActivityEventType | 'tasks'; label: string; icon: string; includes: ActivityEventType[] }[] = [

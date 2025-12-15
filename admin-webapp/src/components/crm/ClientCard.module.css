@@ -1,109 +1,157 @@
+/* Client Card - Compact Style (i2crm inspired) */
+
 .card {
-  background: var(--bg-secondary);
+  background: var(--bg-card);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  padding: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   cursor: grab;
-  transition: all 0.15s ease;
+  transition: all var(--transition-fast);
   user-select: none;
 }
 
 .card:hover {
-  border-color: var(--border-hover);
-  background: var(--bg-tertiary);
+  border-color: var(--accent-primary);
+  box-shadow: var(--shadow-xs);
 }
 
 .card:active {
   cursor: grabbing;
 }
 
+/* ═══════════════════════════════════════════════════════════
+   HEADER
+   ═══════════════════════════════════════════════════════════ */
+
 .header {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: var(--space-2);
   margin-bottom: var(--space-2);
+}
+
+.avatarSection {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  flex: 1;
 }
 
 .avatar {
   width: 32px;
   height: 32px;
-  border-radius: 50%;
-  background: linear-gradient(135deg, var(--color-accent-blue) 0%, var(--color-accent-purple) 100%);
+  border-radius: var(--radius-full);
+  background: linear-gradient(135deg, #64748B 0%, #475569 100%);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-weight: 600;
-  font-size: 14px;
+  font-weight: var(--font-semibold);
+  font-size: var(--text-sm);
   color: white;
   flex-shrink: 0;
 }
 
-.name {
+.info {
   display: flex;
   flex-direction: column;
   min-width: 0;
+  gap: 1px;
 }
 
-.displayName {
-  font-weight: 500;
+.source {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.name {
+  font-weight: var(--font-medium);
   color: var(--text-primary);
-  font-size: 14px;
+  font-size: var(--text-xs);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.username {
-  font-size: 12px;
+.date {
+  font-size: 10px;
   color: var(--text-muted);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex-shrink: 0;
 }
 
-.metrics {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
-  margin-bottom: var(--space-2);
-  padding: var(--space-2);
-  background: var(--bg-primary);
-  border-radius: var(--radius-sm);
-}
+/* ═══════════════════════════════════════════════════════════
+   COMMENT / STATS
+   ═══════════════════════════════════════════════════════════ */
 
-.metric {
+.comment {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  font-size: 12px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  margin-bottom: var(--space-2);
 }
 
-.metricLabel {
-  color: var(--text-muted);
+.commentIcon {
+  font-size: var(--text-xs);
+  opacity: 0.6;
 }
 
-.metricValue {
-  color: var(--text-primary);
-  font-weight: 500;
+.commentText {
+  font-size: 11px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.subscription {
+/* ═══════════════════════════════════════════════════════════
+   FOOTER
+   ═══════════════════════════════════════════════════════════ */
+
+.footer {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-2);
 }
 
-.subscriptionBadge {
-  font-size: 11px;
-  padding: 2px 6px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-default);
+.footerLeft {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
-.consultations {
+.cost {
   font-size: 11px;
-  color: var(--text-muted);
+  font-weight: var(--font-semibold);
+  color: var(--accent-primary);
+  padding: 2px 6px;
+  background: var(--accent-primary-light);
+  border-radius: var(--radius-sm);
+}
+
+.days {
+  font-size: 10px;
+  font-weight: var(--font-medium);
+  color: var(--status-waiting);
+}
+
+.actionButton {
+  padding: 4px 10px;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-inverse);
+  font-size: 11px;
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.actionButton:hover {
+  background: var(--accent-primary-hover);
 }

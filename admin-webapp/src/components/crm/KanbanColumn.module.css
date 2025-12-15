@@ -1,68 +1,627 @@
+/* Kanban Column - Compact Style (i2crm inspired) */
+
 .column {
   display: flex;
   flex-direction: column;
-  min-width: 280px;
-  max-width: 320px;
-  background: var(--bg-primary);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-lg);
-  transition: border-color 0.15s ease;
+  min-width: 260px;
+  max-width: 300px;
+  flex: 1;
+  background: transparent;
+  transition: all var(--transition-normal);
+  overflow: hidden;
 }
 
 .columnOver {
-  border-color: var(--color-accent-blue);
-  background: rgba(88, 166, 255, 0.05);
+  background: var(--accent-primary-light);
+  border-radius: var(--radius-lg);
 }
+
+/* ═══════════════════════════════════════════════════════════
+   HEADER
+   ═══════════════════════════════════════════════════════════ */
 
 .header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--border-default);
+  padding: var(--space-3) var(--space-2);
+  background: transparent;
+  position: relative;
 }
 
-.indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex-shrink: 0;
+.headerTop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  position: relative;
+  min-height: 24px;
+}
+
+.headerActions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.settingsBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  opacity: 0.5;
+}
+
+.settingsBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  opacity: 1;
 }
 
 .title {
-  font-size: 14px;
-  font-weight: 600;
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
   color: var(--text-primary);
   margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.titleEditable {
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.titleEditable:hover {
+  color: var(--accent-primary);
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.addHintBtn {
+  background: transparent;
+  border: none;
+  color: var(--accent-primary);
+  font-size: var(--text-xs);
+  cursor: pointer;
+  padding: 0;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  transition: opacity var(--transition-fast);
+}
+
+.addHintBtn:hover {
+  opacity: 0.7;
+}
+
+.editRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.titleInput {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  outline: none;
+  width: 140px;
+}
+
+/* Edit actions container - delete + color */
+.editActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: var(--space-2);
+}
+
+/* Delete button - appears when editing title */
+.deleteBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  color: #EF4444;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  opacity: 0.7;
+  padding: 0;
+}
+
+.deleteBtn:hover {
+  opacity: 1;
+}
+
+.deleteBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Color button - small perfect circle */
+.colorBtn {
+  display: block;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.colorBtn:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.5);
+}
+
+.colorPickerDropdown {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 180px;
+}
+
+/* Triggers section for settings mode */
+.triggersSection {
   flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2);
+}
+
+.addTriggerBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-card);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.addTriggerBtn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-primary-light);
+}
+
+.triggersList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 100px;
+}
+
+.headerStats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-3);
+  min-height: 20px;
+}
+
+.headerStatsHidden {
+  visibility: hidden;
 }
 
 .count {
-  font-size: 12px;
-  font-weight: 500;
   color: var(--text-muted);
-  background: var(--bg-tertiary);
-  padding: 2px 8px;
-  border-radius: var(--radius-sm);
+  font-weight: var(--font-medium);
 }
+
+.statDivider {
+  color: var(--border-default);
+}
+
+.value {
+  color: var(--accent-primary);
+  font-weight: var(--font-semibold);
+}
+
+/* Color bar wrapper - contains bar and action buttons */
+.colorBarWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.colorBar {
+  height: 3px;
+  border-radius: 2px;
+  flex: 1;
+}
+
+/* Buttons on the color bar in settings mode */
+.colorBarActions {
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.colorBarBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  line-height: 1;
+}
+
+.colorBarBtn:hover {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  background: var(--bg-card);
+}
+
+.colorBarDragHandle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: grab;
+  transition: all var(--transition-fast);
+  letter-spacing: -1px;
+}
+
+.colorBarDragHandle:hover {
+  background: var(--bg-card);
+  border-color: var(--text-muted);
+}
+
+.colorBarDragHandle:active {
+  cursor: grabbing;
+}
+
+/* Move menu wrapper */
+.moveMenuWrapper {
+  position: relative;
+}
+
+.moveMenu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  overflow: hidden;
+  min-width: 100px;
+}
+
+.moveMenuItem {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-3);
+  background: transparent;
+  border: none;
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.moveMenuItem:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+}
+
+.moveMenuItem:disabled {
+  color: var(--text-muted);
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.moveMenuItem:first-child {
+  border-bottom: 1px solid var(--border-default);
+}
+
+/* Delete button on color bar */
+.colorBarDeleteBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 50%;
+  color: #EF4444;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  padding: 0;
+}
+
+.colorBarDeleteBtn:hover {
+  background: rgba(239, 68, 68, 0.1);
+  border-color: #EF4444;
+}
+
+.colorBarDeleteBtn svg {
+  width: 12px;
+  height: 12px;
+}
+
+/* Color button on color bar - small circle */
+.colorBarColorBtn {
+  display: block;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  border: 2px solid var(--bg-secondary);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.colorBarColorBtn:hover {
+  transform: scale(1.2);
+  border-color: white;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   QUICK ADD BUTTON
+   ═══════════════════════════════════════════════════════════ */
+
+.quickAdd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: var(--space-2) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-card);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.quickAdd:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-primary-light);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CONTENT - CARDS LIST
+   ═══════════════════════════════════════════════════════════ */
 
 .content {
   flex: 1;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-3);
+  padding: var(--space-2);
   overflow-y: auto;
   min-height: 200px;
-  max-height: calc(100vh - 200px);
+  max-height: calc(100vh - 220px);
 }
 
-.empty {
+/* Smooth scrolling */
+.content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SETTINGS DROPDOWN
+   ═══════════════════════════════════════════════════════════ */
+
+.settingsDropdown {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  min-width: 220px;
+  padding: var(--space-3);
+}
+
+.settingsSection {
+  margin-bottom: var(--space-3);
+}
+
+.settingsSection:last-child {
+  margin-bottom: 0;
+}
+
+.settingsLabel {
+  display: block;
+  font-size: var(--text-xs);
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: var(--space-2);
+}
+
+.settingsInput {
+  width: 100%;
+  padding: var(--space-2);
+  font-size: var(--text-sm);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-primary);
+}
+
+.settingsInput:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px var(--accent-primary-light);
+}
+
+.settingsTitleRow {
   display: flex;
   align-items: center;
-  justify-content: center;
-  height: 100px;
-  color: var(--text-muted);
-  font-size: 13px;
-  font-style: italic;
+  justify-content: space-between;
+  padding: var(--space-2);
+  background: var(--bg-input);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--transition-fast);
 }
+
+.settingsTitleRow:hover {
+  border-color: var(--accent-primary);
+}
+
+.settingsTitleRow span:first-child {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+}
+
+.editIcon {
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.colorPicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+.colorOption {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.colorOption:hover {
+  transform: scale(1.1);
+}
+
+.colorOptionActive {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px white, 0 0 0 4px currentColor;
+}
+
+.settingsDivider {
+  height: 1px;
+  background: var(--border-default);
+  margin: var(--space-3) 0;
+}
+
+.settingsComingSoon {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  background: var(--bg-input);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.settingsComingSoonIcon {
+  font-size: var(--text-base);
+}
+

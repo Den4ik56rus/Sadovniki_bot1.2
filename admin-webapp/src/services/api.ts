@@ -14,6 +14,7 @@ import type {
   CrmClient,
   CrmClientFull,
   FunnelStatus,
+  FunnelColumnConfig,
   ClientPriority,
   ClientTag,
   CustomField,
@@ -26,6 +27,11 @@ import type {
   CreateTaskDto,
   UpdateTaskDto,
   CreateNoteDto,
+  BuyersResponse,
+  Buyer,
+  BuyerFull,
+  BuyerStatus,
+  BuyerColumnConfig,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -365,6 +371,139 @@ export const api = {
 
     const query = searchParams.toString()
     return fetchApi<ActivityEvent[]>(`/crm/clients/${clientId}/activity${query ? `?${query}` : ''}`)
+  },
+
+  // CRM: Funnel columns (Kanban)
+  async getFunnelColumns(): Promise<FunnelColumnConfig[]> {
+    return fetchApi<FunnelColumnConfig[]>('/crm/columns')
+  },
+
+  async createFunnelColumn(data: {
+    title?: string
+    color?: string
+    after_id?: string
+  }): Promise<FunnelColumnConfig> {
+    return fetchApi<FunnelColumnConfig>('/crm/columns', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateFunnelColumn(
+    id: string,
+    data: { title?: string; color?: string; sort_order?: number }
+  ): Promise<FunnelColumnConfig> {
+    return fetchApi<FunnelColumnConfig>(`/crm/columns/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteFunnelColumn(id: string): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/columns/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async reorderFunnelColumns(columnIds: string[]): Promise<{ success: boolean }> {
+    return fetchApi('/crm/columns/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ column_ids: columnIds }),
+    })
+  },
+
+  // =============================================================================
+  // Buyers (Покупатели)
+  // =============================================================================
+
+  async getBuyers(): Promise<BuyersResponse> {
+    return fetchApi<BuyersResponse>('/buyers')
+  },
+
+  async getBuyer(id: number): Promise<Buyer> {
+    return fetchApi<Buyer>(`/buyers/${id}`)
+  },
+
+  async getBuyerFull(id: number): Promise<BuyerFull> {
+    return fetchApi<BuyerFull>(`/buyers/${id}/full`)
+  },
+
+  async updateBuyerStatus(
+    id: number,
+    status: BuyerStatus
+  ): Promise<{ success: boolean; status: BuyerStatus }> {
+    return fetchApi(`/buyers/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    })
+  },
+
+  async getBuyerTopics(
+    buyerId: number,
+    params?: { limit?: number; offset?: number }
+  ): Promise<Topic[]> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+
+    const query = searchParams.toString()
+    return fetchApi<Topic[]>(`/buyers/${buyerId}/topics${query ? `?${query}` : ''}`)
+  },
+
+  async getBuyerStats(): Promise<Record<BuyerStatus, number>> {
+    return fetchApi('/buyers/stats')
+  },
+
+  async getBuyerActivity(
+    buyerId: number,
+    params?: { types?: string[]; limit?: number; offset?: number }
+  ): Promise<ActivityEvent[]> {
+    const searchParams = new URLSearchParams()
+    if (params?.types?.length) searchParams.set('types', params.types.join(','))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+
+    const query = searchParams.toString()
+    return fetchApi<ActivityEvent[]>(`/buyers/${buyerId}/activity${query ? `?${query}` : ''}`)
+  },
+
+  // Buyers: Columns (Kanban)
+  async getBuyerColumns(): Promise<BuyerColumnConfig[]> {
+    return fetchApi<BuyerColumnConfig[]>('/buyers/columns')
+  },
+
+  async createBuyerColumn(data: {
+    title?: string
+    color?: string
+    after_id?: string
+  }): Promise<BuyerColumnConfig> {
+    return fetchApi<BuyerColumnConfig>('/buyers/columns', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateBuyerColumn(
+    id: string,
+    data: { title?: string; color?: string; sort_order?: number }
+  ): Promise<BuyerColumnConfig> {
+    return fetchApi<BuyerColumnConfig>(`/buyers/columns/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteBuyerColumn(id: string): Promise<{ success: boolean }> {
+    return fetchApi(`/buyers/columns/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async reorderBuyerColumns(columnIds: string[]): Promise<{ success: boolean }> {
+    return fetchApi('/buyers/columns/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ column_ids: columnIds }),
+    })
   },
 
   // SSE endpoints (Server-Sent Events для real-time обновлений)

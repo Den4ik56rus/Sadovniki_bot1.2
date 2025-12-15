@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers
 
 
 def setup_routes(app: web.Application) -> None:
@@ -78,6 +78,27 @@ def setup_routes(app: web.Application) -> None:
 
     # CRM: Лента активности
     app.router.add_get("/api/admin/crm/clients/{id}/activity", crm.get_client_activity)
+
+    # CRM: Колонки воронки (Kanban)
+    app.router.add_get("/api/admin/crm/columns", crm.get_funnel_columns)
+    app.router.add_post("/api/admin/crm/columns", crm.create_funnel_column)
+    app.router.add_put("/api/admin/crm/columns/reorder", crm.reorder_funnel_columns)
+    app.router.add_put("/api/admin/crm/columns/{id}", crm.update_funnel_column)
+    app.router.add_delete("/api/admin/crm/columns/{id}", crm.delete_funnel_column)
+
+    # Buyers API (Покупатели - Kanban-доска)
+    app.router.add_get("/api/admin/buyers", buyers.get_buyers)
+    app.router.add_get("/api/admin/buyers/stats", buyers.get_buyer_stats)
+    app.router.add_get("/api/admin/buyers/columns", buyers.get_buyer_columns)
+    app.router.add_post("/api/admin/buyers/columns", buyers.create_buyer_column)
+    app.router.add_put("/api/admin/buyers/columns/reorder", buyers.reorder_buyer_columns)
+    app.router.add_put("/api/admin/buyers/columns/{id}", buyers.update_buyer_column)
+    app.router.add_delete("/api/admin/buyers/columns/{id}", buyers.delete_buyer_column)
+    app.router.add_get("/api/admin/buyers/{id}", buyers.get_buyer)
+    app.router.add_get("/api/admin/buyers/{id}/full", buyers.get_buyer_full)
+    app.router.add_patch("/api/admin/buyers/{id}/status", buyers.update_buyer_status)
+    app.router.add_get("/api/admin/buyers/{id}/topics", buyers.get_buyer_topics)
+    app.router.add_get("/api/admin/buyers/{id}/activity", buyers.get_buyer_activity)
 
     # SSE endpoints (Server-Sent Events для real-time обновлений)
     app.router.add_get("/api/admin/events/live-feed", sse.live_feed_stream)

@@ -1,61 +1,46 @@
-// Left Panel - Client info and fields
-import { useState } from 'react'
+// Left Panel - Client info with tabs (i2crm style)
+import { useState, useEffect, useCallback } from 'react'
 import type {
   CrmClientFull,
   ClientPriority,
   FunnelStatus,
   ClientTag,
-  CustomFieldValue,
+  ClientNote,
 } from '@/types'
 import { api } from '@/services/api'
-import { useCurrencyStore } from '@/store'
-import { format } from 'date-fns'
-import { ru } from 'date-fns/locale'
-import { TagsSection } from './TagsSection'
-import { CustomFieldsSection } from './CustomFieldsSection'
+import { useCurrencyStore, useCrmStore } from '@/store'
+import { TabsNav, type TabId } from './TabsNav'
+import { MainTab } from './MainTab'
+import { AdditionalTab } from './AdditionalTab'
+import { BillingTab } from './BillingTab'
 import styles from './LeftPanel.module.css'
+
+const DEFAULT_STATUS_COLORS: Record<string, string> = {
+  new: '#3B82F6',
+  tried: '#8B5CF6',
+  trial_ended: '#F59E0B',
+  paid: '#22C55E',
+}
 
 interface LeftPanelProps {
   client: CrmClientFull
   allTags: ClientTag[]
   onUpdate: () => void
+  onTopicClick?: (topicId: number) => void
+  onClose?: () => void
 }
 
-const STATUS_LABELS: Record<FunnelStatus, string> = {
-  new: 'Новый',
-  tried: 'Попробовал',
-  trial_ended: 'Закончился триал',
-  paid: 'Купил',
-}
-
-const PRIORITY_LABELS: Record<ClientPriority, string> = {
-  low: 'Низкий',
-  normal: 'Обычный',
-  high: 'Высокий',
-  vip: 'VIP',
-}
-
-const PRIORITY_COLORS: Record<ClientPriority, string> = {
-  low: '#9CA3AF',
-  normal: '#6B7280',
-  high: '#F59E0B',
-  vip: '#FFD700',
-}
-
-export function LeftPanel({ client, allTags, onUpdate }: LeftPanelProps) {
-  const { usdRate } = useCurrencyStore()
+export function LeftPanel({ client, allTags, onUpdate, onTopicClick, onClose }: LeftPanelProps) {
+  const [activeTab, setActiveTab] = useState<TabId>('main')
   const [isUpdating, setIsUpdating] = useState(false)
+  const [notes, setNotes] = useState<ClientNote[]>([])
+  const { usdRate } = useCurrencyStore()
+  const { columnConfigs } = useCrmStore()
 
+  const currentStatus = client.status || 'new'
+  const columnConfig = columnConfigs.find(c => c.id === currentStatus)
+  const statusColor = columnConfig?.color || DEFAULT_STATUS_COLORS[currentStatus] || '#6B7280'
   const displayName = client.first_name || client.username || `User ${client.telegram_user_id}`
-
-  const formatDate = (dateStr: string | null) => {
-    if (!dateStr) return '-'
-    try {
-      return format(new Date(dateStr), 'd MMM yyyy', { locale: ru })
-    } catch {
-      return '-'
-    }
-  }
 
   const formatCost = (costUsd: number) => {
     const costRub = costUsd * usdRate
@@ -64,6 +49,20 @@ export function LeftPanel({ client, allTags, onUpdate }: LeftPanelProps) {
     }
     return `${costRub.toFixed(0)} ₽`
   }
+
+  // Fetch notes for AdditionalTab
+  const fetchNotes = useCallback(async () => {
+    try {
+      const data = await api.getClientNotes(client.id)
+      setNotes(data)
+    } catch (e) {
+      console.error('Failed to fetch notes:', e)
+    }
+  }, [client.id])
+
+  useEffect(() => {
+    fetchNotes()
+  }, [fetchNotes])
 
   const handleStatusChange = async (newStatus: FunnelStatus) => {
     if (newStatus === client.status || isUpdating) return
@@ -122,121 +121,102 @@ export function LeftPanel({ client, allTags, onUpdate }: LeftPanelProps) {
     }
   }
 
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'main':
+        return (
+          <MainTab
+            client={client}
+            allTags={allTags}
+            isUpdating={isUpdating}
+            onPriorityChange={handlePriorityChange}
+            onSourceChange={handleSourceChange}
+            onTagsChange={handleTagsChange}
+          />
+        )
+      case 'additional':
+        return (
+          <AdditionalTab
+            fields={client.custom_fields}
+            notes={notes}
+            clientId={client.id}
+            onFieldsChange={handleFieldsChange}
+          />
+        )
+      case 'billing':
+        return (
+          <BillingTab
+            clientId={client.id}
+            totalCostUsd={client.total_cost_usd}
+            totalConsultations={client.total_consultations}
+            onTopicClick={onTopicClick}
+          />
+        )
+      default:
+        return null
+    }
+  }
+
   return (
     <div className={styles.panel}>
-      {/* Header with avatar */}
+      {/* Header - i2crm style */}
       <div className={styles.header}>
-        <div className={styles.avatar}>
-          {displayName.charAt(0).toUpperCase()}
-        </div>
-        <div className={styles.headerInfo}>
-          <h3 className={styles.name}>{displayName}</h3>
-          {client.username && (
-            <span className={styles.username}>@{client.username}</span>
+        <div className={styles.headerTop}>
+          {onClose && (
+            <button className={styles.backBtn} onClick={onClose} title="Назад к воронке">
+              ‹
+            </button>
           )}
-        </div>
-      </div>
-
-      {/* Stats row */}
-      <div className={styles.statsRow}>
-        <div className={styles.stat}>
-          <span className={styles.statValue}>{client.total_consultations}</span>
-          <span className={styles.statLabel}>консультаций</span>
-        </div>
-        <div className={styles.stat}>
-          <span className={styles.statValue}>0 ₽</span>
-          <span className={styles.statLabel}>оплатил</span>
-        </div>
-        <div className={styles.stat}>
-          <span className={styles.statValue}>{formatCost(client.total_cost_usd)}</span>
-          <span className={styles.statLabel}>потрачено</span>
-        </div>
-      </div>
-
-      {/* Base fields */}
-      <div className={styles.section}>
-        <h4 className={styles.sectionTitle}>Основная информация</h4>
-
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Telegram ID</span>
-          <span className={styles.fieldValue}>{client.telegram_user_id}</span>
+          <span className={styles.dealTitle}>Сделка #{client.id}</span>
+          <button className={styles.menuBtn} title="Меню">⋯</button>
         </div>
 
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Регион</span>
-          <span className={styles.fieldValue}>{client.region || '-'}</span>
+        <div className={styles.tagRow}>
+          <button className={styles.tagButton}>#ТЕГИРОВАТЬ</button>
         </div>
 
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>С нами с</span>
-          <span className={styles.fieldValue}>{formatDate(client.user_created_at)}</span>
+        <div className={styles.clientInfo}>
+          <span className={styles.clientSource}>от: Telegram</span>
+          <h3 className={styles.clientName}>{displayName}</h3>
         </div>
 
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Последняя активность</span>
-          <span className={styles.fieldValue}>{formatDate(client.last_consultation_at)}</span>
-        </div>
-      </div>
-
-      {/* Status fields */}
-      <div className={styles.section}>
-        <h4 className={styles.sectionTitle}>Статус</h4>
-
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Воронка</span>
+        <div className={styles.funnelRow}>
           <select
-            className={styles.select}
+            className={styles.funnelSelect}
             value={client.status}
             onChange={(e) => handleStatusChange(e.target.value as FunnelStatus)}
             disabled={isUpdating}
+            style={{ backgroundColor: statusColor, color: 'white' }}
           >
-            {Object.entries(STATUS_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
+            {columnConfigs.map((config) => (
+              <option key={config.id} value={config.id}>{config.title}</option>
             ))}
           </select>
         </div>
 
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Приоритет</span>
-          <select
-            className={styles.select}
-            value={client.priority}
-            onChange={(e) => handlePriorityChange(e.target.value as ClientPriority)}
-            disabled={isUpdating}
-            style={{ color: PRIORITY_COLORS[client.priority] }}
-          >
-            {Object.entries(PRIORITY_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </div>
-
-        <div className={styles.field}>
-          <span className={styles.fieldLabel}>Источник</span>
-          <input
-            type="text"
-            className={styles.input}
-            value={client.source || ''}
-            placeholder="Откуда пришёл"
-            onChange={(e) => handleSourceChange(e.target.value)}
-            disabled={isUpdating}
-          />
+        <div className={styles.statsRow}>
+          <div className={styles.stat}>
+            <span className={styles.statValue}>{client.total_consultations}</span>
+            <span className={styles.statLabel}>консультаций</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles.statValue}>0 ₽</span>
+            <span className={styles.statLabel}>оплатил</span>
+          </div>
+          <div className={styles.stat}>
+            <span className={styles.statValue}>{formatCost(client.total_cost_usd)}</span>
+            <span className={styles.statLabel}>потрачено</span>
+          </div>
         </div>
       </div>
 
-      {/* Tags */}
-      <TagsSection
-        clientTags={client.tags}
-        allTags={allTags}
-        onChange={handleTagsChange}
-      />
+      {/* Tabs */}
+      <TabsNav activeTab={activeTab} onChange={setActiveTab} />
 
-      {/* Custom fields */}
-      <CustomFieldsSection
-        fields={client.custom_fields}
-        clientId={client.id}
-        onChange={handleFieldsChange}
-      />
+      {/* Tab content */}
+      <div className={styles.tabContent}>
+        {renderTabContent()}
+      </div>
     </div>
   )
 }

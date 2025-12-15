@@ -192,10 +192,11 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'users' | 'live' | 'stats' | 'documents' | 'crm'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents'
 
 // CRM Types
-export type FunnelStatus = 'new' | 'tried' | 'trial_ended' | 'paid'
+// FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
+export type FunnelStatus = 'new' | 'tried' | 'trial_ended' | 'paid' | `custom_${number}`
 
 export interface CrmClient {
   id: number
@@ -225,6 +226,15 @@ export interface FunnelColumn {
   id: FunnelStatus
   title: string
   clients: CrmClient[]
+}
+
+// Funnel column configuration (from backend)
+export interface FunnelColumnConfig {
+  id: FunnelStatus
+  title: string
+  color: string
+  sort_order: number
+  is_system: boolean
 }
 
 // Extended CRM Types
@@ -324,4 +334,51 @@ export interface UpdateTaskDto extends Partial<CreateTaskDto> {
 
 export interface CreateNoteDto {
   text: string
+}
+
+// =============================================================================
+// Buyers Types (Покупатели)
+// =============================================================================
+
+// BuyerStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
+export type BuyerStatus = 'pending_payment' | 'paid' | 'active' | 'expired' | `custom_${number}`
+
+export interface Buyer {
+  id: number
+  telegram_user_id: number
+  username: string | null
+  first_name: string | null
+  last_name: string | null
+  user_created_at: string | null
+  status: BuyerStatus
+  manual_override: boolean
+  status_updated_at: string | null
+  buyer_created_at: string | null
+  total_consultations: number
+  total_tokens: number
+  total_cost_usd: number
+  last_consultation_at: string | null
+  token_balance?: number
+  region?: string | null
+}
+
+export interface BuyersResponse {
+  buyers: Record<BuyerStatus, Buyer[]>
+  stats: Record<BuyerStatus, number>
+}
+
+export interface BuyerColumnConfig {
+  id: BuyerStatus
+  title: string
+  color: string
+  sort_order: number
+  is_system: boolean
+}
+
+export interface BuyerFull extends Buyer {
+  priority: ClientPriority
+  source: string | null
+  tags: ClientTag[]
+  custom_fields: CustomFieldValue[]
+  buyer_status: BuyerStatus
 }

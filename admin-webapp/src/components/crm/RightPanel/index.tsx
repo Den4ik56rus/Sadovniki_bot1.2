@@ -1,16 +1,20 @@
-// Right Panel - Activity Feed
+// Right Panel - Activity Feed with Topic View
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { ActivityEvent, ClientTask, ActivityEventType } from '@/types'
+import type { ActivityEvent, ActivityEventType } from '@/types'
 import { api } from '@/services/api'
 import { ActivityFilters } from './ActivityFilters'
 import { ActivityItem } from './ActivityItem'
 import { AddTaskModal } from './AddTaskModal'
 import { AddNoteModal } from './AddNoteModal'
+import { TopicView } from './TopicView'
 import styles from './RightPanel.module.css'
 
 interface RightPanelProps {
   clientId: number
   onTaskUpdate?: () => void
+  selectedTopicId?: number | null
+  onTopicClick?: (topicId: number) => void
+  onBackToFeed?: () => void
 }
 
 const ALL_EVENT_TYPES: ActivityEventType[] = [
@@ -22,7 +26,13 @@ const ALL_EVENT_TYPES: ActivityEventType[] = [
   'tag_change',
 ]
 
-export function RightPanel({ clientId, onTaskUpdate }: RightPanelProps) {
+export function RightPanel({
+  clientId,
+  onTaskUpdate,
+  selectedTopicId,
+  onTopicClick,
+  onBackToFeed,
+}: RightPanelProps) {
   const [activity, setActivity] = useState<ActivityEvent[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [activeFilters, setActiveFilters] = useState<ActivityEventType[]>(ALL_EVENT_TYPES)
@@ -122,6 +132,16 @@ export function RightPanel({ clientId, onTaskUpdate }: RightPanelProps) {
     }
   }
 
+  // Show TopicView if a topic is selected
+  if (selectedTopicId && onBackToFeed) {
+    return (
+      <TopicView
+        topicId={selectedTopicId}
+        onBack={onBackToFeed}
+      />
+    )
+  }
+
   return (
     <div className={styles.panel}>
       {/* Header with filters */}
@@ -148,6 +168,7 @@ export function RightPanel({ clientId, onTaskUpdate }: RightPanelProps) {
               onTaskComplete={handleTaskComplete}
               onTaskDelete={handleTaskDelete}
               onNoteDelete={handleNoteDelete}
+              onTopicClick={onTopicClick}
             />
           ))
         )}

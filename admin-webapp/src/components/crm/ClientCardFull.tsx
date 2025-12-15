@@ -1,4 +1,4 @@
-// Full Client Card Modal - Two-panel layout
+// Full Client Card Modal - Full Screen Layout (i2crm inspired)
 import { useEffect, useState, useCallback } from 'react'
 import type { CrmClientFull, ClientTag } from '@/types'
 import { api } from '@/services/api'
@@ -15,6 +15,7 @@ export function ClientCardFull({ clientId, onClose }: ClientCardFullProps) {
   const [client, setClient] = useState<CrmClientFull | null>(null)
   const [allTags, setAllTags] = useState<ClientTag[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -39,15 +40,32 @@ export function ClientCardFull({ clientId, onClose }: ClientCardFullProps) {
     fetchData()
   }
 
-  const handleBackdropClick = (e: React.MouseEvent) => {
-    if (e.target === e.currentTarget) {
-      onClose()
-    }
+  const handleTopicClick = (topicId: number) => {
+    setSelectedTopicId(topicId)
   }
+
+  const handleBackToFeed = () => {
+    setSelectedTopicId(null)
+  }
+
+  // Close on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        if (selectedTopicId) {
+          setSelectedTopicId(null)
+        } else {
+          onClose()
+        }
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [onClose, selectedTopicId])
 
   if (isLoading || !client) {
     return (
-      <div className={styles.backdrop} onClick={handleBackdropClick}>
+      <div className={styles.backdrop}>
         <div className={styles.modal}>
           <div className={styles.loading}>Загрузка...</div>
         </div>
@@ -55,38 +73,27 @@ export function ClientCardFull({ clientId, onClose }: ClientCardFullProps) {
     )
   }
 
-  const displayName = client.first_name || client.username || `User ${client.telegram_user_id}`
-
   return (
-    <div className={styles.backdrop} onClick={handleBackdropClick}>
+    <div className={styles.backdrop}>
       <div className={styles.modal}>
-        {/* Header */}
-        <div className={styles.header}>
-          <div className={styles.headerTitle}>
-            <span className={styles.clientId}>#{client.id}</span>
-            <h2 className={styles.name}>{displayName}</h2>
-            {client.username && (
-              <span className={styles.username}>@{client.username}</span>
-            )}
-          </div>
-          <button className={styles.closeBtn} onClick={onClose}>
-            ✕
-          </button>
-        </div>
-
-        {/* Two-panel layout */}
+        {/* Two-panel layout - no header, close button in LeftPanel */}
         <div className={styles.content}>
           <div className={styles.leftPanel}>
             <LeftPanel
               client={client}
               allTags={allTags}
               onUpdate={handleUpdate}
+              onTopicClick={handleTopicClick}
+              onClose={onClose}
             />
           </div>
           <div className={styles.rightPanel}>
             <RightPanel
               clientId={clientId}
               onTaskUpdate={handleUpdate}
+              selectedTopicId={selectedTopicId}
+              onTopicClick={handleTopicClick}
+              onBackToFeed={handleBackToFeed}
             />
           </div>
         </div>

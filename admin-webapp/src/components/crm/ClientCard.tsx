@@ -10,6 +10,26 @@ interface ClientCardProps {
   onClick: () => void
 }
 
+// Helper to calculate days since last activity
+function getDaysSince(dateStr: string | null): number {
+  if (!dateStr) return 0
+  const date = new Date(dateStr)
+  const now = new Date()
+  const diff = now.getTime() - date.getTime()
+  return Math.floor(diff / (1000 * 60 * 60 * 24))
+}
+
+// Format date as DD.MM.YYYY
+function formatDate(dateStr: string | null): string {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleDateString('ru-RU', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
+}
+
 export function ClientCard({ client, onClick }: ClientCardProps) {
   const { usdRate } = useCurrencyStore()
 
@@ -37,17 +57,18 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
   // Format cost in rubles
   const costRub = client.total_cost_usd * usdRate
   const formatCost = (cost: number) => {
-    if (cost < 1) {
-      return `${Math.round(cost * 100)} коп.`
-    }
+    if (cost < 1) return '0 ₽'
     return `${cost.toFixed(0)} ₽`
   }
 
   // Get display name
   const displayName = client.first_name || client.username || `User ${client.telegram_user_id}`
 
-  // Get subscription info (placeholder for now)
-  const subscriptionInfo = 'Бесплатный'
+  // Days since last activity
+  const daysSinceActivity = getDaysSince(client.last_consultation_at)
+
+  // Source (placeholder - telegram by default)
+  const source = 'Telegram'
 
   return (
     <div
@@ -58,36 +79,49 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
       className={styles.card}
       onClick={onClick}
     >
+      {/* Header: Avatar + Name + Date */}
       <div className={styles.header}>
-        <div className={styles.avatar}>
-          {displayName.charAt(0).toUpperCase()}
+        <div className={styles.avatarSection}>
+          <div className={styles.avatar}>
+            {displayName.charAt(0).toUpperCase()}
+          </div>
+          <div className={styles.info}>
+            <span className={styles.source}>от: {source}</span>
+            <span className={styles.name}>{displayName}</span>
+          </div>
         </div>
-        <div className={styles.name}>
-          <span className={styles.displayName}>{displayName}</span>
-          {client.username && (
-            <span className={styles.username}>@{client.username}</span>
+        <span className={styles.date}>{formatDate(client.user_created_at)}</span>
+      </div>
+
+      {/* Comment placeholder */}
+      {client.total_consultations > 0 && (
+        <div className={styles.comment}>
+          <span className={styles.commentIcon}>💬</span>
+          <span className={styles.commentText}>
+            {client.total_consultations} консультаций
+          </span>
+        </div>
+      )}
+
+      {/* Footer: Cost + Days + Button */}
+      <div className={styles.footer}>
+        <div className={styles.footerLeft}>
+          {costRub > 0 && (
+            <span className={styles.cost}>{formatCost(costRub)}</span>
+          )}
+          {daysSinceActivity > 0 && (
+            <span className={styles.days}>{daysSinceActivity}дн •</span>
           )}
         </div>
-      </div>
-
-      <div className={styles.metrics}>
-        <div className={styles.metric}>
-          <span className={styles.metricLabel}>Оплатил:</span>
-          <span className={styles.metricValue}>0 ₽</span>
-        </div>
-        <div className={styles.metric}>
-          <span className={styles.metricLabel}>Потрачено:</span>
-          <span className={styles.metricValue}>{formatCost(costRub)}</span>
-        </div>
-      </div>
-
-      <div className={styles.subscription}>
-        <span className={styles.subscriptionBadge}>{subscriptionInfo}</span>
-        {client.total_consultations > 0 && (
-          <span className={styles.consultations}>
-            {client.total_consultations} конс.
-          </span>
-        )}
+        <button
+          className={styles.actionButton}
+          onClick={(e) => {
+            e.stopPropagation()
+            onClick()
+          }}
+        >
+          Открыть
+        </button>
       </div>
     </div>
   )

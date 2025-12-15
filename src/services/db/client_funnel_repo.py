@@ -18,8 +18,16 @@ from src.services.db.pool import get_pool
 
 logger = logging.getLogger(__name__)
 
-# Статусы воронки
+# Стандартные статусы воронки (для обратной совместимости)
 FUNNEL_STATUSES = ['new', 'tried', 'trial_ended', 'paid']
+
+# Стандартные колонки с настройками по умолчанию
+DEFAULT_COLUMNS = [
+    {'id': 'new', 'title': 'НЕРАЗОБРАННОЕ', 'color': '#3B82F6', 'sort_order': 0, 'is_system': True},
+    {'id': 'tried', 'title': 'БИРЖА ЛИДОВ', 'color': '#8B5CF6', 'sort_order': 1, 'is_system': True},
+    {'id': 'trial_ended', 'title': 'ВЗЯТ В РАБОТУ', 'color': '#F59E0B', 'sort_order': 2, 'is_system': True},
+    {'id': 'paid', 'title': 'УЗНАЛ ЦЕНУ', 'color': '#22C55E', 'sort_order': 3, 'is_system': True},
+]
 
 
 async def get_all_clients_with_status() -> List[Dict[str, Any]]:
@@ -74,18 +82,23 @@ async def get_clients_grouped_by_status() -> Dict[str, List[Dict[str, Any]]]:
     """
     Получить клиентов сгруппированных по статусу для Kanban.
 
-    Возвращает словарь: {'new': [...], 'tried': [...], 'trial_ended': [...], 'paid': [...]}
+    Поддерживает как стандартные, так и кастомные колонки.
+    Возвращает словарь: {'new': [...], 'tried': [...], 'custom_1': [...], ...}
     """
     clients = await get_all_clients_with_status()
+    columns = await get_funnel_columns()
 
-    grouped = {status: [] for status in FUNNEL_STATUSES}
+    # Инициализируем все колонки пустыми списками
+    grouped = {col['id']: [] for col in columns}
 
     for client in clients:
         status = client.get('status', 'new')
         if status in grouped:
             grouped[status].append(client)
         else:
-            grouped['new'].append(client)
+            # Если статус клиента не найден среди колонок, кладём в 'new'
+            if 'new' in grouped:
+                grouped['new'].append(client)
 
     return grouped
 
@@ -141,9 +154,16 @@ async def update_client_status(user_id: int, new_status: str) -> bool:
 
     Устанавливает manual_override = true.
 
+    ВАЖНО: Если новый статус = 'paid', клиент автоматически перемещается
+    в раздел "Покупатели" и удаляется из "Сделок".
+
     Возвращает True если успешно, False если клиент не найден.
     """
-    if new_status not in FUNNEL_STATUSES:
+    # Проверяем что колонка существует (стандартная или кастомная)
+    valid_columns = await get_funnel_columns()
+    valid_ids = [col['id'] for col in valid_columns]
+
+    if new_status not in valid_ids:
         logger.warning(f"Invalid funnel status: {new_status}")
         return False
 
@@ -152,6 +172,17 @@ async def update_client_status(user_id: int, new_status: str) -> bool:
     async with pool.acquire() as conn:
         # Сначала убедимся что запись существует
         await ensure_client_status(user_id, conn=conn)
+
+        # Если статус = 'paid', перемещаем в покупатели
+        if new_status == 'paid':
+            from src.services.db import buyer_repo
+            success = await buyer_repo.create_buyer_from_deal(user_id)
+            if success:
+                logger.info(f"Client {user_id} moved to buyers (paid status)")
+                return True
+            else:
+                logger.warning(f"Failed to move client {user_id} to buyers")
+                return False
 
         # Обновляем статус
         result = await conn.execute(
@@ -263,9 +294,11 @@ async def get_funnel_stats() -> Dict[str, int]:
     """
     Получить количество клиентов в каждом статусе воронки.
 
-    Возвращает: {'new': 10, 'tried': 25, 'trial_ended': 5, 'paid': 3}
+    Поддерживает кастомные колонки.
+    Возвращает: {'new': 10, 'tried': 25, 'custom_1': 5, ...}
     """
     pool = get_pool()
+    columns = await get_funnel_columns()
 
     async with pool.acquire() as conn:
         rows = await conn.fetch(
@@ -279,12 +312,244 @@ async def get_funnel_stats() -> Dict[str, int]:
             """
         )
 
-        # Инициализируем все статусы нулями
-        stats = {status: 0 for status in FUNNEL_STATUSES}
+        # Инициализируем все колонки нулями
+        stats = {col['id']: 0 for col in columns}
 
         for row in rows:
             status = row['status']
             if status in stats:
                 stats[status] = row['count']
+            elif 'new' in stats:
+                # Неизвестный статус — добавляем к 'new'
+                stats['new'] += row['count']
 
         return stats
+
+
+# =============================================================================
+# Funnel Columns Management (Kanban column configuration)
+# =============================================================================
+
+async def get_funnel_columns() -> List[Dict[str, Any]]:
+    """
+    Получить все колонки воронки отсортированные по порядку.
+
+    Если таблица пуста или не существует, возвращает стандартные колонки.
+    """
+    pool = get_pool()
+
+    try:
+        async with pool.acquire() as conn:
+            # Проверяем существует ли таблица
+            table_exists = await conn.fetchval(
+                """
+                SELECT EXISTS (
+                    SELECT FROM information_schema.tables
+                    WHERE table_name = 'crm_funnel_columns'
+                )
+                """
+            )
+
+            if not table_exists:
+                return DEFAULT_COLUMNS
+
+            rows = await conn.fetch(
+                """
+                SELECT id, title, color, sort_order, is_system
+                FROM crm_funnel_columns
+                ORDER BY sort_order ASC
+                """
+            )
+
+            if not rows:
+                return DEFAULT_COLUMNS
+
+            return [dict(row) for row in rows]
+    except Exception as e:
+        logger.error(f"Error fetching funnel columns: {e}")
+        return DEFAULT_COLUMNS
+
+
+async def create_funnel_column(
+    column_id: str,
+    title: str,
+    color: str,
+    sort_order: int
+) -> Dict[str, Any]:
+    """
+    Создать новую кастомную колонку воронки.
+
+    Args:
+        column_id: Уникальный ID (например 'custom_1')
+        title: Отображаемое название
+        color: Цвет в формате HEX
+        sort_order: Позиция в списке
+
+    Returns:
+        Созданная колонка
+    """
+    pool = get_pool()
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO crm_funnel_columns (id, title, color, sort_order, is_system)
+            VALUES ($1, $2, $3, $4, false)
+            RETURNING id, title, color, sort_order, is_system
+            """,
+            column_id,
+            title,
+            color,
+            sort_order
+        )
+
+        return dict(row)
+
+
+async def update_funnel_column(
+    column_id: str,
+    title: Optional[str] = None,
+    color: Optional[str] = None,
+    sort_order: Optional[int] = None
+) -> Optional[Dict[str, Any]]:
+    """
+    Обновить колонку воронки.
+
+    Можно обновлять любые поля, включая системные колонки (кроме id и is_system).
+    """
+    pool = get_pool()
+
+    # Собираем поля для обновления
+    updates = []
+    params = [column_id]
+    param_idx = 2
+
+    if title is not None:
+        updates.append(f"title = ${param_idx}")
+        params.append(title)
+        param_idx += 1
+
+    if color is not None:
+        updates.append(f"color = ${param_idx}")
+        params.append(color)
+        param_idx += 1
+
+    if sort_order is not None:
+        updates.append(f"sort_order = ${param_idx}")
+        params.append(sort_order)
+        param_idx += 1
+
+    if not updates:
+        return None
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"""
+            UPDATE crm_funnel_columns
+            SET {', '.join(updates)}
+            WHERE id = $1
+            RETURNING id, title, color, sort_order, is_system
+            """,
+            *params
+        )
+
+        return dict(row) if row else None
+
+
+async def delete_funnel_column(column_id: str) -> bool:
+    """
+    Удалить кастомную колонку воронки.
+
+    Системные колонки (is_system = true) удалить нельзя.
+    Клиенты в удалённой колонке будут перемещены в 'new'.
+
+    Returns:
+        True если удалено, False если колонка системная или не найдена
+    """
+    pool = get_pool()
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Проверяем что колонка не системная
+            is_system = await conn.fetchval(
+                "SELECT is_system FROM crm_funnel_columns WHERE id = $1",
+                column_id
+            )
+
+            if is_system is None:
+                return False  # Колонка не найдена
+
+            if is_system:
+                logger.warning(f"Cannot delete system column: {column_id}")
+                return False
+
+            # Переносим клиентов в 'new'
+            await conn.execute(
+                """
+                UPDATE client_funnel_status
+                SET status = 'new', manual_override = true
+                WHERE status = $1
+                """,
+                column_id
+            )
+
+            # Удаляем колонку
+            result = await conn.execute(
+                "DELETE FROM crm_funnel_columns WHERE id = $1 AND is_system = false",
+                column_id
+            )
+
+            return result == "DELETE 1"
+
+
+async def reorder_funnel_columns(column_ids: List[str]) -> bool:
+    """
+    Изменить порядок колонок воронки.
+
+    Args:
+        column_ids: Список ID колонок в новом порядке
+
+    Returns:
+        True если успешно
+    """
+    pool = get_pool()
+
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            for idx, col_id in enumerate(column_ids):
+                await conn.execute(
+                    """
+                    UPDATE crm_funnel_columns
+                    SET sort_order = $2
+                    WHERE id = $1
+                    """,
+                    col_id,
+                    idx
+                )
+
+    return True
+
+
+async def get_next_custom_column_id() -> str:
+    """
+    Получить следующий доступный ID для кастомной колонки.
+
+    Returns:
+        ID в формате 'custom_N'
+    """
+    pool = get_pool()
+
+    async with pool.acquire() as conn:
+        # Находим максимальный номер среди custom_* колонок
+        max_num = await conn.fetchval(
+            """
+            SELECT MAX(
+                CAST(SUBSTRING(id FROM 'custom_([0-9]+)') AS INTEGER)
+            )
+            FROM crm_funnel_columns
+            WHERE id LIKE 'custom_%'
+            """
+        )
+
+        next_num = (max_num or 0) + 1
+        return f"custom_{next_num}"

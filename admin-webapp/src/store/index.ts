@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { User, Topic, ConsultationLog, RecentLog, Stats, EmbeddingStats, View, Document, Message, CrmClient, FunnelStatus } from '@/types'
+import type { User, Topic, ConsultationLog, RecentLog, Stats, EmbeddingStats, View, Document, Message, CrmClient, FunnelStatus, Buyer, BuyerStatus } from '@/types'
 import { api } from '@/services/api'
 
 // UI Store with persistence
@@ -20,7 +20,7 @@ interface UIState {
 export const useUIStore = create<UIState>()(
   persist(
     (set) => ({
-      currentView: 'users',
+      currentView: 'crm',
       selectedUserId: null,
       selectedTopicId: null,
       isLiveFeedPaused: false,
@@ -411,19 +411,46 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
 }))
 
 // CRM Store
+interface ColumnConfig {
+  id: FunnelStatus
+  title: string
+  color: string
+  is_system: boolean
+}
+
 interface CrmState {
-  clients: Record<FunnelStatus, CrmClient[]>
-  stats: Record<FunnelStatus, number>
+  clients: Partial<Record<FunnelStatus, CrmClient[]>>
+  stats: Partial<Record<FunnelStatus, number>>
   selectedClientId: number | null
   isLoading: boolean
   error: string | null
+  // Settings mode
+  isSettingsMode: boolean
+  columnConfigs: ColumnConfig[]
+  columnsLoaded: boolean
+  // Actions
   fetchClients: () => Promise<void>
+  fetchColumns: () => Promise<void>
   updateClientStatus: (clientId: number, newStatus: FunnelStatus) => Promise<boolean>
   moveClient: (clientId: number, fromStatus: FunnelStatus, toStatus: FunnelStatus) => void
   selectClient: (clientId: number | null) => void
+  // Settings mode actions
+  toggleSettingsMode: () => void
+  updateColumnTitle: (id: FunnelStatus, title: string) => Promise<void>
+  updateColumnColor: (id: FunnelStatus, color: string) => Promise<void>
+  addColumnAfter: (afterId: FunnelStatus) => Promise<void>
+  deleteColumn: (id: FunnelStatus) => Promise<void>
+  reorderColumns: (activeId: FunnelStatus, overId: FunnelStatus) => Promise<void>
 }
 
-export const useCrmStore = create<CrmState>((set, get) => ({
+const DEFAULT_COLUMN_CONFIGS: ColumnConfig[] = [
+  { id: 'new', title: 'НЕРАЗОБРАННОЕ', color: '#3B82F6', is_system: true },
+  { id: 'tried', title: 'БИРЖА ЛИДОВ', color: '#8B5CF6', is_system: true },
+  { id: 'trial_ended', title: 'ВЗЯТ В РАБОТУ', color: '#F59E0B', is_system: true },
+  { id: 'paid', title: 'УЗНАЛ ЦЕНУ', color: '#22C55E', is_system: true },
+]
+
+export const useCrmStore = create<CrmState>()((set, get) => ({
   clients: {
     new: [],
     tried: [],
@@ -439,14 +466,51 @@ export const useCrmStore = create<CrmState>((set, get) => ({
   selectedClientId: null,
   isLoading: false,
   error: null,
+  // Settings mode
+  isSettingsMode: false,
+  columnConfigs: DEFAULT_COLUMN_CONFIGS,
+  columnsLoaded: false,
+
+  fetchColumns: async () => {
+    try {
+      const columns = await api.getFunnelColumns()
+      // Map backend format to frontend format
+      const columnConfigs: ColumnConfig[] = columns.map((c) => ({
+        id: c.id,
+        title: c.title,
+        color: c.color,
+        is_system: c.is_system ?? false,
+      }))
+      set({ columnConfigs, columnsLoaded: true })
+    } catch (error) {
+      console.error('Failed to fetch columns, using defaults:', error)
+      set({ columnConfigs: DEFAULT_COLUMN_CONFIGS, columnsLoaded: true })
+    }
+  },
 
   fetchClients: async () => {
     set({ isLoading: true, error: null })
     try {
+      // Ensure columns are loaded first
+      if (!get().columnsLoaded) {
+        await get().fetchColumns()
+      }
+
       const result = await api.getCrmClients()
+
+      // Initialize clients/stats for all columns
+      const columnConfigs = get().columnConfigs
+      const clients: Partial<Record<FunnelStatus, CrmClient[]>> = {}
+      const stats: Partial<Record<FunnelStatus, number>> = {}
+
+      for (const col of columnConfigs) {
+        clients[col.id] = result.clients[col.id] || []
+        stats[col.id] = result.stats[col.id] || 0
+      }
+
       set({
-        clients: result.clients,
-        stats: result.stats,
+        clients,
+        stats,
         isLoading: false,
       })
     } catch (error) {
@@ -471,26 +535,28 @@ export const useCrmStore = create<CrmState>((set, get) => ({
     if (fromStatus === toStatus) return
 
     set((state) => {
-      const client = state.clients[fromStatus].find((c) => c.id === clientId)
+      const fromClients = state.clients[fromStatus] || []
+      const client = fromClients.find((c) => c.id === clientId)
       if (!client) return state
 
       const updatedClient = { ...client, status: toStatus, manual_override: true }
+      const toClients = state.clients[toStatus] || []
 
       return {
         clients: {
           ...state.clients,
-          [fromStatus]: state.clients[fromStatus].filter((c) => c.id !== clientId),
-          [toStatus]: [updatedClient, ...state.clients[toStatus]],
+          [fromStatus]: fromClients.filter((c) => c.id !== clientId),
+          [toStatus]: [updatedClient, ...toClients],
         },
         stats: {
           ...state.stats,
-          [fromStatus]: state.stats[fromStatus] - 1,
-          [toStatus]: state.stats[toStatus] + 1,
+          [fromStatus]: (state.stats[fromStatus] || 0) - 1,
+          [toStatus]: (state.stats[toStatus] || 0) + 1,
         },
       }
     })
 
-    // Then update on server
+    // Update on server (works for all columns now including custom)
     api.updateClientStatus(clientId, toStatus).catch((error) => {
       console.error('Failed to update client status:', error)
       // Revert on failure by refetching
@@ -499,4 +565,364 @@ export const useCrmStore = create<CrmState>((set, get) => ({
   },
 
   selectClient: (clientId) => set({ selectedClientId: clientId }),
+
+  // Settings mode actions
+  toggleSettingsMode: () => set((state) => ({ isSettingsMode: !state.isSettingsMode })),
+
+  updateColumnTitle: async (id, title) => {
+    // Optimistic update
+    set((state) => ({
+      columnConfigs: state.columnConfigs.map((c) =>
+        c.id === id ? { ...c, title } : c
+      ),
+    }))
+
+    // Sync to server
+    try {
+      await api.updateFunnelColumn(id, { title })
+    } catch (error) {
+      console.error('Failed to update column title:', error)
+      // Revert by refetching
+      get().fetchColumns()
+    }
+  },
+
+  updateColumnColor: async (id, color) => {
+    // Optimistic update
+    set((state) => ({
+      columnConfigs: state.columnConfigs.map((c) =>
+        c.id === id ? { ...c, color } : c
+      ),
+    }))
+
+    // Sync to server
+    try {
+      await api.updateFunnelColumn(id, { color })
+    } catch (error) {
+      console.error('Failed to update column color:', error)
+      get().fetchColumns()
+    }
+  },
+
+  addColumnAfter: async (afterId) => {
+    const colors = ['#3B82F6', '#8B5CF6', '#F59E0B', '#22C55E', '#EF4444', '#EC4899', '#14B8A6', '#6B7280']
+    const randomColor = colors[Math.floor(Math.random() * colors.length)]
+
+    try {
+      // Create on server
+      const newColumn = await api.createFunnelColumn({
+        title: 'НОВЫЙ ЭТАП',
+        color: randomColor,
+        after_id: afterId,
+      })
+
+      // Refetch columns to get correct order
+      await get().fetchColumns()
+
+      // Initialize clients/stats for new column
+      set((state) => ({
+        clients: {
+          ...state.clients,
+          [newColumn.id]: [],
+        },
+        stats: {
+          ...state.stats,
+          [newColumn.id]: 0,
+        },
+      }))
+    } catch (error) {
+      console.error('Failed to create column:', error)
+    }
+  },
+
+  deleteColumn: async (id) => {
+    try {
+      await api.deleteFunnelColumn(id)
+      // Refetch everything
+      await get().fetchColumns()
+      await get().fetchClients()
+    } catch (error) {
+      console.error('Failed to delete column:', error)
+    }
+  },
+
+  reorderColumns: async (activeId, overId) => {
+    if (activeId === overId) return
+
+    // Optimistic update
+    set((state) => {
+      const oldIndex = state.columnConfigs.findIndex((c) => c.id === activeId)
+      const newIndex = state.columnConfigs.findIndex((c) => c.id === overId)
+
+      if (oldIndex < 0 || newIndex < 0) return state
+
+      const newConfigs = [...state.columnConfigs]
+      const [movedColumn] = newConfigs.splice(oldIndex, 1)
+      newConfigs.splice(newIndex, 0, movedColumn)
+
+      return { columnConfigs: newConfigs }
+    })
+
+    // Sync to server
+    try {
+      const columnIds = get().columnConfigs.map((c) => c.id)
+      await api.reorderFunnelColumns(columnIds)
+    } catch (error) {
+      console.error('Failed to reorder columns:', error)
+      get().fetchColumns()
+    }
+  },
+}))
+
+
+// =============================================================================
+// Buyers Store (Покупатели)
+// =============================================================================
+
+interface BuyerColumnConfig {
+  id: BuyerStatus
+  title: string
+  color: string
+  is_system: boolean
+}
+
+interface BuyersState {
+  buyers: Partial<Record<BuyerStatus, Buyer[]>>
+  stats: Partial<Record<BuyerStatus, number>>
+  selectedBuyerId: number | null
+  isLoading: boolean
+  error: string | null
+  // Settings mode
+  isSettingsMode: boolean
+  columnConfigs: BuyerColumnConfig[]
+  columnsLoaded: boolean
+  // Actions
+  fetchBuyers: () => Promise<void>
+  fetchColumns: () => Promise<void>
+  updateBuyerStatus: (buyerId: number, newStatus: BuyerStatus) => Promise<boolean>
+  moveBuyer: (buyerId: number, fromStatus: BuyerStatus, toStatus: BuyerStatus) => void
+  selectBuyer: (buyerId: number | null) => void
+  // Settings mode actions
+  toggleSettingsMode: () => void
+  updateColumnTitle: (id: BuyerStatus, title: string) => Promise<void>
+  updateColumnColor: (id: BuyerStatus, color: string) => Promise<void>
+  addColumnAfter: (afterId: BuyerStatus) => Promise<void>
+  deleteColumn: (id: BuyerStatus) => Promise<void>
+  reorderColumns: (activeId: BuyerStatus, overId: BuyerStatus) => Promise<void>
+}
+
+const DEFAULT_BUYER_COLUMN_CONFIGS: BuyerColumnConfig[] = [
+  { id: 'pending_payment', title: 'Ожидает оплаты', color: '#F59E0B', is_system: true },
+  { id: 'paid', title: 'Оплачено', color: '#22C55E', is_system: true },
+  { id: 'active', title: 'Активна', color: '#3B82F6', is_system: true },
+  { id: 'expired', title: 'Истекла', color: '#EF4444', is_system: true },
+]
+
+export const useBuyersStore = create<BuyersState>()((set, get) => ({
+  buyers: {
+    pending_payment: [],
+    paid: [],
+    active: [],
+    expired: [],
+  },
+  stats: {
+    pending_payment: 0,
+    paid: 0,
+    active: 0,
+    expired: 0,
+  },
+  selectedBuyerId: null,
+  isLoading: false,
+  error: null,
+  // Settings mode
+  isSettingsMode: false,
+  columnConfigs: DEFAULT_BUYER_COLUMN_CONFIGS,
+  columnsLoaded: false,
+
+  fetchColumns: async () => {
+    try {
+      const columns = await api.getBuyerColumns()
+      const columnConfigs: BuyerColumnConfig[] = columns.map((c) => ({
+        id: c.id as BuyerStatus,
+        title: c.title,
+        color: c.color,
+        is_system: c.is_system ?? false,
+      }))
+      set({ columnConfigs, columnsLoaded: true })
+    } catch (error) {
+      console.error('Failed to fetch buyer columns, using defaults:', error)
+      set({ columnConfigs: DEFAULT_BUYER_COLUMN_CONFIGS, columnsLoaded: true })
+    }
+  },
+
+  fetchBuyers: async () => {
+    set({ isLoading: true, error: null })
+    try {
+      // Ensure columns are loaded first
+      if (!get().columnsLoaded) {
+        await get().fetchColumns()
+      }
+
+      const result = await api.getBuyers()
+
+      // Initialize buyers/stats for all columns
+      const columnConfigs = get().columnConfigs
+      const buyers: Partial<Record<BuyerStatus, Buyer[]>> = {}
+      const stats: Partial<Record<BuyerStatus, number>> = {}
+
+      for (const col of columnConfigs) {
+        buyers[col.id] = result.buyers[col.id] || []
+        stats[col.id] = result.stats[col.id] || 0
+      }
+
+      set({
+        buyers,
+        stats,
+        isLoading: false,
+      })
+    } catch (error) {
+      set({ error: String(error), isLoading: false })
+    }
+  },
+
+  updateBuyerStatus: async (buyerId, newStatus) => {
+    try {
+      await api.updateBuyerStatus(buyerId, newStatus)
+      get().fetchBuyers()
+      return true
+    } catch (error) {
+      set({ error: String(error) })
+      return false
+    }
+  },
+
+  // Optimistic update for drag-and-drop
+  moveBuyer: (buyerId, fromStatus, toStatus) => {
+    if (fromStatus === toStatus) return
+
+    set((state) => {
+      const fromBuyers = state.buyers[fromStatus] || []
+      const buyer = fromBuyers.find((b) => b.id === buyerId)
+      if (!buyer) return state
+
+      const updatedBuyer = { ...buyer, status: toStatus, manual_override: true }
+      const toBuyers = state.buyers[toStatus] || []
+
+      return {
+        buyers: {
+          ...state.buyers,
+          [fromStatus]: fromBuyers.filter((b) => b.id !== buyerId),
+          [toStatus]: [updatedBuyer, ...toBuyers],
+        },
+        stats: {
+          ...state.stats,
+          [fromStatus]: (state.stats[fromStatus] || 0) - 1,
+          [toStatus]: (state.stats[toStatus] || 0) + 1,
+        },
+      }
+    })
+
+    api.updateBuyerStatus(buyerId, toStatus).catch((error) => {
+      console.error('Failed to update buyer status:', error)
+      get().fetchBuyers()
+    })
+  },
+
+  selectBuyer: (buyerId) => set({ selectedBuyerId: buyerId }),
+
+  // Settings mode actions
+  toggleSettingsMode: () => set((state) => ({ isSettingsMode: !state.isSettingsMode })),
+
+  updateColumnTitle: async (id, title) => {
+    set((state) => ({
+      columnConfigs: state.columnConfigs.map((c) =>
+        c.id === id ? { ...c, title } : c
+      ),
+    }))
+
+    try {
+      await api.updateBuyerColumn(id, { title })
+    } catch (error) {
+      console.error('Failed to update buyer column title:', error)
+      get().fetchColumns()
+    }
+  },
+
+  updateColumnColor: async (id, color) => {
+    set((state) => ({
+      columnConfigs: state.columnConfigs.map((c) =>
+        c.id === id ? { ...c, color } : c
+      ),
+    }))
+
+    try {
+      await api.updateBuyerColumn(id, { color })
+    } catch (error) {
+      console.error('Failed to update buyer column color:', error)
+      get().fetchColumns()
+    }
+  },
+
+  addColumnAfter: async (afterId) => {
+    const colors = ['#3B82F6', '#8B5CF6', '#F59E0B', '#22C55E', '#EF4444', '#EC4899', '#14B8A6', '#6B7280']
+    const randomColor = colors[Math.floor(Math.random() * colors.length)]
+
+    try {
+      const newColumn = await api.createBuyerColumn({
+        title: 'НОВЫЙ ЭТАП',
+        color: randomColor,
+        after_id: afterId,
+      })
+
+      await get().fetchColumns()
+
+      set((state) => ({
+        buyers: {
+          ...state.buyers,
+          [newColumn.id]: [],
+        },
+        stats: {
+          ...state.stats,
+          [newColumn.id]: 0,
+        },
+      }))
+    } catch (error) {
+      console.error('Failed to create buyer column:', error)
+    }
+  },
+
+  deleteColumn: async (id) => {
+    try {
+      await api.deleteBuyerColumn(id)
+      await get().fetchColumns()
+      await get().fetchBuyers()
+    } catch (error) {
+      console.error('Failed to delete buyer column:', error)
+    }
+  },
+
+  reorderColumns: async (activeId, overId) => {
+    if (activeId === overId) return
+
+    set((state) => {
+      const oldIndex = state.columnConfigs.findIndex((c) => c.id === activeId)
+      const newIndex = state.columnConfigs.findIndex((c) => c.id === overId)
+
+      if (oldIndex < 0 || newIndex < 0) return state
+
+      const newConfigs = [...state.columnConfigs]
+      const [movedColumn] = newConfigs.splice(oldIndex, 1)
+      newConfigs.splice(newIndex, 0, movedColumn)
+
+      return { columnConfigs: newConfigs }
+    })
+
+    try {
+      const columnIds = get().columnConfigs.map((c) => c.id)
+      await api.reorderBuyerColumns(columnIds)
+    } catch (error) {
+      console.error('Failed to reorder buyer columns:', error)
+      get().fetchColumns()
+    }
+  },
 }))

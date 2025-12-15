@@ -117,7 +117,7 @@ async def update_crm_client_status(request: web.Request) -> web.Response:
         id: int (user_id)
 
     Body:
-        {"status": "tried" | "trial_ended" | "paid" | "new"}
+        {"status": "tried" | "trial_ended" | "paid" | "new" | "custom_*"}
     """
     try:
         user_id = int(request.match_info["id"])
@@ -127,15 +127,11 @@ async def update_crm_client_status(request: web.Request) -> web.Response:
         if not new_status:
             raise web.HTTPBadRequest(text="Missing 'status' field")
 
-        if new_status not in client_funnel_repo.FUNNEL_STATUSES:
-            raise web.HTTPBadRequest(
-                text=f"Invalid status. Use: {', '.join(client_funnel_repo.FUNNEL_STATUSES)}"
-            )
-
+        # Валидация происходит в update_client_status (проверяет существование колонки)
         success = await client_funnel_repo.update_client_status(user_id, new_status)
 
         if not success:
-            raise web.HTTPNotFound(text="Client not found")
+            raise web.HTTPNotFound(text="Client not found or invalid status")
 
         return web.json_response({"success": True, "status": new_status})
 
@@ -873,4 +869,163 @@ async def get_client_activity(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text="Invalid parameters")
     except Exception as e:
         logger.error(f"Error getting client activity: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
+
+
+# =============================================================================
+# Колонки воронки (Kanban columns)
+# =============================================================================
+
+async def get_funnel_columns(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/crm/columns
+    Получить все колонки воронки отсортированные по порядку.
+
+    Returns: [
+        {"id": "new", "title": "НЕРАЗОБРАННОЕ", "color": "#3B82F6", "sort_order": 0, "is_system": true},
+        {"id": "custom_1", "title": "МОЯ КОЛОНКА", "color": "#EF4444", "sort_order": 4, "is_system": false},
+        ...
+    ]
+    """
+    try:
+        columns = await client_funnel_repo.get_funnel_columns()
+        return web.json_response([_serialize_dict(c) for c in columns])
+
+    except Exception as e:
+        logger.error(f"Error getting funnel columns: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
+
+
+async def create_funnel_column(request: web.Request) -> web.Response:
+    """
+    POST /api/admin/crm/columns
+    Создать новую кастомную колонку.
+
+    Body: {
+        "title": "string",
+        "color": "#RRGGBB",
+        "after_id": "new"  // ID колонки после которой вставить (опционально)
+    }
+
+    Returns: созданная колонка
+    """
+    try:
+        body = await request.json()
+
+        title = body.get("title", "НОВЫЙ ЭТАП")
+        color = body.get("color", "#6B7280")
+        after_id = body.get("after_id")
+
+        # Получаем следующий ID
+        column_id = await client_funnel_repo.get_next_custom_column_id()
+
+        # Определяем sort_order
+        columns = await client_funnel_repo.get_funnel_columns()
+        if after_id:
+            # Вставляем после указанной колонки
+            after_idx = next((i for i, c in enumerate(columns) if c['id'] == after_id), len(columns) - 1)
+            sort_order = after_idx + 1
+            # Сдвигаем все последующие колонки
+            for c in columns[sort_order:]:
+                await client_funnel_repo.update_funnel_column(c['id'], sort_order=c['sort_order'] + 1)
+        else:
+            # Добавляем в конец
+            sort_order = len(columns)
+
+        column = await client_funnel_repo.create_funnel_column(
+            column_id=column_id,
+            title=title,
+            color=color,
+            sort_order=sort_order
+        )
+
+        return web.json_response(_serialize_dict(column), status=201)
+
+    except Exception as e:
+        logger.error(f"Error creating funnel column: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
+
+
+async def update_funnel_column(request: web.Request) -> web.Response:
+    """
+    PUT /api/admin/crm/columns/{id}
+    Обновить колонку воронки.
+
+    Body: {
+        "title": "string",
+        "color": "#RRGGBB"
+    }
+    """
+    try:
+        column_id = request.match_info["id"]
+        body = await request.json()
+
+        column = await client_funnel_repo.update_funnel_column(
+            column_id=column_id,
+            title=body.get("title"),
+            color=body.get("color"),
+            sort_order=body.get("sort_order")
+        )
+
+        if not column:
+            raise web.HTTPNotFound(text="Column not found")
+
+        return web.json_response(_serialize_dict(column))
+
+    except web.HTTPNotFound:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating funnel column: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
+
+
+async def delete_funnel_column(request: web.Request) -> web.Response:
+    """
+    DELETE /api/admin/crm/columns/{id}
+    Удалить кастомную колонку.
+
+    Системные колонки (new, tried, trial_ended, paid) удалить нельзя.
+    Клиенты из удаляемой колонки перемещаются в 'new'.
+    """
+    try:
+        column_id = request.match_info["id"]
+
+        success = await client_funnel_repo.delete_funnel_column(column_id)
+
+        if not success:
+            raise web.HTTPBadRequest(text="Cannot delete system column or column not found")
+
+        return web.json_response({"success": True})
+
+    except web.HTTPBadRequest:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting funnel column: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
+
+
+async def reorder_funnel_columns(request: web.Request) -> web.Response:
+    """
+    PUT /api/admin/crm/columns/reorder
+    Изменить порядок колонок воронки.
+
+    Body: {
+        "column_ids": ["new", "tried", "custom_1", "trial_ended", "paid"]
+    }
+    """
+    try:
+        body = await request.json()
+        column_ids = body.get("column_ids", [])
+
+        if not column_ids:
+            raise web.HTTPBadRequest(text="Missing column_ids")
+
+        await client_funnel_repo.reorder_funnel_columns(column_ids)
+
+        return web.json_response({"success": True})
+
+    except web.HTTPBadRequest:
+        raise
+    except Exception as e:
+        logger.error(f"Error reordering funnel columns: {e}")
         raise web.HTTPInternalServerError(text="Database error")

@@ -192,4 +192,136 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'users' | 'live' | 'stats' | 'documents'
+export type View = 'users' | 'live' | 'stats' | 'documents' | 'crm'
+
+// CRM Types
+export type FunnelStatus = 'new' | 'tried' | 'trial_ended' | 'paid'
+
+export interface CrmClient {
+  id: number
+  telegram_user_id: number
+  username: string | null
+  first_name: string | null
+  last_name: string | null
+  user_created_at: string | null
+  status: FunnelStatus
+  auto_status: FunnelStatus | null
+  manual_override: boolean
+  status_updated_at: string | null
+  total_consultations: number
+  total_tokens: number
+  total_cost_usd: number
+  last_consultation_at: string | null
+  token_balance?: number
+  region?: string | null
+}
+
+export interface CrmClientsResponse {
+  clients: Record<FunnelStatus, CrmClient[]>
+  stats: Record<FunnelStatus, number>
+}
+
+export interface FunnelColumn {
+  id: FunnelStatus
+  title: string
+  clients: CrmClient[]
+}
+
+// Extended CRM Types
+export type ClientPriority = 'low' | 'normal' | 'high' | 'vip'
+export type CustomFieldType = 'text' | 'number' | 'date' | 'checkbox' | 'select' | 'multiselect'
+export type TaskPriority = 'low' | 'medium' | 'high'
+export type TaskStatus = 'pending' | 'completed' | 'cancelled'
+export type RepeatInterval = 'none' | 'daily' | 'weekly' | 'monthly'
+export type ActivityEventType = 'consultation' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change'
+
+export interface ClientTag {
+  id: number
+  name: string
+  color: string
+  created_at?: string
+}
+
+export interface CustomField {
+  id: number
+  name: string
+  field_type: CustomFieldType
+  options: string[] | null
+  sort_order: number
+  is_required: boolean
+  created_at?: string
+}
+
+export interface CustomFieldValue extends CustomField {
+  value: string | number | boolean | string[] | null
+}
+
+export interface ClientTask {
+  id: number
+  user_id: number
+  title: string
+  description: string | null
+  due_date: string | null
+  priority: TaskPriority
+  status: TaskStatus
+  assignee: string | null
+  reminder_at: string | null
+  repeat_interval: RepeatInterval | null
+  completed_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface ClientNote {
+  id: number
+  user_id: number
+  text: string
+  created_at: string
+}
+
+export interface ActivityEvent {
+  id: number
+  source?: 'activity' | 'topic'
+  event_type: ActivityEventType
+  event_data: Record<string, unknown>
+  created_at: string
+}
+
+export interface CrmClientFull extends CrmClient {
+  priority: ClientPriority
+  source: string | null
+  tags: ClientTag[]
+  custom_fields: CustomFieldValue[]
+}
+
+// Create/Update DTOs
+export interface CreateCustomFieldDto {
+  name: string
+  field_type: CustomFieldType
+  options?: string[]
+  sort_order?: number
+  is_required?: boolean
+}
+
+export interface CreateTagDto {
+  name: string
+  color?: string
+}
+
+export interface CreateTaskDto {
+  title: string
+  description?: string
+  due_date?: string
+  priority?: TaskPriority
+  assignee?: string
+  reminder_at?: string
+  repeat_interval?: RepeatInterval
+}
+
+export interface UpdateTaskDto extends Partial<CreateTaskDto> {
+  status?: TaskStatus
+}
+
+export interface CreateNoteDto {
+  text: string
+}

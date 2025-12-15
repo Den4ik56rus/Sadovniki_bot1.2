@@ -5,6 +5,7 @@ import { ConsultationView } from '@/components/consultation/ConsultationView'
 import { LiveFeed } from '@/components/live/LiveFeed'
 import { StatsPanel } from '@/components/stats/StatsPanel'
 import { DocumentUpload } from '@/components/documents/DocumentUpload'
+import { KanbanBoard } from '@/components/crm/KanbanBoard'
 import { useUIStore } from '@/store'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
 import styles from './App.module.css'
@@ -35,6 +36,8 @@ function App() {
       {currentView === 'stats' && <StatsPanel />}
 
       {currentView === 'documents' && <DocumentUpload />}
+
+      {currentView === 'crm' && <KanbanBoard />}
     </AppLayout>
   )
 }

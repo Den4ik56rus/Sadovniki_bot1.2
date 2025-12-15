@@ -10,6 +10,22 @@ import type {
   DocumentsResponse,
   Document,
   UploadResponse,
+  CrmClientsResponse,
+  CrmClient,
+  CrmClientFull,
+  FunnelStatus,
+  ClientPriority,
+  ClientTag,
+  CustomField,
+  CustomFieldValue,
+  ClientTask,
+  ClientNote,
+  ActivityEvent,
+  CreateCustomFieldDto,
+  CreateTagDto,
+  CreateTaskDto,
+  UpdateTaskDto,
+  CreateNoteDto,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -146,6 +162,209 @@ export const api = {
     }
 
     return response.json()
+  },
+
+  // CRM
+  async getCrmClients(): Promise<CrmClientsResponse> {
+    return fetchApi<CrmClientsResponse>('/crm/clients')
+  },
+
+  async getCrmClient(id: number): Promise<CrmClient> {
+    return fetchApi<CrmClient>(`/crm/clients/${id}`)
+  },
+
+  async updateClientStatus(
+    id: number,
+    status: FunnelStatus
+  ): Promise<{ success: boolean; status: FunnelStatus }> {
+    return fetchApi(`/crm/clients/${id}/status`, {
+      method: 'PATCH',
+      body: JSON.stringify({ status }),
+    })
+  },
+
+  async getClientTopics(
+    clientId: number,
+    params?: { limit?: number; offset?: number }
+  ): Promise<Topic[]> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+
+    const query = searchParams.toString()
+    return fetchApi<Topic[]>(`/crm/clients/${clientId}/topics${query ? `?${query}` : ''}`)
+  },
+
+  async getFunnelStats(): Promise<Record<FunnelStatus, number>> {
+    return fetchApi('/crm/stats')
+  },
+
+  // CRM Extended: Client full data
+  async getClientFull(id: number): Promise<CrmClientFull> {
+    return fetchApi<CrmClientFull>(`/crm/clients/${id}/full`)
+  },
+
+  async updateClientPriority(
+    id: number,
+    priority: ClientPriority
+  ): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/clients/${id}/priority`, {
+      method: 'PATCH',
+      body: JSON.stringify({ priority }),
+    })
+  },
+
+  async updateClientSource(
+    id: number,
+    source: string
+  ): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/clients/${id}/source`, {
+      method: 'PATCH',
+      body: JSON.stringify({ source }),
+    })
+  },
+
+  // CRM: Custom fields
+  async getCustomFields(): Promise<CustomField[]> {
+    return fetchApi<CustomField[]>('/crm/custom-fields')
+  },
+
+  async createCustomField(data: CreateCustomFieldDto): Promise<CustomField> {
+    return fetchApi<CustomField>('/crm/custom-fields', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateCustomField(id: number, data: Partial<CreateCustomFieldDto>): Promise<CustomField> {
+    return fetchApi<CustomField>(`/crm/custom-fields/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteCustomField(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/custom-fields/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async getClientFieldValues(clientId: number): Promise<CustomFieldValue[]> {
+    return fetchApi<CustomFieldValue[]>(`/crm/clients/${clientId}/fields`)
+  },
+
+  async updateClientFieldValues(
+    clientId: number,
+    fields: Record<number, unknown>
+  ): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/clients/${clientId}/fields`, {
+      method: 'PUT',
+      body: JSON.stringify({ fields }),
+    })
+  },
+
+  // CRM: Tags
+  async getTags(): Promise<ClientTag[]> {
+    return fetchApi<ClientTag[]>('/crm/tags')
+  },
+
+  async createTag(data: CreateTagDto): Promise<ClientTag> {
+    return fetchApi<ClientTag>('/crm/tags', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateTag(id: number, data: Partial<CreateTagDto>): Promise<ClientTag> {
+    return fetchApi<ClientTag>(`/crm/tags/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteTag(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/tags/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async getClientTags(clientId: number): Promise<ClientTag[]> {
+    return fetchApi<ClientTag[]>(`/crm/clients/${clientId}/tags`)
+  },
+
+  async updateClientTags(clientId: number, tagIds: number[]): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/clients/${clientId}/tags`, {
+      method: 'PUT',
+      body: JSON.stringify({ tag_ids: tagIds }),
+    })
+  },
+
+  // CRM: Tasks
+  async getClientTasks(clientId: number, includeCompleted = true): Promise<ClientTask[]> {
+    const query = `?include_completed=${includeCompleted}`
+    return fetchApi<ClientTask[]>(`/crm/clients/${clientId}/tasks${query}`)
+  },
+
+  async createTask(clientId: number, data: CreateTaskDto): Promise<ClientTask> {
+    return fetchApi<ClientTask>(`/crm/clients/${clientId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async getTask(taskId: number): Promise<ClientTask> {
+    return fetchApi<ClientTask>(`/crm/tasks/${taskId}`)
+  },
+
+  async updateTask(taskId: number, data: UpdateTaskDto): Promise<ClientTask> {
+    return fetchApi<ClientTask>(`/crm/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteTask(taskId: number): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/tasks/${taskId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async completeTask(taskId: number): Promise<ClientTask> {
+    return fetchApi<ClientTask>(`/crm/tasks/${taskId}/complete`, {
+      method: 'POST',
+    })
+  },
+
+  // CRM: Notes
+  async getClientNotes(clientId: number): Promise<ClientNote[]> {
+    return fetchApi<ClientNote[]>(`/crm/clients/${clientId}/notes`)
+  },
+
+  async createNote(clientId: number, data: CreateNoteDto): Promise<ClientNote> {
+    return fetchApi<ClientNote>(`/crm/clients/${clientId}/notes`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteNote(noteId: number): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/notes/${noteId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  // CRM: Activity feed
+  async getClientActivity(
+    clientId: number,
+    params?: { types?: string[]; limit?: number; offset?: number }
+  ): Promise<ActivityEvent[]> {
+    const searchParams = new URLSearchParams()
+    if (params?.types?.length) searchParams.set('types', params.types.join(','))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+
+    const query = searchParams.toString()
+    return fetchApi<ActivityEvent[]>(`/crm/clients/${clientId}/activity${query ? `?${query}` : ''}`)
   },
 
   // SSE endpoints (Server-Sent Events для real-time обновлений)

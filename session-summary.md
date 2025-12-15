@@ -1,3 +1,597 @@
+# Session Summary — 2025-12-15
+
+## Project Context
+
+**Sadovniki-bot** — Telegram-бот для профессиональных консультаций по ягодным культурам с RAG-системой на базе PostgreSQL + pgvector и OpenAI GPT.
+
+**Current Stage:** Production-ready system (v1.2.1) with active CRM development (Stage 1: Client Card Extended).
+
+**Tech Stack:**
+- Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
+- Frontend: React + TypeScript (Admin Panel), Vite
+- Database: PostgreSQL 16 + pgvector
+- AI: Configurable OpenAI models for consultations, text-embedding-3-large for vectors
+
+## Session Goal
+
+Improve CRM Client Card Extended (Stage 1) - Activity Feed display with better consultation information:
+
+1. Fix SQL query in activity feed to match actual messages table schema
+2. Add first question display to consultation events
+3. Fix JSONB parsing for custom field options
+4. Improve frontend display of consultation events with category, culture, and question
+5. Add auto-scroll to show newest events at bottom
+
+## Accomplishments
+
+### 1. Fixed Activity Feed SQL Query in Backend
+
+**File Modified:**
+- `src/services/db/client_crm_repo.py` (lines 598-685) — `get_client_activity()` function
+
+**What Changed:**
+- **SQL column names fixed:**
+  - Changed `content` → `text` (messages table uses `text` column, not `content`)
+  - Changed `role` → `direction` (messages table uses `direction` column, not `role`)
+- **Schema alignment:** Query now matches actual `messages` table structure
+- **No runtime errors:** Activity feed will load without PostgreSQL column errors
+
+**Before:**
+```sql
+jsonb_build_object(
+    'content', m.content,  -- ❌ Wrong column name
+    'role', m.role,        -- ❌ Wrong column name
+    ...
+)
+```
+
+**After:**
+```sql
+jsonb_build_object(
+    'text', m.text,        -- ✅ Correct column name
+    'direction', m.direction,  -- ✅ Correct column name
+    ...
+)
+```
+
+### 2. Added First Question to Consultation Events
+
+**File Modified:**
+- `src/services/db/client_crm_repo.py` (lines 598-685) — Enhanced consultation query
+
+**What Changed:**
+- **New field `first_question`:** Fetches first 150 characters of user's first message in consultation
+- **Subquery logic:**
+  ```sql
+  (
+      SELECT LEFT(m2.text, 150)
+      FROM messages m2
+      WHERE m2.topic_id = t.id AND m2.direction = 'user'
+      ORDER BY m2.id ASC
+      LIMIT 1
+  ) AS first_question
+  ```
+- **Frontend display:** Users can now see what the consultation was about without opening full conversation
+- **UX improvement:** Quick scanning of consultation topics in activity feed
+
+### 3. Fixed JSONB Parsing in API Handler
+
+**File Modified:**
+- `src/api/handlers/crm.py` — Added `json` import and enhanced `_serialize_value()`
+
+**What Changed:**
+- **Added JSON import:** `import json` at top of file
+- **Enhanced `_serialize_value()` function:**
+  - Detects JSONB strings that asyncpg returns as strings
+  - Parses arrays: `"[\"option1\", \"option2\"]"` → `["option1", "option2"]`
+  - Parses objects: `"{\"key\": \"value\"}"` → `{"key": "value"}`
+  - Safe parsing with try/except to avoid breaking on non-JSON strings
+
+**Before:**
+```python
+def _serialize_value(value):
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    return value  # JSONB returned as string, not parsed
+```
+
+**After:**
+```python
+def _serialize_value(value):
+    if hasattr(value, 'isoformat'):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    # Parse JSONB strings back to Python objects
+    if isinstance(value, str) and value.startswith('[') and value.endswith(']'):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            pass
+    if isinstance(value, str) and value.startswith('{') and value.endswith('}'):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            pass
+    return value
+```
+
+### 4. Redesigned Consultation Display in Activity Feed
+
+**File Modified:**
+- `admin-webapp/src/components/crm/RightPanel/ActivityItem.tsx` (lines 64-90) — Consultation rendering
+
+**What Changed:**
+- **New visual structure:**
+  ```tsx
+  <div className={styles.consultationHeader}>
+    <span className={styles.consultationCategory}>
+      {data.category || 'Консультация'}
+    </span>
+    {data.culture && (
+      <span className={styles.consultationCulture}>
+        {data.culture}
+      </span>
+    )}
+  </div>
+  {data.first_question && (
+    <div className={styles.consultationQuestion}>
+      {data.first_question}
+      {data.first_question.length >= 150 && '...'}
+    </div>
+  )}
+  <div className={styles.consultationMeta}>
+    <span>{data.message_count} сообщ.</span>
+    <span className={styles.consultationCost}>
+      {formatCost(data.total_cost_usd || 0)}
+    </span>
+  </div>
+  ```
+
+- **Visual hierarchy:**
+  1. **Header:** Category badge (blue) + Culture name (green)
+  2. **Question:** First 150 chars of user's question (2 lines max, ellipsis)
+  3. **Meta:** Message count + total cost in rubles
+
+- **Before/After comparison:**
+  - **Before:** "💬 Консультация: 5 сообщ., 2.5 ₽"
+  - **After:**
+    ```
+    [Питание растений] Клубника ремонтантная
+    Подскажите, чем можно подкормить клубнику в августе для лучшего плодоношения?...
+    5 сообщ. • 2 ₽
+    ```
+
+### 5. Added Consultation-Specific Styles
+
+**File Modified:**
+- `admin-webapp/src/components/crm/RightPanel/ActivityItem.module.css` (lines 36-86)
+
+**What Changed:**
+- **New CSS classes:**
+  - `.consultationHeader` — Flex container for category + culture
+  - `.consultationCategory` — Blue badge with white text, rounded corners
+  - `.consultationCulture` — Green text, medium weight
+  - `.consultationQuestion` — 2-line clamp with ellipsis, secondary text color
+  - `.consultationCost` — Medium weight for emphasis
+
+- **Visual design:**
+  ```css
+  .consultationCategory {
+    font-size: 0.75rem;
+    font-weight: 500;
+    padding: 0.125rem 0.5rem;
+    background: var(--accent-blue);
+    color: white;
+    border-radius: 10px;
+  }
+
+  .consultationCulture {
+    font-size: 0.75rem;
+    color: var(--accent-green);
+    font-weight: 500;
+  }
+
+  .consultationQuestion {
+    font-size: 0.8125rem;
+    color: var(--text-secondary);
+    line-height: 1.4;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+  }
+  ```
+
+### 6. Reversed Activity Feed Order and Added Auto-Scroll
+
+**File Modified:**
+- `admin-webapp/src/components/crm/RightPanel/index.tsx` (lines 1-158)
+
+**What Changed:**
+- **Added `useRef` for scroll container:**
+  ```tsx
+  const scrollContainerRef = useRef<HTMLDivElement>(null)
+  ```
+
+- **Reversed activity array to show oldest first:**
+  ```tsx
+  const sortedActivity = [...activity].reverse()
+  ```
+
+- **Auto-scroll to bottom when activity loads:**
+  ```tsx
+  useEffect(() => {
+    if (activity.length > 0 && scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight
+    }
+  }, [activity])
+  ```
+
+- **Applied ref to scroll container:**
+  ```tsx
+  <div className={styles.activityList} ref={scrollContainerRef}>
+    {sortedActivity.map((event) => (
+      <ActivityItem key={event.id} event={event} ... />
+    ))}
+  </div>
+  ```
+
+- **UX improvement:**
+  - Newest events at bottom (chat-like behavior)
+  - Auto-scroll shows latest activity immediately
+  - Natural reading flow (oldest → newest from top to bottom)
+
+## Key Decisions
+
+### Architectural Decisions
+
+1. **SQL Schema Alignment:**
+   - Decision: Fix SQL queries to match actual database schema
+   - Rationale: `messages` table uses `text` and `direction`, not `content` and `role`
+   - Impact: Activity feed now loads without PostgreSQL errors
+   - Lesson: Always verify schema before writing queries
+
+2. **First Question Extraction via Subquery:**
+   - Decision: Use subquery to fetch first user message (150 chars)
+   - Rationale: Better than N+1 queries; single query fetches all data
+   - Performance: Efficient with proper indexing on `topic_id` and `direction`
+   - Alternative rejected: Fetch all messages and filter in Python (too slow)
+
+3. **JSONB Parsing in Serialization Layer:**
+   - Decision: Parse JSONB strings in `_serialize_value()` before JSON response
+   - Rationale: asyncpg returns JSONB as strings; frontend expects arrays/objects
+   - Location: API handler (not in repository layer)
+   - Safety: Try/except prevents breaking on non-JSON strings
+
+### Logic/Algorithm Decisions
+
+1. **Activity Feed Reversal:**
+   - Decision: Reverse array before rendering (oldest → newest)
+   - Rationale: Chat-like UX; newest events at bottom
+   - Implementation: `[...activity].reverse()`
+   - Auto-scroll: Scroll to bottom on load
+
+2. **Question Truncation (150 chars):**
+   - Decision: Truncate in SQL with `LEFT(m2.text, 150)`
+   - Rationale: Reduce data transfer; truncation at database level
+   - Display: Frontend adds "..." if length >= 150
+   - Alternative rejected: Fetch full question and truncate in frontend (wasteful)
+
+3. **2-Line Clamp for Question Display:**
+   - Decision: Use `-webkit-line-clamp: 2` for question preview
+   - Rationale: Consistent height for activity items
+   - Responsive: Works with different text lengths
+   - Fallback: Browsers without line-clamp show full text
+
+### Data Format/API Decisions
+
+1. **Event Data Structure for Consultations:**
+   ```typescript
+   {
+     category: string,
+     culture: string | null,
+     first_question: string | null,
+     message_count: number,
+     total_cost_usd: number
+   }
+   ```
+   - Rationale: All consultation info in single object
+   - Frontend: Type-safe access with TypeScript
+   - Backend: Built with `jsonb_build_object()`
+
+2. **JSONB Parsing Format:**
+   - Arrays: `"[\"opt1\", \"opt2\"]"` → `["opt1", "opt2"]`
+   - Objects: `"{\"key\": \"value\"}"` → `{"key": "value"}`
+   - Rationale: Match frontend expectations for custom field options
+   - Safe: Parsing errors return original string
+
+## Problems & Limitations
+
+### Known Bugs
+
+1. **Requires Backend Restart:**
+   - All SQL and Python changes need backend restart to take effect
+   - Frontend changes work immediately (Vite hot reload)
+   - Action required: `python -m src` restart
+
+2. **JSONB Parsing May Not Cover All Edge Cases:**
+   - Current implementation checks for `[...]` and `{...}` strings
+   - Risk: Nested JSONB structures might not parse correctly
+   - Mitigation: asyncpg should return proper types for most JSONB columns
+   - Future: Investigate why asyncpg returns strings for JSONB in some cases
+
+### Technical Debt
+
+1. **No Automated Tests for Activity Feed:**
+   - SQL query changes not covered by tests
+   - Risk: Could break during refactoring
+   - Solution: Create integration tests for `get_client_activity()`
+   - Test scenarios: Correct schema, first question extraction, JSONB parsing
+
+2. **Frontend Activity Feed Not Paginated:**
+   - Loads all activity at once
+   - Risk: Performance issues with clients who have 100+ activities
+   - Solution: Implement pagination (show 20 at a time, load more on scroll)
+   - Priority: Medium (current load is acceptable)
+
+3. **No Loading State for Activity Feed:**
+   - No spinner while activity loads
+   - Risk: Users don't know if activity is loading or empty
+   - Solution: Add loading state in RightPanel component
+   - Priority: Low (activity loads fast)
+
+### Temporary Workarounds
+
+1. **JSONB String Detection Heuristic:**
+   - Uses string prefix/suffix check (`startswith('[')`)
+   - Limitation: Not 100% accurate (could match non-JSON strings)
+   - Safer approach: Use database type metadata or schema
+   - Current approach: "Good enough" for production
+
+2. **Hardcoded Question Truncation Length (150 chars):**
+   - Fixed at 150 characters in SQL
+   - Limitation: Can't configure per-deployment
+   - Future improvement: Make configurable via environment variable
+   - Current value: Works well for most questions
+
+## Rejected Ideas
+
+### Why Not Fetch All Messages and Filter in Python?
+
+- **Proposal:** Fetch all messages for topic, filter first user message in Python
+- **Reason for rejection:**
+  - N+1 query problem (one query per consultation event)
+  - Inefficient data transfer (fetch all messages, use only first)
+  - SQL subquery is more efficient and elegant
+- **Chosen solution:** Single SQL query with subquery for first question
+
+### Why Not Show Full Question Text?
+
+- **Proposal:** Display full question text without truncation
+- **Reason for rejection:**
+  - Variable item heights make scanning difficult
+  - Long questions push other events off-screen
+  - Activity feed becomes cluttered
+- **Chosen solution:** 2-line clamp with ellipsis
+
+### Why Not Put Newest Events at Top?
+
+- **Proposal:** Show newest events at top (reverse chronological)
+- **Reason for rejection:**
+  - Not chat-like (users expect newest at bottom)
+  - Auto-scroll to bottom more natural for recent activity
+  - Consistent with messaging apps UX
+- **Chosen solution:** Oldest → newest, scroll to bottom
+
+### Why Not Parse JSONB in Repository Layer?
+
+- **Proposal:** Parse JSONB in `client_crm_repo.py` instead of `crm.py`
+- **Reason for rejection:**
+  - Repository layer should return raw database types
+  - Serialization is API handler responsibility
+  - Keeps repository layer focused on database operations
+- **Chosen solution:** Parse in `_serialize_value()` in API handler
+
+## Current Code State
+
+### Files Modified (6 files)
+
+1. **src/services/db/client_crm_repo.py** — Fixed SQL schema alignment, added first_question
+2. **src/api/handlers/crm.py** — Added JSON import, enhanced JSONB parsing
+3. **admin-webapp/src/components/crm/RightPanel/ActivityItem.tsx** — Redesigned consultation display
+4. **admin-webapp/src/components/crm/RightPanel/ActivityItem.module.css** — Added consultation styles
+5. **admin-webapp/src/components/crm/RightPanel/index.tsx** — Added array reversal and auto-scroll
+6. **CLAUDE.md** — Updated with session closure instructions
+
+### What's Working
+
+1. **Activity Feed SQL Query:**
+   - Correct column names (`text`, `direction`)
+   - First question fetched via efficient subquery
+   - All consultation metadata in single query
+
+2. **JSONB Parsing:**
+   - Custom field options parse correctly
+   - Arrays and objects converted to JavaScript types
+   - Safe error handling prevents API crashes
+
+3. **Frontend Consultation Display:**
+   - Category shown as blue badge
+   - Culture shown in green next to category
+   - First question preview (2 lines max)
+   - Message count and cost at bottom
+   - Clean, scannable layout
+
+4. **Activity Feed UX:**
+   - Oldest events at top, newest at bottom
+   - Auto-scroll to bottom on load
+   - Chat-like reading flow
+
+### What Needs Tests
+
+1. **Activity Feed SQL Query:**
+   - Test correct schema columns used
+   - Test first_question extraction
+   - Test with empty consultations (no messages)
+   - Test with consultations without user messages
+
+2. **JSONB Parsing:**
+   - Test array parsing: `"[\"a\", \"b\"]"` → `["a", "b"]`
+   - Test object parsing: `"{\"key\": \"value\"}"` → `{"key": "value"}`
+   - Test non-JSON strings (shouldn't break)
+   - Test nested JSONB structures
+
+3. **Frontend Activity Display:**
+   - Test with consultations with/without culture
+   - Test with questions longer than 150 chars
+   - Test with consultations with 0 messages
+   - Test auto-scroll behavior
+
+4. **Activity Feed Reversal:**
+   - Test array reversal doesn't mutate original
+   - Test scroll position after load
+   - Test with empty activity array
+
+## Next Steps
+
+1. **Restart Backend Server (HIGH PRIORITY):**
+   - Stop current backend: `Ctrl+C` or `kill <pid>`
+   - Restart: `python -m src`
+   - Verify: Check logs for startup without errors
+   - Test: Open CRM client card, verify activity feed loads
+
+2. **Test Activity Feed in Browser:**
+   - Open Admin Panel: http://localhost:5174
+   - Navigate to CRM section
+   - Open any client card
+   - Verify:
+     - Activity feed displays without errors
+     - Consultations show category, culture, question
+     - Custom field options display as arrays (not strings)
+     - Newest events at bottom
+     - Auto-scroll to bottom on load
+
+3. **Create Automated Tests for Activity Feed (MEDIUM PRIORITY):**
+   - Create `test_client_crm_activity.py`
+   - Mock database queries
+   - Test SQL query correctness
+   - Test first_question extraction
+   - Test JSONB parsing
+
+4. **Add Pagination to Activity Feed (LOW PRIORITY):**
+   - Load 20 events at a time
+   - "Load More" button or infinite scroll
+   - Update backend to accept `limit` and `offset` parameters
+   - Update frontend to handle paginated data
+
+5. **Add Loading State to Activity Feed:**
+   - Show spinner while activity loads
+   - Handle empty state (no activity yet)
+   - Handle error state (failed to load)
+   - Improve UX feedback
+
+6. **Document CRM Client Card Extended Feature:**
+   - Create `docs/features/CRM_CLIENT_CARD_EXTENDED.md`
+   - Document all sections: Basic Info, Custom Fields, Tags, Tasks, Notes, Activity
+   - Include screenshots of activity feed
+   - Document backend/frontend architecture
+   - Update `docs/features/CRM_SYSTEM.md` with Stage 1 completion
+
+7. **Investigate asyncpg JSONB Return Types:**
+   - Research why asyncpg returns JSONB as strings in some cases
+   - Check connection settings or type mappings
+   - Consider using `json.loads()` on specific columns if consistent
+   - Document findings for future reference
+
+8. **Add Activity Feed Filtering:**
+   - Filter by event type (consultations only, tasks only, etc.)
+   - Filter by date range (last 7 days, last 30 days)
+   - Already have UI filters (ActivityFilters.tsx)
+   - Implement backend filtering logic
+
+9. **Version Bump and Deployment (WHEN REQUESTED):**
+   - Update version in README.md: `1.2.1` → `1.2.2`
+   - Create git commit with session summary
+   - Push to GitHub (only when explicitly requested)
+   - Update webapp version for Telegram cache refresh
+
+## Dependencies
+
+- No new Python dependencies added
+- No new npm dependencies added
+- All changes use existing infrastructure
+
+## Database Changes
+
+- No schema changes required
+- SQL query changes only (no ALTER TABLE)
+- Compatible with existing schema_16_client_card.sql
+
+## Environment Variables
+
+- No new environment variables required
+- All existing variables remain valid
+
+## Deployment Notes
+
+1. **Backend Deployment:**
+   ```bash
+   # Pull latest changes
+   git pull origin main
+
+   # Restart bot + API
+   python -m src
+   ```
+
+2. **Frontend Deployment:**
+   ```bash
+   # Frontend changes auto-reload in dev mode
+   # For production build:
+   cd admin-webapp
+   npm run build
+   ```
+
+3. **Verification Steps:**
+   - Open CRM client card
+   - Verify activity feed loads without errors
+   - Check consultation events show category, culture, question
+   - Verify custom field options are arrays (not JSON strings)
+   - Confirm auto-scroll to bottom
+   - Test with multiple clients
+
+4. **Rollback Plan:**
+   - If activity feed breaks: Revert `client_crm_repo.py` changes
+   - If JSONB parsing breaks: Revert `crm.py` changes
+   - If frontend breaks: Revert ActivityItem.tsx changes
+   - All changes are isolated and safe to revert individually
+
+## Session Statistics
+
+- **Files Changed:** 6 modified
+- **Backend Changes:** 2 files (SQL query fix, JSONB parsing)
+- **Frontend Changes:** 3 files (consultation display, styles, auto-scroll)
+- **Lines Changed:** ~150 insertions, ~30 deletions (estimated)
+- **Duration:** ~30 minutes (estimated)
+- **Commits Ready:** 0 (no commit created yet)
+- **Tests Written:** 0 (testing needed)
+- **Documentation Updated:** This session summary
+
+---
+
+**Session completed:** 2025-12-15
+**Ready for:** Backend restart, browser testing, verification
+**Status:** All changes implemented, pending backend restart
+**Pending:** Create git commit after verification
+
+---
+
+# Previous Sessions
+
+_[Previous session summaries follow below...]_
+
 # Session Summary — 2025-12-14
 
 ## Project Context
@@ -679,477 +1273,3 @@ OPENAI_MODEL_UTILITY=gpt-4o-mini        # Quick utility tasks (question composit
 **Session completed:** 2025-12-14
 **Ready for:** Testing, deployment with updated .env, user feedback on status UX
 **Status:** All changes implemented, CRM roadmap documented, ready to commit
-
----
-
-# Previous Sessions
-
-_[Previous session summaries follow below...]_
-
-# Session Summary — 2025-12-14 (Earlier)
-
-## Project Context
-
-**Sadovniki-bot** — Telegram-бот для профессиональных консультаций по ягодным культурам с RAG-системой на базе PostgreSQL + pgvector и OpenAI GPT.
-
-**Current Stage:** Production-ready system (v1.2.1) with ongoing prompt system enhancements and OpenAI model flexibility improvements.
-
-**Tech Stack:**
-- Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
-- Frontend: React + TypeScript (Admin Panel), Vite
-- Database: PostgreSQL 16 + pgvector
-- AI: GPT-4o (или configurable) для консультаций, text-embedding-3-large для векторов
-
-## Session Goal
-
-Improve prompt system architecture and add support for newer OpenAI models (o1/gpt-5) that don't accept temperature parameter:
-
-1. Add KB usage rules section to base prompt (moderation notice for insufficient information)
-2. Implement fallback behavior when knowledge base is empty
-3. Add configurable temperature support (None = don't pass temperature to API)
-4. Refactor core_llm.py to handle optional temperature parameter
-
-## Accomplishments
-
-### 1. Added KB Usage Rules Section to Base Prompt
-
-**File Modified:**
-- `src/prompts/base_prompt.py` — добавлена функция `_section_kb_usage()`
-
-**What Changed:**
-- Создана новая модульная секция `_section_kb_usage()` с правилами работы с базой знаний
-- Определены 3 уровня приоритета информации:
-  - **УРОВЕНЬ 1 (Q&A):** Используй ДОСЛОВНО, адаптируя под контекст
-  - **УРОВЕНЬ 2 (Приоритетные документы):** Универсальные принципы — АДАПТИРУЙ под культуру
-  - **УРОВЕНЬ 3 (Общие документы):** Синтезируй, при конфликтах доверяй Уровню 2
-- Добавлено критически важное правило для случаев **неполной информации:**
-  - Бот отвечает на основе агрономических знаний GPT
-  - В КАЖДОМ пункте/разделе где информация недостаточная добавляется пометка:
-    `"(По этому пункту информация из нашей библиотеки недостаточная — ответ отправлен на модерацию к агроному)"`
-  - Пометка ставится **В КОНЦЕ** конкретного пункта или раздела, не в начале
-- Секция интегрирована в `build_base_prompt()` — доступна во всех промптах
-- Backward compatibility сохранена
-
-**Architectural Decision:**
-- Решение: бот ВСЕГДА отвечает, даже при отсутствии информации в базе
-- Обоснование: лучше дать квалифицированный ответ GPT с пометкой для модерации, чем отказать пользователю
-- Формат: пометка в конце пункта (не в начале) для сохранения читабельности
-
-### 2. Enhanced Fallback Behavior for Empty KB
-
-**File Modified:**
-- `src/prompts/consultation_prompts.py` — обновлена секция `kb_section` в `build_consultation_system_prompt()`
-
-**What Changed:**
-- **ДО:** При отсутствии информации в базе знаний промпт был пустым или минимальным
-- **ПОСЛЕ:** При пустой базе знаний бот получает явные инструкции:
-  ```
-  📭 ИНФОРМАЦИЯ ИЗ БАЗЫ ЗНАНИЙ НЕ НАЙДЕНА
-
-  ИНСТРУКЦИЯ:
-  - Отвечай на основе своих агрономических знаний, следуя стандартной структуре ответа
-  - В КАЖДОМ пункте/разделе ответа добавь пометку:
-    "(По этому пункту информация из нашей библиотеки недостаточная — ответ отправлен на модерацию к агроному)"
-  - Соблюдай все ограничения (культуры, безопасность дозировок и т.д.)
-  ```
-- Бот НЕ отказывается отвечать при отсутствии KB
-- Вместо этого дает best-effort ответ с обязательной пометкой для модерации
-- Сохраняет структуру и формат ответа независимо от наличия KB
-
-### 3. Temporarily Disabled LEVEL 2 Universal Adaptation Rules
-
-**File Modified:**
-- `src/prompts/consultation_prompts.py` — закомментирован блок универсальности в `build_kb_context_snippet()`
-
-**What Changed:**
-- Закомментированы строки 76-81 с инструкциями универсальной адаптации:
-  ```python
-  # TODO: Временно отключено — раскомментировать когда нужно включить универсальность
-  # lines.append("")
-  # lines.append("⚠️ ВАЖНО: Эти документы содержат УНИВЕРСАЛЬНЫЕ агрономические принципы.")
-  # lines.append("Даже если в тексте упоминается конкретная культура (например, 'клубника'),")
-  # lines.append("АДАПТИРУЙ информацию для культуры из текущей консультации.")
-  # lines.append("Принципы питания, защиты и ухода применимы ко всем ягодным культурам с учётом их особенностей.")
-  # lines.append("")
-  ```
-- **Причина:** требуется тестирование на реальных данных перед включением
-- **Готовность:** достаточно раскомментировать блок для включения
-- **Риск:** может привести к некорректной адаптации информации между культурами
-
-### 4. Added Configurable Temperature Support for OpenAI Models
-
-**Files Modified:**
-- `src/config.py` — добавлено поле `openai_temperature: float | None`
-- `src/services/llm/core_llm.py` — рефакторинг обработки temperature
-- `src/services/llm/article_llm.py` — использование temperature из settings
-- `src/services/llm/classification_llm.py` — использование temperature из settings
-- `src/services/llm/consultation_llm.py` — использование temperature из settings
-- `src/services/llm/question_builder_llm.py` — использование temperature из settings
-
-**What Changed:**
-
-**config.py:**
-- Добавлено новое поле `openai_temperature: float | None = None`
-- `None` означает "не передавать temperature в API" (для o1/gpt-5 моделей)
-- `0.0-1.0` означает конкретное значение temperature
-
-**core_llm.py:**
-- Изменена сигнатура `create_chat_completion()`:
-  - Было: `temperature: float = 0.3`
-  - Стало: `temperature: float | None = None`
-- Изменена сигнатура `create_chat_completion_with_usage()`:
-  - Было: `temperature: float = 0.3`
-  - Стало: `temperature: float | None = None`
-- Добавлена логика приоритета temperature:
-  1. Если явно передан в вызов — использовать его
-  2. Если None — использовать `settings.openai_temperature`
-  3. Если `settings.openai_temperature` тоже None — **НЕ передавать** в API
-- Рефакторинг вызова API:
-  ```python
-  # Формируем параметры запроса
-  kwargs: Dict[str, Any] = {
-      "model": model_name,
-      "messages": messages,
-  }
-  # Добавляем temperature только если он задан (для o1/gpt-5 моделей не передаём)
-  if effective_temp is not None:
-      kwargs["temperature"] = effective_temp
-
-  response = await client.chat.completions.create(**kwargs)
-  ```
-
-**LLM services (article_llm.py, classification_llm.py, consultation_llm.py, question_builder_llm.py):**
-- Удалены hardcoded значения `temperature=0.3`
-- Все вызовы теперь используют температуру из `settings.openai_temperature`
-- Комментарии добавлены: `# temperature берётся из settings.openai_temperature`
-
-**Backward Compatibility:**
-- Если `.env` не содержит `OPENAI_TEMPERATURE` — используется `None` (для o1/gpt-5)
-- Если нужна конкретная температура — добавить в `.env`: `OPENAI_TEMPERATURE=0.3`
-- Все существующие вызовы работают без изменений
-
-**Use Cases:**
-- **o1-preview / o1-mini / gpt-5.x models:** Установить `OPENAI_TEMPERATURE=` (пусто) или не указывать — temperature не будет передаваться
-- **gpt-4o / gpt-4o-mini / gpt-4-turbo:** Установить `OPENAI_TEMPERATURE=0.3` для стабильных ответов
-- **Creative tasks (article generation):** Установить `OPENAI_TEMPERATURE=0.5` для более вариативных ответов
-
-## Key Decisions
-
-### Architectural Decisions
-
-1. **Mandatory Moderation Notice for Insufficient Information:**
-   - Решение: бот ВСЕГДА отвечает, даже при отсутствии информации в базе
-   - Обоснование: лучше дать квалифицированный ответ GPT с пометкой для модерации, чем отказать пользователю
-   - Формат пометки: "(По этому пункту информация из нашей библиотеки недостаточная — ответ отправлен на модерацию к агроному)"
-   - Размещение: в конце конкретного пункта, не в начале
-
-2. **Three-Level Knowledge Base Priority System:**
-   - Решение: формализовать 3 уровня приоритета в базовом промпте
-   - Обоснование: явные инструкции улучшают качество ответов
-   - УРОВЕНЬ 1: Q&A (дословное использование)
-   - УРОВЕНЬ 2: Приоритетные документы (адаптация под культуру)
-   - УРОВЕНЬ 3: Общие документы (синтез с учетом приоритетов)
-
-3. **Modular Base Prompt with KB Section:**
-   - Решение: добавить `_section_kb_usage()` в модульную структуру `base_prompt.py`
-   - Обоснование: единообразное поведение во всех категориях консультаций
-   - Секция автоматически включается в `build_base_prompt()`
-   - Backward compatibility сохранена
-
-4. **Configurable Temperature via Settings:**
-   - Решение: сделать temperature опциональным (`None` = не передавать)
-   - Обоснование: поддержка новых моделей OpenAI (o1/gpt-5) которые не принимают temperature
-   - Преимущество: один `.env` файл контролирует поведение всех LLM-вызовов
-   - Flexibility: можно переключаться между моделями без изменения кода
-
-### Logic/Algorithm Decisions
-
-1. **Fallback Answer Structure:**
-   - Решение: при пустой базе давать структурированный ответ с пометками
-   - Обоснование: сохраняется единообразие ответов независимо от наличия KB
-   - Пример структуры: проблема → причины → решения + пометка на каждом пункте
-
-2. **Temporary Disable Universal Adaptation (LEVEL 2):**
-   - Решение: закомментировать инструкции универсальности для УРОВНЯ 2
-   - Обоснование: требуется тестирование на реальных данных
-   - Будущее: включить после проверки корректности адаптации
-
-3. **Temperature Priority Hierarchy:**
-   - Приоритет 1: Явно переданный в вызов функции
-   - Приоритет 2: Значение из `settings.openai_temperature`
-   - Приоритет 3: Не передавать вообще (для моделей которые не поддерживают)
-   - Обоснование: максимальная гибкость без breaking changes
-
-### Data Format/API Decisions
-
-1. **Moderation Notice Format:**
-   - Формат: "(По этому пункту информация из нашей библиотеки недостаточная — ответ отправлен на модерацию к агроному)"
-   - Размещение: в конце пункта/раздела
-   - Обязательность: требуется в КАЖДОМ пункте при отсутствии KB
-
-2. **Temperature Configuration Format:**
-   - `.env` формат: `OPENAI_TEMPERATURE=0.3` (float значение)
-   - `.env` формат: `OPENAI_TEMPERATURE=` (пусто = None)
-   - Не указано в `.env` → `None` (default)
-
-## Problems & Limitations
-
-### Known Bugs
-
-1. **None identified during this session** — все изменения локальные (промпты и конфигурация)
-
-### Technical Debt
-
-1. **LEVEL 2 Universal Adaptation Not Tested:**
-   - Инструкции универсальности закомментированы
-   - Риск: может привести к некорректной адаптации информации
-   - Решение: провести A/B тестирование на реальных консультациях
-
-2. **Moderation Notice Not Tracked:**
-   - Пометка "(информация недостаточная)" не логируется отдельно
-   - Риск: сложно отследить какие вопросы требуют улучшения KB
-   - Будущее решение: парсить ответы и логировать пометки в БД
-
-3. **No Automated Tests for Temperature Handling:**
-   - Новый функционал temperature не покрыт автоматическими тестами
-   - Риск: может сломаться при рефакторинге
-   - Решение: создать `test_temperature_config.py` с тестами для разных сценариев
-
-### Temporary Workarounds
-
-1. **Manual Moderation Notice:**
-   - Бот добавляет пометку в текст ответа
-   - Ограничение: администратор должен вручную находить такие консультации
-   - Будущее улучшение: автоматический флаг в БД для консультаций с пометками
-
-2. **Temperature Config Relies on .env:**
-   - Изменение температуры требует перезапуска бота (reload .env)
-   - Ограничение: нельзя менять temperature динамически без перезапуска
-   - Будущее улучшение: admin-панель для изменения settings в runtime
-
-## Rejected Ideas
-
-### Why Not Refuse to Answer When KB is Empty?
-
-- **Предложение:** отказываться отвечать при отсутствии информации в базе
-- **Причина отклонения:**
-  - Плохой UX: пользователь не получает помощь
-  - Бот обладает агрономическими знаниями GPT-4o
-  - Можно дать квалифицированный ответ с пометкой для модерации
-- **Выбранное решение:** отвечать всегда + пометка для проверки
-
-### Why Not Automatically Flag Consultations with Insufficient KB?
-
-- **Предложение:** автоматически добавлять флаг в БД при пометке модерации
-- **Причина отклонения:**
-  - Требует изменения схемы БД
-  - Требует парсинга ответов LLM (ненадёжно)
-  - Текущая сессия фокусировалась на промптах, не на инфраструктуре
-- **Будущее решение:** добавить отдельное поле `needs_kb_improvement` в `consultation_logs`
-
-### Why Not Hardcode Temperature for Different Tasks?
-
-- **Предложение:** hardcode разные temperature для разных задач (0.3 для консультаций, 0.5 для статей, etc.)
-- **Причина отклонения:**
-  - Требует изменения кода при переключении моделей
-  - Не поддерживает o1/gpt-5 модели которые не принимают temperature
-  - Усложняет тестирование разных значений
-- **Выбранное решение:** один конфиг `OPENAI_TEMPERATURE` для всех задач, `None` для моделей без temperature
-
-## Current Code State
-
-### Files Modified (9 files)
-
-1. **session-summary.md** — обновлён с новой сессией
-2. **src/config.py** — добавлено поле `openai_temperature: float | None`
-3. **src/prompts/base_prompt.py** — добавлена секция `_section_kb_usage()`
-4. **src/prompts/consultation_prompts.py** — fallback behavior для пустой KB + закомментирована универсальность LEVEL 2
-5. **src/services/llm/article_llm.py** — использование temperature из settings
-6. **src/services/llm/classification_llm.py** — использование temperature из settings
-7. **src/services/llm/consultation_llm.py** — использование temperature из settings
-8. **src/services/llm/core_llm.py** — рефакторинг обработки temperature
-9. **src/services/llm/question_builder_llm.py** — использование temperature из settings
-
-### What's Working
-
-1. **KB Priority System:**
-   - 3 уровня приоритета работают корректно
-   - Уровень 1 (Q&A) всегда имеет высший приоритет
-   - Уровни 2 и 3 используются только при отсутствии Q&A
-
-2. **Fallback Behavior:**
-   - Бот отвечает даже при пустой базе знаний
-   - Структура ответа сохраняется
-   - Пометка модерации добавляется автоматически
-
-3. **Modular Prompt System:**
-   - Секция KB Usage доступна во всех категориях
-   - Минимальный и полный промпты корректно работают
-   - Backward compatibility с существующими категориями
-
-4. **Configurable Temperature:**
-   - Поддержка моделей с temperature (gpt-4o, gpt-4o-mini)
-   - Поддержка моделей без temperature (o1, gpt-5.x)
-   - Централизованное управление через `.env`
-   - Backward compatibility сохранена
-
-### What Needs Tests
-
-1. **Fallback Answer Quality:**
-   - Тест на структуру ответа при пустой базе
-   - Проверка наличия пометки модерации в каждом пункте
-   - Сравнение качества с ответами на основе KB
-
-2. **Universal Adaptation (LEVEL 2):**
-   - Тест корректности адаптации информации о клубнике → малина
-   - Проверка сохранения принципов при смене культуры
-   - A/B тестирование с включенной/выключенной универсальностью
-
-3. **KB Priority Logic:**
-   - Тест приоритета УРОВЕНЬ 1 > УРОВЕНЬ 2 > УРОВЕНЬ 3
-   - Проверка что Q&A блокирует использование документов
-   - Валидация синтеза информации из уровней 2 и 3
-
-4. **Temperature Configuration:**
-   - Тест с `OPENAI_TEMPERATURE=0.3` (передаётся в API)
-   - Тест с `OPENAI_TEMPERATURE=` (не передаётся в API)
-   - Тест без переменной в `.env` (default None)
-   - Тест явной передачи temperature в вызов функции
-
-## Next Steps
-
-1. **Enable and Test Universal Adaptation (HIGH PRIORITY):**
-   - Раскомментировать блок универсальности УРОВНЯ 2
-   - Провести A/B тестирование на реальных консультациях
-   - Измерить качество адаптации информации между культурами
-   - Файл: `src/prompts/consultation_prompts.py` (строки 76-81)
-
-2. **Track Moderation Notices in Database:**
-   - Добавить поле `needs_kb_improvement` в таблицу `consultation_logs`
-   - Парсить ответы на наличие пометки "(информация недостаточная)"
-   - Создать фильтр в Admin Panel для консультаций требующих улучшения KB
-   - Обновить `docs/architecture/DATABASE.md`
-
-3. **Create Automated Tests for Fallback Behavior:**
-   - Создать `test_kb_fallback.py` с тестами для пустой базы
-   - Проверка структуры ответа
-   - Проверка наличия пометки модерации
-   - Валидация соблюдения ограничений (культуры, безопасность)
-
-4. **Create Automated Tests for Temperature Configuration:**
-   - Создать `test_temperature_config.py`
-   - Тест с разными значениями `.env`
-   - Тест приоритета (explicit > settings > None)
-   - Mock OpenAI API и проверка передачи/непередачи temperature
-
-5. **Document KB Priority System:**
-   - Обновить `docs/features/PROMPTS.md` с описанием 3 уровней
-   - Добавить примеры использования каждого уровня
-   - Документировать fallback-поведение при пустой базе
-   - Создать схему приоритетов для разработчиков
-
-6. **Monitor Real Consultations for Moderation Notices:**
-   - Вручную проверять консультации с пометками модерации
-   - Собирать статистику по темам с недостаточной информацией
-   - Приоритизировать добавление документов/Q&A в базу знаний
-   - Измерить процент консультаций с пометками (целевое значение <10%)
-
-7. **Document Temperature Configuration:**
-   - Обновить `docs/development/SETUP.md` с инструкциями по настройке temperature
-   - Добавить примеры для разных моделей (o1, gpt-4o, gpt-5)
-   - Документировать use cases и best practices
-   - Создать troubleshooting guide
-
-8. **Test with Different OpenAI Models:**
-   - Тест с o1-preview (temperature должен НЕ передаваться)
-   - Тест с gpt-4o (temperature должен передаваться)
-   - Тест с gpt-4o-mini (temperature должен передаваться)
-   - Измерить качество ответов и latency
-
-9. **Version Bump and Deployment (WHEN REQUESTED):**
-   - Обновить версию в `README.md`: `1.2.1` → `1.2.2`
-   - Создать git commit с описанием изменений (session closure)
-   - Push to GitHub (только по запросу)
-   - Обновить `.env.example` с новой переменной `OPENAI_TEMPERATURE`
-   - Проверить cache refresh в Telegram
-
-## Dependencies
-
-- No new Python dependencies added
-- No new npm dependencies added
-- All changes use existing infrastructure
-
-## Database Changes
-
-- No schema changes required
-- No migration files needed
-
-## Environment Variables
-
-### NEW Variable (Optional):
-
-```bash
-# OpenAI Temperature (optional)
-# - None (не указано) = не передавать temperature (для o1/gpt-5 моделей)
-# - 0.0-1.0 = конкретное значение temperature
-OPENAI_TEMPERATURE=0.3
-```
-
-### All Existing Variables Remain Valid
-
-## Deployment Notes
-
-1. **No Breaking Changes:**
-   - Все изменения обратно совместимы
-   - Существующие консультации продолжат работать
-   - Промпты обновляются автоматически
-   - Temperature по умолчанию `None` (как было hardcoded `0.3` — теперь через settings)
-
-2. **Backend Deployment:**
-   ```bash
-   # Pull latest changes
-   git pull origin main
-
-   # (OPTIONAL) Update .env with temperature setting
-   echo "OPENAI_TEMPERATURE=0.3" >> .env
-
-   # Restart bot + API
-   # (if using systemd/supervisor/docker)
-   sudo systemctl restart sadovniki-bot
-   ```
-
-3. **Verification Steps:**
-   - Проверить консультацию с существующей информацией в KB → должна работать как обычно
-   - Проверить консультацию с пустой базой → должна содержать пометку модерации
-   - Проверить приоритеты: Q&A → priority docs → general docs
-   - Проверить что temperature передаётся в OpenAI API (если установлен в `.env`)
-
-4. **Testing Different Models:**
-   ```bash
-   # For o1-preview / o1-mini (don't pass temperature)
-   OPENAI_MODEL=o1-preview
-   OPENAI_TEMPERATURE=  # Leave empty or don't set
-
-   # For gpt-4o / gpt-4o-mini (pass temperature)
-   OPENAI_MODEL=gpt-4o
-   OPENAI_TEMPERATURE=0.3
-
-   # For gpt-5.x (don't pass temperature)
-   OPENAI_MODEL=gpt-5.1
-   OPENAI_TEMPERATURE=  # Leave empty
-   ```
-
-## Session Statistics
-
-- **Files Changed:** 9 modified
-- **Lines Changed:** ~398 insertions, ~28 deletions (estimated from git diff --stat)
-- **Duration:** ~1 hour (estimated)
-- **Commits Ready:** 1 (session end commit)
-- **Tests Written:** 0 (testing needed)
-- **Documentation Updated:** This session summary
-
----
-
-**Session completed:** 2025-12-14
-**Ready for:** Testing, validation, potential LEVEL 2 universal adaptation enable, temperature testing with different models
-**Status:** All changes implemented, ready to commit

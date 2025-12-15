@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm
 
 
 def setup_routes(app: web.Application) -> None:
@@ -36,6 +36,48 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/api/admin/logs/recent", admin.get_recent_logs)
     app.router.add_get("/api/admin/stats", admin.get_stats)
     app.router.add_get("/api/admin/stats/embeddings", admin.get_embedding_stats)
+
+    # CRM API (Kanban-доска и карточки клиентов)
+    app.router.add_get("/api/admin/crm/clients", crm.get_crm_clients)
+    app.router.add_get("/api/admin/crm/clients/{id}", crm.get_crm_client)
+    app.router.add_get("/api/admin/crm/clients/{id}/full", crm.get_client_full)
+    app.router.add_patch("/api/admin/crm/clients/{id}/status", crm.update_crm_client_status)
+    app.router.add_patch("/api/admin/crm/clients/{id}/priority", crm.update_client_priority)
+    app.router.add_patch("/api/admin/crm/clients/{id}/source", crm.update_client_source)
+    app.router.add_get("/api/admin/crm/clients/{id}/topics", crm.get_crm_client_topics)
+    app.router.add_get("/api/admin/crm/stats", crm.get_funnel_stats)
+
+    # CRM: Кастомные поля
+    app.router.add_get("/api/admin/crm/custom-fields", crm.get_custom_fields)
+    app.router.add_post("/api/admin/crm/custom-fields", crm.create_custom_field)
+    app.router.add_put("/api/admin/crm/custom-fields/{id}", crm.update_custom_field)
+    app.router.add_delete("/api/admin/crm/custom-fields/{id}", crm.delete_custom_field)
+    app.router.add_get("/api/admin/crm/clients/{id}/fields", crm.get_client_field_values)
+    app.router.add_put("/api/admin/crm/clients/{id}/fields", crm.update_client_field_values)
+
+    # CRM: Теги
+    app.router.add_get("/api/admin/crm/tags", crm.get_tags)
+    app.router.add_post("/api/admin/crm/tags", crm.create_tag)
+    app.router.add_put("/api/admin/crm/tags/{id}", crm.update_tag)
+    app.router.add_delete("/api/admin/crm/tags/{id}", crm.delete_tag)
+    app.router.add_get("/api/admin/crm/clients/{id}/tags", crm.get_client_tags)
+    app.router.add_put("/api/admin/crm/clients/{id}/tags", crm.update_client_tags)
+
+    # CRM: Задачи
+    app.router.add_get("/api/admin/crm/clients/{id}/tasks", crm.get_client_tasks)
+    app.router.add_post("/api/admin/crm/clients/{id}/tasks", crm.create_task)
+    app.router.add_get("/api/admin/crm/tasks/{id}", crm.get_task)
+    app.router.add_put("/api/admin/crm/tasks/{id}", crm.update_task)
+    app.router.add_delete("/api/admin/crm/tasks/{id}", crm.delete_task)
+    app.router.add_post("/api/admin/crm/tasks/{id}/complete", crm.complete_task)
+
+    # CRM: Заметки
+    app.router.add_get("/api/admin/crm/clients/{id}/notes", crm.get_client_notes)
+    app.router.add_post("/api/admin/crm/clients/{id}/notes", crm.create_note)
+    app.router.add_delete("/api/admin/crm/notes/{id}", crm.delete_note)
+
+    # CRM: Лента активности
+    app.router.add_get("/api/admin/crm/clients/{id}/activity", crm.get_client_activity)
 
     # SSE endpoints (Server-Sent Events для real-time обновлений)
     app.router.add_get("/api/admin/events/live-feed", sse.live_feed_stream)

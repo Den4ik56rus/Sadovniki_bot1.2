@@ -37,6 +37,12 @@ export function AppLayout({ children }: AppLayoutProps) {
           >
             Документы
           </button>
+          <button
+            className={`${styles.navButton} ${currentView === 'crm' ? styles.active : ''}`}
+            onClick={() => setView('crm')}
+          >
+            CRM
+          </button>
         </nav>
       </header>
       <main className={styles.main}>{children}</main>

@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { User, Topic, ConsultationLog, RecentLog, Stats, EmbeddingStats, View, Document, Message } from '@/types'
+import type { User, Topic, ConsultationLog, RecentLog, Stats, EmbeddingStats, View, Document, Message, CrmClient, FunnelStatus } from '@/types'
 import { api } from '@/services/api'
 
 // UI Store with persistence
@@ -408,4 +408,95 @@ export const useDocumentsStore = create<DocumentsState>((set, get) => ({
       ),
     }))
   },
+}))
+
+// CRM Store
+interface CrmState {
+  clients: Record<FunnelStatus, CrmClient[]>
+  stats: Record<FunnelStatus, number>
+  selectedClientId: number | null
+  isLoading: boolean
+  error: string | null
+  fetchClients: () => Promise<void>
+  updateClientStatus: (clientId: number, newStatus: FunnelStatus) => Promise<boolean>
+  moveClient: (clientId: number, fromStatus: FunnelStatus, toStatus: FunnelStatus) => void
+  selectClient: (clientId: number | null) => void
+}
+
+export const useCrmStore = create<CrmState>((set, get) => ({
+  clients: {
+    new: [],
+    tried: [],
+    trial_ended: [],
+    paid: [],
+  },
+  stats: {
+    new: 0,
+    tried: 0,
+    trial_ended: 0,
+    paid: 0,
+  },
+  selectedClientId: null,
+  isLoading: false,
+  error: null,
+
+  fetchClients: async () => {
+    set({ isLoading: true, error: null })
+    try {
+      const result = await api.getCrmClients()
+      set({
+        clients: result.clients,
+        stats: result.stats,
+        isLoading: false,
+      })
+    } catch (error) {
+      set({ error: String(error), isLoading: false })
+    }
+  },
+
+  updateClientStatus: async (clientId, newStatus) => {
+    try {
+      await api.updateClientStatus(clientId, newStatus)
+      // Refetch to get updated data
+      get().fetchClients()
+      return true
+    } catch (error) {
+      set({ error: String(error) })
+      return false
+    }
+  },
+
+  // Optimistic update for drag-and-drop
+  moveClient: (clientId, fromStatus, toStatus) => {
+    if (fromStatus === toStatus) return
+
+    set((state) => {
+      const client = state.clients[fromStatus].find((c) => c.id === clientId)
+      if (!client) return state
+
+      const updatedClient = { ...client, status: toStatus, manual_override: true }
+
+      return {
+        clients: {
+          ...state.clients,
+          [fromStatus]: state.clients[fromStatus].filter((c) => c.id !== clientId),
+          [toStatus]: [updatedClient, ...state.clients[toStatus]],
+        },
+        stats: {
+          ...state.stats,
+          [fromStatus]: state.stats[fromStatus] - 1,
+          [toStatus]: state.stats[toStatus] + 1,
+        },
+      }
+    })
+
+    // Then update on server
+    api.updateClientStatus(clientId, toStatus).catch((error) => {
+      console.error('Failed to update client status:', error)
+      // Revert on failure by refetching
+      get().fetchClients()
+    })
+  },
+
+  selectClient: (clientId) => set({ selectedClientId: clientId }),
 }))

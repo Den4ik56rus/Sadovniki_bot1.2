@@ -1,0 +1,250 @@
+/* Expense List Styles - Spendee-like table view */
+
+.listContainer {
+  display: flex;
+  flex-direction: column;
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+/* Loading & Empty States */
+.loadingContainer,
+.emptyContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: #9CA3AF;
+  gap: 12px;
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 12px;
+}
+
+.emptyIcon {
+  width: 48px;
+  height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #F3F4F6;
+  border-radius: 50%;
+  color: #9CA3AF;
+}
+
+.emptyContainer p {
+  font-size: 16px;
+  font-weight: 500;
+  color: #6B7280;
+  margin: 0;
+}
+
+.emptyContainer span {
+  font-size: 14px;
+  color: #9CA3AF;
+}
+
+.spinner {
+  width: 24px;
+  height: 24px;
+  border: 2px solid #E5E7EB;
+  border-top-color: #3B82F6;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Date Group Header */
+.dateGroup {
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.dateGroup:last-child {
+  border-bottom: none;
+}
+
+.dateHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 20px;
+  background: #F9FAFB;
+  border-bottom: 1px solid #E5E7EB;
+}
+
+.dateLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: #374151;
+}
+
+.dateTotal {
+  font-size: 13px;
+  font-weight: 600;
+  color: #EF4444;
+}
+
+/* Expense Items */
+.expenseItems {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Individual Expense Row */
+.expenseItem {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto auto;
+  gap: 16px;
+  align-items: center;
+  padding: 14px 20px;
+  border-bottom: 1px solid #F3F4F6;
+  transition: background 0.15s ease;
+}
+
+.expenseItem:last-child {
+  border-bottom: none;
+}
+
+.expenseItem:hover {
+  background: #F9FAFB;
+}
+
+/* Checkbox */
+.checkbox {
+  width: 18px;
+  height: 18px;
+  border: 1.5px solid #D1D5DB;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.checkbox:hover {
+  border-color: #9CA3AF;
+}
+
+/* Category Icon */
+.categoryIcon {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.categoryIcon svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Expense Info - Name & Category */
+.expenseInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.expenseName {
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.expenseCategory {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.categoryTag {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: #FEF3C7;
+  color: #92400E;
+}
+
+/* Paid By Badge */
+.paidByBadge {
+  font-size: 12px;
+  color: #6B7280;
+  padding: 4px 10px;
+  background: #F3F4F6;
+  border-radius: 6px;
+}
+
+/* Amount */
+.expenseAmount {
+  font-size: 14px;
+  font-weight: 600;
+  color: #EF4444;
+  text-align: right;
+  min-width: 100px;
+}
+
+/* Action Buttons */
+.expenseActions {
+  display: flex;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+}
+
+.expenseItem:hover .expenseActions {
+  opacity: 1;
+}
+
+.actionButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 6px;
+  color: #6B7280;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.actionButton:hover {
+  background: #F3F4F6;
+  border-color: #D1D5DB;
+  color: #374151;
+}
+
+.deleteButton:hover {
+  background: #FEE2E2;
+  border-color: #FECACA;
+  color: #EF4444;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .expenseItem {
+    grid-template-columns: auto 1fr auto;
+    gap: 12px;
+  }
+
+  .paidByBadge {
+    display: none;
+  }
+
+  .expenseActions {
+    opacity: 1;
+  }
+}

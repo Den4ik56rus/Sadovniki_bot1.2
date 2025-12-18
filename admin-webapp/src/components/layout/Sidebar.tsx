@@ -1,13 +1,22 @@
-// Sidebar Navigation Component - Narrow Icon Style (i2crm inspired)
+// Sidebar Navigation Component - Narrow Icon Style with Dynamic Funnels
+import { useEffect } from 'react'
 import type { View } from '@/types'
 import { useUIStore } from '@/store'
+import { useFunnelStore } from '@/store/funnelStore'
 import styles from './Sidebar.module.css'
 
+interface SubmenuItem {
+  id: View | string
+  label: string
+}
+
 interface MenuItem {
-  id: View
+  id: View | 'deals-group'
   icon: React.ReactNode
   label: string
   badge?: number
+  submenu?: SubmenuItem[]
+  isDynamic?: boolean
 }
 
 // SVG Icons
@@ -70,21 +79,118 @@ const Icons = {
       <path d="M11 2V4M11 18V20M20 11H18M4 11H2M17.07 4.93L15.66 6.34M6.34 15.66L4.93 17.07M17.07 17.07L15.66 15.66M6.34 6.34L4.93 4.93" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
     </svg>
   ),
+  expenses: (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <circle cx="11" cy="11" r="9" stroke="currentColor" strokeWidth="1.5"/>
+      <path d="M11 6V16M8 9H14C14.5523 9 15 9.44772 15 10C15 10.5523 14.5523 11 14 11H8M8 11H14C14.5523 11 15 11.4477 15 12C15 12.5523 14.5523 13 14 13H8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  ),
+  plus: (
+    <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M7 1V13M1 7H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  ),
 }
 
-const MENU_ITEMS: MenuItem[] = [
+// Static menu items (without dynamic funnels)
+const STATIC_MENU_ITEMS: MenuItem[] = [
   { id: 'dashboard', icon: Icons.dashboard, label: 'Рабочий стол' },
-  { id: 'crm', icon: Icons.deals, label: 'Сделки' },
+  {
+    id: 'deals-group',
+    icon: Icons.deals,
+    label: 'Воронки',
+    submenu: [], // Will be filled dynamically
+    isDynamic: true,
+  },
   { id: 'messages', icon: Icons.messages, label: 'Сообщения' },
-  { id: 'buyers', icon: Icons.buyers, label: 'Покупатели' },
   { id: 'tasks', icon: Icons.tasks, label: 'Задачи' },
   { id: 'lists', icon: Icons.lists, label: 'Списки' },
   { id: 'stats', icon: Icons.stats, label: 'Аналитика' },
+  { id: 'expenses', icon: Icons.expenses, label: 'Расходы' },
   { id: 'settings', icon: Icons.settings, label: 'Настройки' },
 ]
 
 export function Sidebar() {
   const { currentView, setView } = useUIStore()
+  const { funnels, fetchFunnels, setCurrentFunnel } = useFunnelStore()
+
+  // Fetch funnels on mount
+  useEffect(() => {
+    fetchFunnels()
+  }, [fetchFunnels])
+
+  // Build menu items with dynamic funnels
+  const menuItems: MenuItem[] = STATIC_MENU_ITEMS.map((item) => {
+    if (item.isDynamic && item.id === 'deals-group') {
+      // Build submenu from funnels
+      const submenu: SubmenuItem[] = funnels.map((funnel) => ({
+        id: `funnel:${funnel.id}`,
+        label: funnel.title,
+      }))
+      // Add "Create funnel" option
+      submenu.push({
+        id: 'create-funnel',
+        label: '+ Новая воронка',
+      })
+      return { ...item, submenu }
+    }
+    return item
+  })
+
+  // Check if current view is in a submenu group
+  const isSubmenuActive = (submenu?: SubmenuItem[]) => {
+    if (!submenu) return false
+    return submenu.some((sub) => {
+      if (sub.id.startsWith('funnel:')) {
+        const funnelId = sub.id.replace('funnel:', '')
+        return currentView === 'crm' || currentView === 'buyers' || currentView === (`funnel:${funnelId}` as View)
+      }
+      return sub.id === currentView
+    })
+  }
+
+  // Check if a specific submenu item is active
+  const isSubmenuItemActive = (submenuId: string): boolean => {
+    // For funnel items, check if it matches current funnel
+    if (submenuId.startsWith('funnel:')) {
+      const funnelId = submenuId.replace('funnel:', '')
+      // Legacy CRM view
+      if (currentView === 'crm' && funnelId === 'crm') return true
+      // Legacy Buyers view
+      if (currentView === 'buyers' && funnelId === 'buyers') return true
+      // New unified funnel view
+      return currentView === (`funnel:${funnelId}` as View)
+    }
+    return submenuId === currentView
+  }
+
+  // Handle submenu item click
+  const handleSubmenuClick = (submenuId: string) => {
+    if (submenuId === 'create-funnel') {
+      // TODO: Open create funnel modal
+      alert('Создание воронки будет доступно в следующей версии')
+      return
+    }
+
+    if (submenuId.startsWith('funnel:')) {
+      const funnelId = submenuId.replace('funnel:', '')
+      // Set current funnel in store
+      setCurrentFunnel(funnelId)
+
+      // Use the funnelId as the view - for crm/buyers keep legacy names for compatibility
+      if (funnelId === 'crm') {
+        setView('crm')
+      } else if (funnelId === 'buyers') {
+        setView('buyers')
+      } else {
+        // Custom funnels use funnel: prefix
+        setView(`funnel:${funnelId}` as View)
+      }
+      return
+    }
+
+    setView(submenuId as View)
+  }
 
   return (
     <aside className={styles.sidebar}>
@@ -100,20 +206,51 @@ export function Sidebar() {
 
       {/* Navigation */}
       <nav className={styles.nav}>
-        {MENU_ITEMS.map((item) => (
-          <button
-            key={item.id}
-            className={`${styles.navItem} ${currentView === item.id ? styles.active : ''}`}
-            onClick={() => setView(item.id)}
-            title={item.label}
-          >
-            <span className={styles.navIcon}>{item.icon}</span>
-            <span className={styles.navLabel}>{item.label}</span>
-            {item.badge !== undefined && item.badge > 0 && (
-              <span className={styles.navBadge}>{item.badge > 99 ? '99+' : item.badge}</span>
-            )}
-          </button>
-        ))}
+        {menuItems.map((item) => {
+          // Item with submenu
+          if (item.submenu && item.submenu.length > 0) {
+            const isActive = isSubmenuActive(item.submenu)
+            return (
+              <div key={item.id} className={styles.navItemWithSubmenu}>
+                <div
+                  className={`${styles.navItem} ${isActive ? styles.active : ''}`}
+                  title={item.label}
+                >
+                  <span className={styles.navIcon}>{item.icon}</span>
+                  <span className={styles.navLabel}>{item.label}</span>
+                </div>
+                <div className={styles.submenu}>
+                  {item.submenu.map((sub) => (
+                    <button
+                      key={sub.id}
+                      className={`${styles.submenuItem} ${isSubmenuItemActive(sub.id) ? styles.active : ''} ${sub.id === 'create-funnel' ? styles.submenuCreate : ''}`}
+                      onClick={() => handleSubmenuClick(sub.id)}
+                    >
+                      {sub.id === 'create-funnel' && <span className={styles.submenuIcon}>{Icons.plus}</span>}
+                      {sub.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )
+          }
+
+          // Regular item
+          return (
+            <button
+              key={item.id}
+              className={`${styles.navItem} ${currentView === item.id ? styles.active : ''}`}
+              onClick={() => setView(item.id as View)}
+              title={item.label}
+            >
+              <span className={styles.navIcon}>{item.icon}</span>
+              <span className={styles.navLabel}>{item.label}</span>
+              {item.badge !== undefined && item.badge > 0 && (
+                <span className={styles.navBadge}>{item.badge > 99 ? '99+' : item.badge}</span>
+              )}
+            </button>
+          )
+        })}
       </nav>
 
       {/* Footer */}

@@ -38,12 +38,21 @@ async def cmd_start(message: Message) -> None:
     Обработчик команды /start.
 
     1) Регистрирует (или находит) пользователя в БД.
-    2) Находит или создаёт открытую тему (topic).
-    3) Логирует /start и приветственный текст.
-    4) Показывает клавиатуру главного меню (для админа - специальную).
-    5) Сбрасывает состояние консультации для этого пользователя.
+    2) Обрабатывает start-параметр для отслеживания источника трафика.
+    3) Находит или создаёт открытую тему (topic).
+    4) Логирует /start и приветственный текст.
+    5) Показывает клавиатуру главного меню (для админа - специальную).
+    6) Сбрасывает состояние консультации для этого пользователя.
+
+    Поддерживает deep links: https://t.me/BOT?start=site → источник "Сайт"
     """
     session_id = build_session_id_from_message(message)
+
+    # Извлекаем start-параметр для отслеживания источника
+    # Формат: "/start site" → start_param = "site"
+    start_param = None
+    if message.text and len(message.text) > 7:  # "/start X" минимум 8 символов
+        start_param = message.text[7:].strip()
 
     user = message.from_user
     if user is not None:
@@ -63,6 +72,21 @@ async def cmd_start(message: Message) -> None:
         first_name=first_name,
         last_name=last_name,
     )
+
+    # Устанавливаем источник трафика если был start-параметр
+    if start_param:
+        # Маппинг кодов в человекочитаемые названия
+        source_map = {
+            "site": "Сайт",
+            # Можно добавить другие источники позже:
+            # "instagram": "Instagram",
+            # "vk": "ВКонтакте",
+            # "youtube": "YouTube",
+        }
+        source_name = source_map.get(start_param.lower(), start_param)
+
+        from src.services.db.client_funnel_repo import set_initial_source
+        await set_initial_source(user_id, source_name)
 
     # При команде /start закрываем все старые топики и создаём новый
     from src.services.db.topics_repo import close_open_topics

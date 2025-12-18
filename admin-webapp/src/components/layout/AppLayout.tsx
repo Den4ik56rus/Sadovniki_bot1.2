@@ -1,7 +1,8 @@
 // App Layout with Sidebar and Header - Clean Professional Style
 import { useState } from 'react'
 import { Sidebar } from './Sidebar'
-import { useUIStore, useCrmStore, useBuyersStore } from '@/store'
+import { useUIStore } from '@/store'
+import { useFunnelStore } from '@/store/funnelStore'
 import styles from './AppLayout.module.css'
 
 interface AppLayoutProps {
@@ -22,15 +23,24 @@ const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const { currentView } = useUIStore()
-  const { isSettingsMode: crmSettingsMode, toggleSettingsMode: toggleCrmSettings } = useCrmStore()
-  const { isSettingsMode: buyersSettingsMode, toggleSettingsMode: toggleBuyersSettings } = useBuyersStore()
+  const { isSettingsMode, toggleSettingsMode, funnels, currentFunnelId } = useFunnelStore()
   const [searchQuery, setSearchQuery] = useState('')
 
-  // Determine which settings mode and toggle to use based on current view
-  const isSettingsMode = currentView === 'crm' ? crmSettingsMode : currentView === 'buyers' ? buyersSettingsMode : false
-  const toggleSettingsMode = currentView === 'crm' ? toggleCrmSettings : currentView === 'buyers' ? toggleBuyersSettings : () => {}
+  // Check if current view is a funnel view
+  const isFunnelView = currentView === 'crm' || currentView === 'buyers' || currentView.startsWith('funnel:')
 
-  const pageInfo = PAGE_TITLES[currentView] || { title: 'Страница' }
+  // Get page info - for funnel views, use the funnel title
+  const getPageInfo = () => {
+    if (isFunnelView && currentFunnelId) {
+      const funnel = funnels.find(f => f.id === currentFunnelId)
+      if (funnel) {
+        return { title: funnel.title, subtitle: funnel.description || 'Управление воронкой' }
+      }
+    }
+    return PAGE_TITLES[currentView] || { title: 'Страница' }
+  }
+
+  const pageInfo = getPageInfo()
 
   return (
     <div className={styles.layout}>
@@ -74,7 +84,7 @@ export function AppLayout({ children }: AppLayoutProps) {
               <span className={styles.notificationDot} />
             </button>
 
-            {(currentView === 'crm' || currentView === 'buyers') && (
+            {isFunnelView && (
               <button
                 className={`${styles.headerButton} ${isSettingsMode ? styles.headerButtonActive : ''}`}
                 title={isSettingsMode ? 'Выйти из настроек' : 'Настройки воронки'}

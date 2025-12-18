@@ -16,6 +16,7 @@ export function ClientCardFull({ clientId, onClose }: ClientCardFullProps) {
   const [allTags, setAllTags] = useState<ClientTag[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
+  const [selectedArticleId, setSelectedArticleId] = useState<number | null>(null)
 
   const fetchData = useCallback(async () => {
     try {
@@ -42,18 +43,26 @@ export function ClientCardFull({ clientId, onClose }: ClientCardFullProps) {
 
   const handleTopicClick = (topicId: number) => {
     setSelectedTopicId(topicId)
+    setSelectedArticleId(null)
+  }
+
+  const handleArticleClick = (articleId: number) => {
+    setSelectedArticleId(articleId)
+    setSelectedTopicId(null)
   }
 
   const handleBackToFeed = () => {
     setSelectedTopicId(null)
+    setSelectedArticleId(null)
   }
 
   // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        if (selectedTopicId) {
+        if (selectedTopicId || selectedArticleId) {
           setSelectedTopicId(null)
+          setSelectedArticleId(null)
         } else {
           onClose()
         }
@@ -61,7 +70,7 @@ export function ClientCardFull({ clientId, onClose }: ClientCardFullProps) {
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [onClose, selectedTopicId])
+  }, [onClose, selectedTopicId, selectedArticleId])
 
   if (isLoading || !client) {
     return (
@@ -93,6 +102,8 @@ export function ClientCardFull({ clientId, onClose }: ClientCardFullProps) {
               onTaskUpdate={handleUpdate}
               selectedTopicId={selectedTopicId}
               onTopicClick={handleTopicClick}
+              selectedArticleId={selectedArticleId}
+              onArticleClick={handleArticleClick}
               onBackToFeed={handleBackToFeed}
             />
           </div>

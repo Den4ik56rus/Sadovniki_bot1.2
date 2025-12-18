@@ -10,6 +10,7 @@ interface ActivityFiltersProps {
 
 const _FILTER_LABELS: Record<ActivityEventType, { label: string; icon: string }> = {
   consultation: { label: 'Консультации', icon: '💬' },
+  article: { label: 'Статьи', icon: '📄' },
   task_created: { label: 'Задачи', icon: '✅' },
   task_completed: { label: 'Задачи', icon: '✅' },
   note: { label: 'Заметки', icon: '📝' },

@@ -1,0 +1,117 @@
+/* Full Client Card Modal for Universal Funnels */
+
+.backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal {
+  width: 95vw;
+  height: 90vh;
+  max-width: 1400px;
+  background: var(--bg-body);
+  border-radius: var(--radius-xl);
+  box-shadow: var(--shadow-xl);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: slideUp 0.3s ease-out;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.content {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.leftPanel {
+  width: 420px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border-default);
+  background: var(--bg-card);
+}
+
+.rightPanel {
+  flex: 1;
+  overflow-y: auto;
+  background: var(--bg-body);
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  gap: var(--space-4);
+  font-size: var(--text-lg);
+  color: var(--text-muted);
+}
+
+.loading::before {
+  content: '';
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--border-default);
+  border-top-color: var(--accent-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   RESPONSIVE
+   ═══════════════════════════════════════════════════════════ */
+
+@media (max-width: 1200px) {
+  .leftPanel {
+    width: 360px;
+  }
+}
+
+@media (max-width: 900px) {
+  .content {
+    flex-direction: column;
+  }
+
+  .leftPanel {
+    width: 100%;
+    max-height: 50vh;
+    border-right: none;
+    border-bottom: 1px solid var(--border-default);
+  }
+
+  .rightPanel {
+    max-height: 50vh;
+  }
+}

@@ -36,9 +36,11 @@ async def get_all_buyers_with_status() -> List[Dict[str, Any]]:
     """
     Получить всех покупателей с их статусами и метриками.
 
+    Использует unified таблицу client_funnel_position для воронки 'buyers'.
+
     Возвращает список покупателей с полями:
         - id, telegram_user_id, username, first_name, last_name
-        - status, manual_override
+        - status, manual_override, source
         - total_consultations, total_tokens, total_cost_usd
         - last_consultation_at
     """
@@ -54,16 +56,18 @@ async def get_all_buyers_with_status() -> List[Dict[str, Any]]:
                 u.first_name,
                 u.last_name,
                 u.created_at as user_created_at,
-                bs.status,
-                COALESCE(bs.manual_override, false) as manual_override,
-                bs.updated_at as status_updated_at,
-                bs.created_at as buyer_created_at,
+                cfp.stage_key as status,
+                COALESCE(cfp.manual_override, false) as manual_override,
+                cfp.updated_at as status_updated_at,
+                cfp.entered_at as buyer_created_at,
+                cfs.source,
                 COALESCE(stats.total_consultations, 0) as total_consultations,
                 COALESCE(stats.total_tokens, 0) as total_tokens,
                 COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
                 stats.last_consultation_at
-            FROM buyer_status bs
-            JOIN users u ON u.id = bs.user_id
+            FROM client_funnel_position cfp
+            JOIN users u ON u.id = cfp.user_id
+            LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
             LEFT JOIN LATERAL (
                 SELECT
                     COUNT(*)::int as total_consultations,
@@ -73,7 +77,8 @@ async def get_all_buyers_with_status() -> List[Dict[str, Any]]:
                 FROM consultation_logs cl
                 WHERE cl.user_id = u.id
             ) stats ON true
-            ORDER BY bs.created_at DESC
+            WHERE cfp.funnel_id = 'buyers'
+            ORDER BY cfp.entered_at DESC
             """
         )
 
@@ -189,7 +194,7 @@ async def create_buyer_from_deal(user_id: int, initial_status: str = 'pending_pa
     Также удаляет клиента из client_funnel_status.
 
     Returns:
-        True если успешно создан, False если уже существует или ошибка
+        True если успешно (пользователь существует), False если пользователь не найден
     """
     pool = get_pool()
 
@@ -206,7 +211,7 @@ async def create_buyer_from_deal(user_id: int, initial_status: str = 'pending_pa
                 return False
 
             # Создаём запись покупателя (или игнорируем если уже есть)
-            result = await conn.execute(
+            await conn.execute(
                 """
                 INSERT INTO buyer_status (user_id, status)
                 VALUES ($1, $2)
@@ -216,29 +221,31 @@ async def create_buyer_from_deal(user_id: int, initial_status: str = 'pending_pa
                 initial_status
             )
 
-            # Удаляем из сделок
-            await conn.execute(
+            # ВСЕГДА удаляем из сделок (независимо от того, был ли INSERT)
+            deleted = await conn.execute(
                 "DELETE FROM client_funnel_status WHERE user_id = $1",
                 user_id
             )
 
-            # Логируем событие
-            await conn.execute(
-                """
-                INSERT INTO client_activity_log (user_id, event_type, event_data)
-                VALUES ($1, 'became_buyer', $2::jsonb)
-                """,
-                user_id,
-                '{"source": "deal_conversion"}'
-            )
+            # Логируем событие только если был реальный перенос из CRM
+            if "DELETE 1" in deleted:
+                await conn.execute(
+                    """
+                    INSERT INTO client_activity_log (user_id, event_type, event_data)
+                    VALUES ($1, 'became_buyer', $2::jsonb)
+                    """,
+                    user_id,
+                    '{"source": "deal_conversion"}'
+                )
 
-            return "INSERT" in result
+            return True  # Всегда True если пользователь существует
 
 
 async def get_buyer_stats() -> Dict[str, int]:
     """
     Получить количество покупателей в каждом статусе.
 
+    Использует unified таблицу client_funnel_position для воронки 'buyers'.
     Поддерживает кастомные колонки.
     Возвращает: {'pending_payment': 10, 'paid': 25, 'custom_1': 5, ...}
     """
@@ -248,9 +255,10 @@ async def get_buyer_stats() -> Dict[str, int]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT status, COUNT(*)::int as count
-            FROM buyer_status
-            GROUP BY status
+            SELECT stage_key as status, COUNT(*)::int as count
+            FROM client_funnel_position
+            WHERE funnel_id = 'buyers'
+            GROUP BY stage_key
             """
         )
 

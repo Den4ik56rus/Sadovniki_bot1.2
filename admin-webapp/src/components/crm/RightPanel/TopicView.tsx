@@ -1,8 +1,9 @@
-// Topic View - Shows conversation dialog
-import { useState, useEffect, useRef } from 'react'
-import type { TopicLogsResponse, Message } from '@/types'
+// Topic View - Shows conversation dialog with technical details
+import { useState, useEffect, useRef, useMemo } from 'react'
+import type { TopicLogsResponse, Message, ConsultationLog, RagSnippet, LlmParams } from '@/types'
 import { api } from '@/services/api'
 import { useCurrencyStore } from '@/store'
+import { CollapsibleSection } from '@/components/common/CollapsibleSection'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import styles from './TopicView.module.css'
@@ -12,11 +13,24 @@ interface TopicViewProps {
   onBack: () => void
 }
 
+// Helper to parse JSON fields that may come as strings from API
+function parseJsonField<T>(value: T | string | null | undefined, fallback: T): T {
+  if (value === null || value === undefined) return fallback
+  if (typeof value === 'string') {
+    try {
+      return JSON.parse(value) as T
+    } catch {
+      return fallback
+    }
+  }
+  return value
+}
+
 export function TopicView({ topicId, onBack }: TopicViewProps) {
   const { usdRate } = useCurrencyStore()
   const [data, setData] = useState<TopicLogsResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const messagesRef = useRef<HTMLDivElement>(null)
+  const timelineRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
     const fetchTopic = async () => {
@@ -34,8 +48,8 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
 
   // Scroll to bottom after messages load
   useEffect(() => {
-    if (!isLoading && data && messagesRef.current) {
-      messagesRef.current.scrollTop = messagesRef.current.scrollHeight
+    if (!isLoading && data && timelineRef.current) {
+      timelineRef.current.scrollTop = timelineRef.current.scrollHeight
     }
   }, [isLoading, data])
 
@@ -48,13 +62,119 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
     }
   }
 
+  const formatTime = (dateStr: string | null) => {
+    if (!dateStr) return ''
+    try {
+      return format(new Date(dateStr), 'HH:mm:ss', { locale: ru })
+    } catch {
+      return ''
+    }
+  }
+
   const formatCost = (costUsd: number) => {
     const costRub = costUsd * usdRate
-    if (costRub < 1) {
-      return `${Math.round(costRub * 100)} коп.`
+    if (costRub < 0.01) {
+      return `${(costRub * 100).toFixed(2)} коп.`
     }
-    return `${costRub.toFixed(0)} ₽`
+    if (costRub < 1) {
+      return `${(costRub * 100).toFixed(1)} коп.`
+    }
+    return `${costRub.toFixed(2)} ₽`
   }
+
+  // Parse logs with JSON fields
+  const logs = useMemo(() => {
+    if (!data?.logs) return []
+    return data.logs.map(log => ({
+      ...log,
+      rag_snippets: parseJsonField<RagSnippet[]>(log.rag_snippets, []),
+      llm_params: parseJsonField<LlmParams>(log.llm_params, { model: '', temperature: 0 }),
+    }))
+  }, [data?.logs])
+
+  // Build timeline: match bot messages with logs
+  type TimelineItem =
+    | { type: 'message'; data: Message; linkedLog?: ConsultationLog & { rag_snippets: RagSnippet[]; llm_params: LlmParams } }
+    | { type: 'log'; data: ConsultationLog & { rag_snippets: RagSnippet[]; llm_params: LlmParams } }
+
+  const timeline = useMemo(() => {
+    if (!data?.messages) return []
+
+    // Create Map: bot_response -> log (for fast lookup)
+    const logByBotResponse = new Map<string, typeof logs[0]>()
+    const usedLogIds = new Set<number>()
+
+    for (const log of logs) {
+      const key = log.bot_response?.substring(0, 100) || ''
+      if (key && !logByBotResponse.has(key)) {
+        logByBotResponse.set(key, log)
+      }
+    }
+
+    const result: TimelineItem[] = []
+
+    // Sort messages by time
+    const sortedMessages = [...data.messages].sort((a, b) => {
+      const timeA = a.created_at ? new Date(a.created_at).getTime() : 0
+      const timeB = b.created_at ? new Date(b.created_at).getTime() : 0
+      return timeA - timeB
+    })
+
+    for (const msg of sortedMessages) {
+      if (msg.direction === 'bot') {
+        // Find LLM log for this bot response
+        const key = msg.text?.substring(0, 100) || ''
+        const matchingLog = logByBotResponse.get(key)
+
+        if (matchingLog && !usedLogIds.has(matchingLog.id)) {
+          // Insert RAG call BEFORE bot response
+          result.push({ type: 'log', data: matchingLog })
+          usedLogIds.add(matchingLog.id)
+          // Bot message with link to log for showing LLM cost
+          result.push({ type: 'message', data: msg, linkedLog: matchingLog })
+        } else {
+          result.push({ type: 'message', data: msg })
+        }
+      } else {
+        result.push({ type: 'message', data: msg })
+      }
+    }
+
+    // Add remaining logs that weren't matched (at the end)
+    for (const log of logs) {
+      if (!usedLogIds.has(log.id)) {
+        result.push({ type: 'log', data: log })
+      }
+    }
+
+    return result
+  }, [data?.messages, logs])
+
+  // Calculate total cost
+  const costSummary = useMemo(() => {
+    let totalClassification = 0
+    let totalCompose = 0
+    let totalEmbedding = 0
+    let totalLlm = 0
+    let totalCost = 0
+
+    for (const log of logs) {
+      totalClassification += log.classification_cost_usd || 0
+      totalCompose += log.compose_cost_usd || 0
+      totalEmbedding += log.embedding_cost_usd || 0
+      totalLlm += log.llm_cost_usd || 0
+      totalCost += log.cost_usd || 0
+    }
+
+    return {
+      classification: totalClassification,
+      compose: totalCompose,
+      embedding: totalEmbedding,
+      llm: totalLlm,
+      total: totalCost,
+      count: logs.length,
+    }
+  }, [logs])
 
   if (isLoading) {
     return (
@@ -82,7 +202,7 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
     )
   }
 
-  const { topic, messages, logs } = data
+  const { topic, messages } = data
   const totalCost = logs.reduce((sum, log) => sum + log.cost_usd, 0)
   // Get category from first log if available
   const category = logs[0]?.consultation_category || 'Консультация'
@@ -123,35 +243,175 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
         </div>
       </div>
 
-      {/* Messages */}
-      <div className={styles.messages} ref={messagesRef}>
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} />
-        ))}
+      {/* Timeline with technical details */}
+      <div className={styles.timeline} ref={timelineRef}>
+        {timeline.map((item) => {
+          if (item.type === 'message') {
+            const msg = item.data
+            const linkedLog = 'linkedLog' in item ? item.linkedLog : undefined
+            return (
+              <div
+                key={`msg-${msg.id}`}
+                className={`${styles.timelineItem} ${msg.direction === 'user' ? styles.timelineUser : styles.timelineBot}`}
+              >
+                <div className={styles.timelineLabel}>
+                  {msg.direction === 'user' ? '👤 Пользователь' : '🤖 Бот'}
+                  {msg.created_at && (
+                    <span className={styles.timelineTime}>
+                      {formatTime(msg.created_at)}
+                    </span>
+                  )}
+                </div>
+                <div className={styles.timelineText}>{msg.text}</div>
+
+                {/* LLM cost and technical details - only for bot responses */}
+                {msg.direction === 'bot' && linkedLog && (
+                  <>
+                    <div className={styles.llmCostInline}>
+                      <span className={styles.llmCostTokens}>
+                        {(linkedLog.prompt_tokens || 0).toLocaleString()} → {(linkedLog.completion_tokens || 0).toLocaleString()} tok
+                      </span>
+                      <span className={styles.llmCostValue}>
+                        💰 {formatCost(linkedLog.llm_cost_usd || 0)}
+                      </span>
+                      <span className={styles.llmCostModel}>{linkedLog.llm_params?.model || 'gpt-4o'}</span>
+                      <span className={styles.llmCostLatency}>{linkedLog.latency_ms || 0}ms</span>
+                    </div>
+
+                    {/* RAG Snippets for this response */}
+                    {linkedLog.rag_snippets && linkedLog.rag_snippets.length > 0 && (
+                      <div className={styles.technicalDataInline}>
+                        <CollapsibleSection
+                          title="RAG Сниппеты"
+                          badge={`${linkedLog.rag_snippets.length}`}
+                          defaultOpen={false}
+                        >
+                          <div className={styles.snippets}>
+                            {linkedLog.rag_snippets.map((snippet, idx) => (
+                              <div key={idx} className={styles.snippet}>
+                                <div className={styles.snippetHeader}>
+                                  <span
+                                    className={`${styles.badge} ${snippet.source_type === 'qa' ? styles.badgeInfo : styles.badgeWarning}`}
+                                  >
+                                    {snippet.source_type === 'qa' ? 'Q&A' : 'Doc'}
+                                  </span>
+                                  <span className={styles.snippetMeta}>
+                                    L{snippet.priority_level} | {snippet.distance.toFixed(3)}
+                                  </span>
+                                </div>
+                                <pre className={styles.snippetContent}>{snippet.content}</pre>
+                              </div>
+                            ))}
+                          </div>
+                        </CollapsibleSection>
+                      </div>
+                    )}
+
+                    {/* System prompt for this response */}
+                    {linkedLog.system_prompt && (
+                      <div className={styles.technicalDataInline}>
+                        <CollapsibleSection
+                          title="Системный промпт"
+                          badge={`${linkedLog.system_prompt.length}`}
+                          defaultOpen={false}
+                        >
+                          <pre className={styles.codeBlock}>{linkedLog.system_prompt}</pre>
+                        </CollapsibleSection>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )
+          } else {
+            const log = item.data
+            const ragCost = (log.compose_cost_usd || 0) + (log.embedding_cost_usd || 0)
+            const ragTokens = (log.compose_tokens || 0) + (log.embedding_tokens || 0)
+            const hasClassification = (log.classification_cost_usd || 0) > 0
+            return (
+              <div key={`log-${log.id}`}>
+                {/* Classification block - show first if exists */}
+                {hasClassification && (
+                  <div className={`${styles.timelineItem} ${styles.timelineClassification}`}>
+                    <div className={styles.timelineLabel}>
+                      🏷️ Классификация
+                      {log.created_at && (
+                        <span className={styles.timelineTime}>
+                          {formatTime(log.created_at)}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.classificationInfo}>
+                      {log.consultation_category && (
+                        <span className={styles.classificationCategory}>
+                          категория: {log.consultation_category}
+                        </span>
+                      )}
+                      {log.culture && (
+                        <span className={styles.classificationCulture}>
+                          культура: {log.culture}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.classificationCostInline}>
+                      <span className={styles.classificationCostTokens}>
+                        {(log.classification_tokens || 0).toLocaleString()} tok
+                      </span>
+                      <span className={styles.classificationCostValue}>
+                        💰 {formatCost(log.classification_cost_usd || 0)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* RAG search block */}
+                <div className={`${styles.timelineItem} ${styles.timelineLlm}`}>
+                  <div className={styles.timelineLabel}>
+                    🔍 RAG поиск
+                    {log.created_at && (
+                      <span className={styles.timelineTime}>
+                        {formatTime(log.created_at)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* RAG Query */}
+                  {log.composed_question && (
+                    <div className={styles.ragQueryInline}>
+                      {log.composed_question}
+                    </div>
+                  )}
+
+                  {/* RAG cost (compose + embedding) */}
+                  {ragTokens > 0 && (
+                    <div className={styles.ragCostInline}>
+                      <span className={styles.ragCostTokens}>
+                        {(log.compose_tokens || 0).toLocaleString()} + {(log.embedding_tokens || 0).toLocaleString()} tok
+                      </span>
+                      <span className={styles.ragCostValue}>
+                        💰 {formatCost(ragCost)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )
+          }
+        })}
       </div>
-    </div>
-  )
-}
 
-// Message bubble component
-function MessageBubble({ message }: { message: Message }) {
-  const isUser = message.direction === 'user'
-
-  const formatTime = (dateStr: string | null) => {
-    if (!dateStr) return ''
-    try {
-      return format(new Date(dateStr), 'HH:mm', { locale: ru })
-    } catch {
-      return ''
-    }
-  }
-
-  return (
-    <div className={`${styles.messageBubble} ${isUser ? styles.userMessage : styles.botMessage}`}>
-      <div className={styles.messageContent}>
-        {message.text}
-      </div>
-      <span className={styles.messageTime}>{formatTime(message.created_at)}</span>
+      {/* Total cost summary */}
+      {logs.length > 0 && (
+        <div className={styles.totalCostSummary}>
+          <div className={styles.totalCostFinal}>
+            <span className={styles.totalCostFinalLabel}>💵 ИТОГО ЗА КОНСУЛЬТАЦИЮ:</span>
+            <span className={styles.totalCostFinalValue}>{formatCost(costSummary.total)}</span>
+          </div>
+          <div className={styles.totalCostUsd}>
+            (${costSummary.total.toFixed(6)} за {costSummary.count} LLM вызов{costSummary.count === 1 ? '' : costSummary.count < 5 ? 'а' : 'ов'})
+          </div>
+        </div>
+      )}
     </div>
   )
 }

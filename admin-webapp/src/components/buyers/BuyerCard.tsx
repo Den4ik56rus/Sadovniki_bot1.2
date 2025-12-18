@@ -67,8 +67,8 @@ export function BuyerCard({ buyer, onClick }: BuyerCardProps) {
   // Days since last activity
   const daysSinceActivity = getDaysSince(buyer.last_consultation_at)
 
-  // Source (placeholder - telegram by default)
-  const source = 'Telegram'
+  // Source from CRM data (fallback to Telegram if not set)
+  const source = buyer.source || 'Telegram'
 
   return (
     <div

@@ -67,8 +67,8 @@ export function ClientCard({ client, onClick }: ClientCardProps) {
   // Days since last activity
   const daysSinceActivity = getDaysSince(client.last_consultation_at)
 
-  // Source (placeholder - telegram by default)
-  const source = 'Telegram'
+  // Source from CRM data (fallback to Telegram if not set)
+  const source = client.source || 'Telegram'
 
   return (
     <div

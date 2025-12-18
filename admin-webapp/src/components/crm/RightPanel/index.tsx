@@ -1,4 +1,4 @@
-// Right Panel - Activity Feed with Topic View
+// Right Panel - Activity Feed with Topic View and Article View
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { ActivityEvent, ActivityEventType } from '@/types'
 import { api } from '@/services/api'
@@ -7,6 +7,7 @@ import { ActivityItem } from './ActivityItem'
 import { AddTaskModal } from './AddTaskModal'
 import { AddNoteModal } from './AddNoteModal'
 import { TopicView } from './TopicView'
+import { ArticleView } from './ArticleView'
 import styles from './RightPanel.module.css'
 
 interface RightPanelProps {
@@ -14,11 +15,14 @@ interface RightPanelProps {
   onTaskUpdate?: () => void
   selectedTopicId?: number | null
   onTopicClick?: (topicId: number) => void
+  selectedArticleId?: number | null
+  onArticleClick?: (articleId: number) => void
   onBackToFeed?: () => void
 }
 
 const ALL_EVENT_TYPES: ActivityEventType[] = [
   'consultation',
+  'article',
   'task_created',
   'task_completed',
   'note',
@@ -31,6 +35,8 @@ export function RightPanel({
   onTaskUpdate,
   selectedTopicId,
   onTopicClick,
+  selectedArticleId,
+  onArticleClick,
   onBackToFeed,
 }: RightPanelProps) {
   const [activity, setActivity] = useState<ActivityEvent[]>([])
@@ -142,6 +148,16 @@ export function RightPanel({
     )
   }
 
+  // Show ArticleView if an article is selected
+  if (selectedArticleId && onBackToFeed) {
+    return (
+      <ArticleView
+        articleId={selectedArticleId}
+        onBack={onBackToFeed}
+      />
+    )
+  }
+
   return (
     <div className={styles.panel}>
       {/* Header with filters */}
@@ -169,6 +185,7 @@ export function RightPanel({
               onTaskDelete={handleTaskDelete}
               onNoteDelete={handleNoteDelete}
               onTopicClick={onTopicClick}
+              onArticleClick={onArticleClick}
             />
           ))
         )}

@@ -1,0 +1,161 @@
+/* Expenses Page Styles - Spendee-like Layout */
+
+.container {
+  position: relative;
+  padding: 32px 48px;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Header - Button left, Date Range right */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.addButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 20px;
+  background: #22C55E;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.addButton:hover {
+  background: #16A34A;
+}
+
+.addButton svg {
+  flex-shrink: 0;
+}
+
+/* Close Form Button */
+.closeFormButton {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: 10px 20px;
+  background: #374151;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.closeFormButton:hover {
+  background: #1F2937;
+}
+
+.closeFormButton svg {
+  flex-shrink: 0;
+}
+
+/* Date Range Navigation */
+.dateNavigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  color: #111827;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.navButton:hover {
+  background: #F3F4F6;
+  border-color: #D1D5DB;
+  color: #000;
+}
+
+.dateRange {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-sm);
+  padding: 0 16px;
+  height: 42px;
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #374151;
+  min-width: 260px;
+}
+
+.dateRangeText {
+  flex: 1;
+  text-align: left;
+}
+
+.dateRangeIcon {
+  color: #9CA3AF;
+  flex-shrink: 0;
+}
+
+/* Floating Form Overlay */
+.formOverlay {
+  position: absolute;
+  top: 80px;
+  left: 48px;
+  right: 48px;
+  z-index: 100;
+}
+
+/* Content wrapper */
+.content {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  transition: opacity 0.2s ease, filter 0.2s ease;
+}
+
+/* Dimmed state when form is open */
+.content.dimmed {
+  opacity: 0.4;
+  filter: blur(1px);
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Responsive */
+@media (max-width: 640px) {
+  .header {
+    flex-direction: column;
+    gap: var(--space-md);
+    align-items: stretch;
+  }
+
+  .addButton {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .dateNavigation {
+    justify-content: center;
+  }
+}

@@ -32,11 +32,14 @@ DEFAULT_COLUMNS = [
 
 async def get_all_clients_with_status() -> List[Dict[str, Any]]:
     """
-    Получить всех клиентов с их статусами и метриками.
+    Получить всех клиентов CRM с их статусами и метриками.
+
+    Исключает пользователей, которые уже находятся в других воронках
+    (например, в воронке Покупателей).
 
     Возвращает список клиентов с полями:
         - id, telegram_user_id, username, first_name, last_name
-        - status, auto_status, manual_override
+        - status, auto_status, manual_override, source
         - total_consultations, total_tokens, total_cost_usd
         - last_consultation_at
     """
@@ -56,6 +59,7 @@ async def get_all_clients_with_status() -> List[Dict[str, Any]]:
                 cfs.auto_status,
                 COALESCE(cfs.manual_override, false) as manual_override,
                 cfs.updated_at as status_updated_at,
+                cfs.source,
                 COALESCE(stats.total_consultations, 0) as total_consultations,
                 COALESCE(stats.total_tokens, 0) as total_tokens,
                 COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
@@ -71,6 +75,10 @@ async def get_all_clients_with_status() -> List[Dict[str, Any]]:
                 FROM consultation_logs cl
                 WHERE cl.user_id = u.id
             ) stats ON true
+            WHERE NOT EXISTS (
+                SELECT 1 FROM client_funnel_position cfp
+                WHERE cfp.user_id = u.id AND cfp.funnel_id != 'crm'
+            )
             ORDER BY stats.last_consultation_at DESC NULLS LAST, u.created_at DESC
             """
         )
@@ -292,8 +300,9 @@ async def recalculate_auto_status(user_id: int) -> str:
 
 async def get_funnel_stats() -> Dict[str, int]:
     """
-    Получить количество клиентов в каждом статусе воронки.
+    Получить количество клиентов в каждом статусе воронки CRM.
 
+    Исключает пользователей, которые находятся в других воронках.
     Поддерживает кастомные колонки.
     Возвращает: {'new': 10, 'tried': 25, 'custom_1': 5, ...}
     """
@@ -308,6 +317,10 @@ async def get_funnel_stats() -> Dict[str, int]:
                 COUNT(*)::int as count
             FROM users u
             LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
+            WHERE NOT EXISTS (
+                SELECT 1 FROM client_funnel_position cfp
+                WHERE cfp.user_id = u.id AND cfp.funnel_id != 'crm'
+            )
             GROUP BY COALESCE(cfs.status, 'new')
             """
         )
@@ -553,3 +566,39 @@ async def get_next_custom_column_id() -> str:
 
         next_num = (max_num or 0) + 1
         return f"custom_{next_num}"
+
+
+async def set_initial_source(user_id: int, source: str) -> bool:
+    """
+    Установить источник привлечения клиента только если он ещё не задан.
+
+    Сохраняет первый источник, не перезаписывает при повторных переходах.
+
+    Args:
+        user_id: ID пользователя в таблице users
+        source: Название источника (например "Сайт")
+
+    Returns:
+        True если источник был установлен, False если уже был задан
+    """
+    pool = get_pool()
+
+    async with pool.acquire() as conn:
+        # Сначала убедимся что запись существует
+        await ensure_client_status(user_id, conn=conn)
+
+        # Обновляем только если source IS NULL или пустой
+        result = await conn.execute(
+            """
+            UPDATE client_funnel_status
+            SET source = $2, updated_at = NOW()
+            WHERE user_id = $1 AND (source IS NULL OR source = '')
+            """,
+            user_id, source
+        )
+
+        updated = "UPDATE 1" in result
+        if updated:
+            logger.info(f"Set initial source '{source}' for user {user_id}")
+
+        return updated

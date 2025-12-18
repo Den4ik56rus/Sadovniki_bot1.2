@@ -6,19 +6,20 @@ LLM сервис для генерации статей в режиме адми
 Отличия от consultation_llm:
 - НЕ вызывает detect_category_and_culture() - пропускаем классификацию
 - НЕ вызывает deduct_tokens() - бесплатно для админа
-- НЕ вызывает log_consultation() - не сохраняем в БД
+- Сохраняет статью в admin_articles для просмотра в админке
 - НЕ загружает историю через get_last_messages() - нет диалога
 - Использует category=None в RAG-поиске - поиск по всей базе
 - Увеличенные лимиты документов для RAG
 """
 
 import logging
-from typing import Optional
+from typing import Optional, Tuple
 
 from src.services.rag.unified_retriever import retrieve_unified_snippets
 from src.services.llm.embeddings_llm import get_text_embedding_with_usage
 from src.services.llm.core_llm import create_chat_completion_with_usage, calculate_cost
 from src.prompts.article_prompt import build_article_system_prompt
+from src.services.db.article_repo import save_article
 from src.config import settings
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,7 @@ async def generate_article(
     *,
     topic: str,
     telegram_user_id: int,
-) -> str:
+) -> Tuple[str, int]:
     """
     Генерирует статью по заданной теме с использованием всей базы знаний.
 
@@ -44,7 +45,7 @@ async def generate_article(
         telegram_user_id: ID администратора (для логирования)
 
     Возвращает:
-        Текст сгенерированной статьи
+        Tuple[str, int]: (текст статьи, ID статьи в БД)
 
     Raises:
         Exception: При ошибках генерации или вызова API
@@ -156,19 +157,42 @@ async def generate_article(
         print(f"  - Стоимость: ${llm_cost:.6f}")
 
         # ============================================================
-        # ШАГ 5: Итоговая статистика
+        # ШАГ 5: Сохранение в БД
         # ============================================================
         total_tokens = embed_tokens + llm_tokens
         total_cost = llm_cost  # Стоимость embedding очень мала, можно не учитывать
 
+        print(f"\n[article_llm] ШАГ 5: Сохранение статьи в БД...")
+
+        article_id = await save_article(
+            admin_telegram_id=telegram_user_id,
+            topic=topic,
+            article_text=article_text,
+            rag_snippets=kb_snippets,
+            rag_snippets_count=len(kb_snippets),
+            system_prompt=system_prompt,
+            embedding_tokens=embed_tokens,
+            llm_prompt_tokens=prompt_tokens,
+            llm_completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            cost_usd=total_cost,
+            llm_model=model_used,
+        )
+
+        print(f"[article_llm] Статья сохранена с ID: {article_id}")
+
+        # ============================================================
+        # ШАГ 6: Итоговая статистика
+        # ============================================================
         print(f"\n[article_llm] ========== ИТОГОВАЯ СТАТИСТИКА ==========")
+        print(f"[article_llm] ID статьи: {article_id}")
         print(f"[article_llm] Всего токенов: {total_tokens}")
         print(f"[article_llm] Общая стоимость: ${total_cost:.6f}")
         print(f"[article_llm] Длина статьи: {len(article_text)} символов")
         print(f"[article_llm] ПРИМЕЧАНИЕ: Токены НЕ списываются (админский режим)")
         print(f"[article_llm] ========== ГЕНЕРАЦИЯ ЗАВЕРШЕНА ==========\n")
 
-        return article_text
+        return article_text, article_id
 
     except Exception as e:
         logger.error(f"[article_llm] Ошибка при генерации статьи: {e}", exc_info=True)

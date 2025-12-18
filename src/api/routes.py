@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses
 
 
 def setup_routes(app: web.Application) -> None:
@@ -111,6 +111,49 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/api/admin/documents", documents.get_documents_list)
     app.router.add_get("/api/admin/documents/{id}/status", documents.get_document_status)
     app.router.add_delete("/api/admin/documents/{id}", documents.delete_document)
+
+    # Unified Funnels API (новая универсальная система воронок)
+    app.router.add_get("/api/admin/funnels", funnels.get_funnels)
+    app.router.add_post("/api/admin/funnels", funnels.create_funnel)
+    app.router.add_put("/api/admin/funnels/reorder", funnels.reorder_funnels)
+    app.router.add_get("/api/admin/funnels/{id}", funnels.get_funnel)
+    app.router.add_put("/api/admin/funnels/{id}", funnels.update_funnel)
+    app.router.add_delete("/api/admin/funnels/{id}", funnels.delete_funnel)
+
+    # Funnels: Этапы (stages)
+    app.router.add_get("/api/admin/funnels/{id}/stages", funnels.get_funnel_stages)
+    app.router.add_post("/api/admin/funnels/{id}/stages", funnels.create_funnel_stage)
+    app.router.add_put("/api/admin/funnels/{id}/stages/reorder", funnels.reorder_funnel_stages)
+    app.router.add_put("/api/admin/funnels/{id}/stages/{key}", funnels.update_funnel_stage)
+    app.router.add_delete("/api/admin/funnels/{id}/stages/{key}", funnels.delete_funnel_stage)
+
+    # Funnels: Клиенты
+    app.router.add_get("/api/admin/funnels/{id}/clients", funnels.get_funnel_clients)
+    app.router.add_get("/api/admin/funnels/{id}/stats", funnels.get_funnel_stats)
+    app.router.add_patch("/api/admin/funnels/{id}/clients/{uid}/stage", funnels.move_client_stage)
+    app.router.add_post("/api/admin/funnels/{id}/clients/{uid}/transfer", funnels.transfer_client)
+    app.router.add_post("/api/admin/funnels/{id}/clients/{uid}", funnels.add_client_to_funnel)
+    app.router.add_delete("/api/admin/funnels/{id}/clients/{uid}", funnels.remove_client_from_funnel)
+
+    # Funnels: Воронки клиента
+    app.router.add_get("/api/admin/clients/{uid}/funnels", funnels.get_client_funnels)
+
+    # Admin Articles API (статьи, сгенерированные админом)
+    app.router.add_get("/api/admin/articles", articles.get_articles)
+    app.router.add_get("/api/admin/articles/by-admin/{telegram_id}", articles.get_articles_by_admin)
+    app.router.add_get(r"/api/admin/articles/{id:\d+}", articles.get_article)
+
+    # Expenses API (учёт расходов проекта)
+    app.router.add_get("/api/admin/expenses", expenses.get_expenses)
+    app.router.add_post("/api/admin/expenses", expenses.create_expense)
+    app.router.add_get("/api/admin/expenses/stats", expenses.get_expense_stats)
+    app.router.add_get("/api/admin/expenses/categories", expenses.get_expense_categories)
+    app.router.add_post("/api/admin/expenses/categories", expenses.create_expense_category)
+    app.router.add_put(r"/api/admin/expenses/categories/{id:\d+}", expenses.update_expense_category)
+    app.router.add_delete(r"/api/admin/expenses/categories/{id:\d+}", expenses.delete_expense_category)
+    app.router.add_get(r"/api/admin/expenses/{id:\d+}", expenses.get_expense)
+    app.router.add_put(r"/api/admin/expenses/{id:\d+}", expenses.update_expense)
+    app.router.add_delete(r"/api/admin/expenses/{id:\d+}", expenses.delete_expense)
 
     # Health check endpoint
     app.router.add_get("/api/health", health_check)

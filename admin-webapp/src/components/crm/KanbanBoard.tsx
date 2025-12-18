@@ -25,6 +25,8 @@ import { useCrmStore, useCurrencyStore } from '@/store'
 import { KanbanColumn } from './KanbanColumn'
 import { ClientCard } from './ClientCard'
 import { ClientCardFull } from './ClientCardFull'
+import { DropZone } from '../funnel/DropZone'
+import { api } from '@/services/api'
 import styles from './KanbanBoard.module.css'
 
 // Sortable wrapper for column in settings mode
@@ -192,6 +194,19 @@ export function KanbanBoard() {
       const activeClientData = active.data.current?.client as CrmClient | undefined
       if (!activeClientData) return
 
+      // Handle drop zones (delete / transfer to buyers)
+      if (over.data.current?.type === 'dropzone') {
+        const action = over.data.current.action as string
+        if (action === 'delete') {
+          handleDeleteClient(activeClientData.id, activeClientData.status)
+          return
+        }
+        if (action === 'transfer-buyers') {
+          handleTransferToBuyers(activeClientData.id, activeClientData.status)
+          return
+        }
+      }
+
       // Get target status
       let targetStatus: FunnelStatus | null = null
 
@@ -213,6 +228,28 @@ export function KanbanBoard() {
       if (targetStatus && targetStatus !== activeClientData.status) {
         moveClient(activeClientData.id, activeClientData.status, targetStatus)
       }
+    }
+  }
+
+  // Handle delete client from CRM
+  const handleDeleteClient = async (clientId: number, fromStatus: FunnelStatus) => {
+    try {
+      await api.removeClientFromFunnel('crm', clientId)
+      // Refetch clients to update UI
+      fetchClients()
+    } catch (error) {
+      console.error('Failed to delete client:', error)
+    }
+  }
+
+  // Handle transfer client to Buyers funnel
+  const handleTransferToBuyers = async (clientId: number, fromStatus: FunnelStatus) => {
+    try {
+      await api.transferClient('crm', clientId, 'buyers', 'pending_payment')
+      // Refetch clients to update UI
+      fetchClients()
+    } catch (error) {
+      console.error('Failed to transfer client to buyers:', error)
     }
   }
 
@@ -321,6 +358,26 @@ export function KanbanBoard() {
             ))}
           </div>
         </SortableContext>
+
+        {/* Drop Zones - appear when dragging a card */}
+        {activeClient && !isSettingsMode && (
+          <div className={styles.dropZonesContainer}>
+            <DropZone
+              id="delete"
+              label="Удалить"
+              icon="🗑️"
+              variant="danger"
+              isVisible={true}
+            />
+            <DropZone
+              id="transfer-buyers"
+              label="Оплатил → Покупатели"
+              icon="💰"
+              variant="success"
+              isVisible={true}
+            />
+          </div>
+        )}
 
         <DragOverlay>
           {activeClient && (

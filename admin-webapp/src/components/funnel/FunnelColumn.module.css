@@ -1,0 +1,404 @@
+/* Universal Funnel Column */
+
+.column {
+  display: flex;
+  flex-direction: column;
+  min-width: 260px;
+  max-width: 300px;
+  flex: 1;
+  background: transparent;
+  transition: all var(--transition-normal);
+  overflow: hidden;
+}
+
+.columnOver {
+  background: var(--accent-primary-light);
+  border-radius: var(--radius-lg);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HEADER
+   ═══════════════════════════════════════════════════════════ */
+
+.header {
+  padding: var(--space-3) var(--space-2);
+  background: transparent;
+  position: relative;
+}
+
+.headerTop {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  position: relative;
+  min-height: 24px;
+}
+
+.headerActions {
+  position: absolute;
+  right: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.settingsBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  opacity: 0.5;
+}
+
+.settingsBtn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+  opacity: 1;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.titleEditable {
+  cursor: pointer;
+  transition: color var(--transition-fast);
+}
+
+.titleEditable:hover {
+  color: var(--accent-primary);
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+.editRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-1);
+}
+
+.titleInput {
+  font-family: var(--font-display);
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  text-align: center;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  outline: none;
+  width: 140px;
+}
+
+/* Edit actions container */
+.editActions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: var(--space-2);
+}
+
+/* Delete button */
+.deleteBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: transparent;
+  border: none;
+  color: #EF4444;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--transition-fast);
+  opacity: 0.7;
+  padding: 0;
+}
+
+.deleteBtn:hover {
+  opacity: 1;
+}
+
+.deleteBtn svg {
+  width: 16px;
+  height: 16px;
+}
+
+/* Color button */
+.colorBtn {
+  display: block;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+  box-sizing: border-box;
+}
+
+.colorBtn:hover {
+  transform: scale(1.2);
+  box-shadow: 0 0 0 2px rgba(255,255,255,0.5);
+}
+
+.colorPickerDropdown {
+  position: absolute;
+  top: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 100;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  max-width: 180px;
+}
+
+.colorOption {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.colorOption:hover {
+  transform: scale(1.1);
+}
+
+.colorOptionActive {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px white, 0 0 0 4px currentColor;
+}
+
+/* Triggers section */
+.triggersSection {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2);
+}
+
+.addTriggerBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-card);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.addTriggerBtn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-primary-light);
+}
+
+.triggersList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  min-height: 100px;
+}
+
+.headerStats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  margin-bottom: var(--space-3);
+  min-height: 20px;
+}
+
+.headerStatsHidden {
+  visibility: hidden;
+}
+
+.count {
+  color: var(--text-muted);
+  font-weight: var(--font-medium);
+}
+
+.statDivider {
+  color: var(--border-default);
+}
+
+.value {
+  color: var(--accent-primary);
+  font-weight: var(--font-semibold);
+}
+
+/* Color bar */
+.colorBarWrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.colorBar {
+  height: 3px;
+  border-radius: 2px;
+  flex: 1;
+}
+
+.colorBarActions {
+  position: absolute;
+  right: -8px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.colorBarBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: 14px;
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  line-height: 1;
+}
+
+.colorBarBtn:hover {
+  color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  background: var(--bg-card);
+}
+
+.colorBarDragHandle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-full);
+  color: var(--text-muted);
+  font-size: 10px;
+  cursor: grab;
+  transition: all var(--transition-fast);
+  letter-spacing: -1px;
+}
+
+.colorBarDragHandle:hover {
+  background: var(--bg-card);
+  border-color: var(--text-muted);
+}
+
+.colorBarDragHandle:active {
+  cursor: grabbing;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   QUICK ADD BUTTON
+   ═══════════════════════════════════════════════════════════ */
+
+.quickAdd {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: var(--space-2) var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-card);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.quickAdd:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-primary-light);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   CONTENT - CARDS LIST
+   ═══════════════════════════════════════════════════════════ */
+
+.content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  overflow-y: auto;
+  min-height: 200px;
+  max-height: calc(100vh - 220px);
+}
+
+.content::-webkit-scrollbar {
+  width: 4px;
+}
+
+.content::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: var(--radius-full);
+}
+
+.content::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
+}

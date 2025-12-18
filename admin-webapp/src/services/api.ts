@@ -32,6 +32,25 @@ import type {
   BuyerFull,
   BuyerStatus,
   BuyerColumnConfig,
+  // Unified Funnels
+  Funnel,
+  FunnelStage,
+  FunnelClientsResponse,
+  FunnelsResponse,
+  FunnelStagesResponse,
+  CreateFunnelDto,
+  CreateStageDto,
+  ClientFunnelInfo,
+  // Admin Articles
+  AdminArticle,
+  AdminArticlesResponse,
+  // Expenses
+  Expense,
+  ExpenseCategory,
+  ExpensesResponse,
+  ExpenseStats,
+  CreateExpenseDto,
+  ExpenseFilters,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -201,7 +220,7 @@ export const api = {
     return fetchApi<Topic[]>(`/crm/clients/${clientId}/topics${query ? `?${query}` : ''}`)
   },
 
-  async getFunnelStats(): Promise<Record<FunnelStatus, number>> {
+  async getCrmFunnelStats(): Promise<Record<FunnelStatus, number>> {
     return fetchApi('/crm/stats')
   },
 
@@ -503,6 +522,240 @@ export const api = {
     return fetchApi('/buyers/columns/reorder', {
       method: 'PUT',
       body: JSON.stringify({ column_ids: columnIds }),
+    })
+  },
+
+  // =============================================================================
+  // Unified Funnels (Универсальная система воронок)
+  // =============================================================================
+
+  // Funnels CRUD
+  async getFunnels(): Promise<FunnelsResponse> {
+    return fetchApi<FunnelsResponse>('/funnels')
+  },
+
+  async getFunnel(funnelId: string): Promise<Funnel> {
+    return fetchApi<Funnel>(`/funnels/${funnelId}`)
+  },
+
+  async createFunnel(data: CreateFunnelDto): Promise<Funnel> {
+    return fetchApi<Funnel>('/funnels', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateFunnel(
+    funnelId: string,
+    data: { title?: string; description?: string; icon?: string }
+  ): Promise<Funnel> {
+    return fetchApi<Funnel>(`/funnels/${funnelId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteFunnel(funnelId: string): Promise<{ success: boolean }> {
+    return fetchApi(`/funnels/${funnelId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async reorderFunnels(funnelIds: string[]): Promise<{ success: boolean }> {
+    return fetchApi('/funnels/reorder', {
+      method: 'PUT',
+      body: JSON.stringify({ funnel_ids: funnelIds }),
+    })
+  },
+
+  // Funnel Stages
+  async getFunnelStages(funnelId: string): Promise<FunnelStagesResponse> {
+    return fetchApi<FunnelStagesResponse>(`/funnels/${funnelId}/stages`)
+  },
+
+  async createFunnelStage(funnelId: string, data: CreateStageDto): Promise<FunnelStage> {
+    return fetchApi<FunnelStage>(`/funnels/${funnelId}/stages`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateFunnelStage(
+    funnelId: string,
+    stageKey: string,
+    data: { title?: string; color?: string }
+  ): Promise<FunnelStage> {
+    return fetchApi<FunnelStage>(`/funnels/${funnelId}/stages/${stageKey}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteFunnelStage(funnelId: string, stageKey: string): Promise<{ success: boolean }> {
+    return fetchApi(`/funnels/${funnelId}/stages/${stageKey}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async reorderFunnelStages(funnelId: string, stageKeys: string[]): Promise<{ success: boolean }> {
+    return fetchApi(`/funnels/${funnelId}/stages/reorder`, {
+      method: 'PUT',
+      body: JSON.stringify({ stage_keys: stageKeys }),
+    })
+  },
+
+  // Funnel Clients
+  async getFunnelClients(funnelId: string): Promise<FunnelClientsResponse> {
+    return fetchApi<FunnelClientsResponse>(`/funnels/${funnelId}/clients`)
+  },
+
+  async getFunnelStats(funnelId: string): Promise<{ stats: Record<string, number> }> {
+    return fetchApi(`/funnels/${funnelId}/stats`)
+  },
+
+  async moveClientStage(
+    funnelId: string,
+    userId: number,
+    stageKey: string
+  ): Promise<{ success: boolean; stage_key: string }> {
+    return fetchApi(`/funnels/${funnelId}/clients/${userId}/stage`, {
+      method: 'PATCH',
+      body: JSON.stringify({ stage_key: stageKey }),
+    })
+  },
+
+  async transferClient(
+    fromFunnelId: string,
+    userId: number,
+    toFunnelId: string,
+    toStageKey?: string
+  ): Promise<{ success: boolean; to_funnel_id: string; to_stage_key: string }> {
+    return fetchApi(`/funnels/${fromFunnelId}/clients/${userId}/transfer`, {
+      method: 'POST',
+      body: JSON.stringify({ to_funnel_id: toFunnelId, to_stage_key: toStageKey }),
+    })
+  },
+
+  async addClientToFunnel(
+    funnelId: string,
+    userId: number,
+    stageKey?: string
+  ): Promise<{ success: boolean }> {
+    return fetchApi(`/funnels/${funnelId}/clients/${userId}`, {
+      method: 'POST',
+      body: JSON.stringify({ stage_key: stageKey }),
+    })
+  },
+
+  async removeClientFromFunnel(funnelId: string, userId: number): Promise<{ success: boolean }> {
+    return fetchApi(`/funnels/${funnelId}/clients/${userId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async getClientFunnels(userId: number): Promise<{ funnels: ClientFunnelInfo[] }> {
+    return fetchApi(`/clients/${userId}/funnels`)
+  },
+
+  // =============================================================================
+  // Admin Articles (Статьи, сгенерированные администратором)
+  // =============================================================================
+
+  async getArticles(params?: {
+    limit?: number
+    offset?: number
+    admin_telegram_id?: number
+  }): Promise<AdminArticlesResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    if (params?.admin_telegram_id) searchParams.set('admin_telegram_id', String(params.admin_telegram_id))
+
+    const query = searchParams.toString()
+    return fetchApi<AdminArticlesResponse>(`/articles${query ? `?${query}` : ''}`)
+  },
+
+  async getArticle(articleId: number): Promise<AdminArticle> {
+    return fetchApi<AdminArticle>(`/articles/${articleId}`)
+  },
+
+  // =============================================================================
+  // Expenses (Расходы проекта)
+  // =============================================================================
+
+  async getExpenses(params?: ExpenseFilters & {
+    limit?: number
+    offset?: number
+  }): Promise<ExpensesResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.start_date) searchParams.set('start_date', params.start_date)
+    if (params?.end_date) searchParams.set('end_date', params.end_date)
+    if (params?.category_id) searchParams.set('category_id', String(params.category_id))
+    if (params?.paid_by) searchParams.set('paid_by', params.paid_by)
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+
+    const query = searchParams.toString()
+    return fetchApi<ExpensesResponse>(`/expenses${query ? `?${query}` : ''}`)
+  },
+
+  async getExpense(id: number): Promise<Expense> {
+    return fetchApi<Expense>(`/expenses/${id}`)
+  },
+
+  async createExpense(data: CreateExpenseDto): Promise<Expense> {
+    return fetchApi<Expense>('/expenses', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateExpense(id: number, data: Partial<CreateExpenseDto>): Promise<Expense> {
+    return fetchApi<Expense>(`/expenses/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteExpense(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/expenses/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async getExpenseStats(params?: {
+    start_date?: string
+    end_date?: string
+  }): Promise<ExpenseStats> {
+    const searchParams = new URLSearchParams()
+    if (params?.start_date) searchParams.set('start_date', params.start_date)
+    if (params?.end_date) searchParams.set('end_date', params.end_date)
+
+    const query = searchParams.toString()
+    return fetchApi<ExpenseStats>(`/expenses/stats${query ? `?${query}` : ''}`)
+  },
+
+  async getExpenseCategories(): Promise<ExpenseCategory[]> {
+    return fetchApi<ExpenseCategory[]>('/expenses/categories')
+  },
+
+  async createExpenseCategory(data: { name: string; color?: string }): Promise<ExpenseCategory> {
+    return fetchApi<ExpenseCategory>('/expenses/categories', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateExpenseCategory(id: number, data: { name?: string; color?: string }): Promise<ExpenseCategory> {
+    return fetchApi<ExpenseCategory>(`/expenses/categories/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteExpenseCategory(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/expenses/categories/${id}`, {
+      method: 'DELETE',
     })
   },
 

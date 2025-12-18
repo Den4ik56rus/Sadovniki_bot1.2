@@ -192,7 +192,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -209,6 +209,7 @@ export interface CrmClient {
   auto_status: FunnelStatus | null
   manual_override: boolean
   status_updated_at: string | null
+  source: string | null
   total_consultations: number
   total_tokens: number
   total_cost_usd: number
@@ -243,7 +244,7 @@ export type CustomFieldType = 'text' | 'number' | 'date' | 'checkbox' | 'select'
 export type TaskPriority = 'low' | 'medium' | 'high'
 export type TaskStatus = 'pending' | 'completed' | 'cancelled'
 export type RepeatInterval = 'none' | 'daily' | 'weekly' | 'monthly'
-export type ActivityEventType = 'consultation' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change'
+export type ActivityEventType = 'consultation' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change' | 'article'
 
 export interface ClientTag {
   id: number
@@ -354,6 +355,7 @@ export interface Buyer {
   manual_override: boolean
   status_updated_at: string | null
   buyer_created_at: string | null
+  source: string | null
   total_consultations: number
   total_tokens: number
   total_cost_usd: number
@@ -381,4 +383,192 @@ export interface BuyerFull extends Buyer {
   tags: ClientTag[]
   custom_fields: CustomFieldValue[]
   buyer_status: BuyerStatus
+}
+
+// =============================================================================
+// Unified Funnels Types (Универсальная система воронок)
+// =============================================================================
+
+export interface Funnel {
+  id: string
+  title: string
+  description: string | null
+  icon: string
+  sort_order: number
+  is_system: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface FunnelStage {
+  id: number
+  funnel_id: string
+  stage_key: string
+  title: string
+  color: string
+  sort_order: number
+  is_system: boolean
+}
+
+export interface FunnelClient {
+  id: number
+  telegram_user_id: number
+  username: string | null
+  first_name: string | null
+  last_name: string | null
+  user_created_at: string | null
+  status: string  // stage_key
+  manual_override: boolean
+  entered_at: string | null
+  status_updated_at: string | null
+  total_consultations: number
+  total_tokens: number
+  total_cost_usd: number
+  last_consultation_at: string | null
+}
+
+export interface FunnelClientsResponse {
+  clients: Record<string, FunnelClient[]>
+  stats: Record<string, number>
+}
+
+export interface FunnelsResponse {
+  funnels: Funnel[]
+}
+
+export interface FunnelStagesResponse {
+  stages: FunnelStage[]
+}
+
+export interface CreateFunnelDto {
+  id: string
+  title: string
+  description?: string
+  icon?: string
+  stages?: Array<{
+    stage_key: string
+    title: string
+    color?: string
+  }>
+}
+
+export interface CreateStageDto {
+  stage_key?: string
+  title: string
+  color?: string
+}
+
+export interface ClientFunnelInfo {
+  funnel_id: string
+  funnel_title: string
+  stage_key: string
+  stage_title: string | null
+  entered_at: string
+  updated_at: string
+}
+
+// =============================================================================
+// Admin Articles Types (Статьи, сгенерированные администратором)
+// =============================================================================
+
+export interface AdminArticle {
+  id: number
+  admin_telegram_id: number
+  topic: string
+  article_text: string
+  rag_snippets: RagSnippet[] | null
+  rag_snippets_count: number
+  system_prompt: string | null
+  embedding_tokens: number
+  llm_prompt_tokens: number
+  llm_completion_tokens: number
+  total_tokens: number
+  cost_usd: number
+  llm_model: string | null
+  created_at: string
+}
+
+export interface AdminArticleListItem {
+  id: number
+  admin_telegram_id: number
+  topic: string
+  article_length: number
+  rag_snippets_count: number
+  total_tokens: number
+  cost_usd: number
+  llm_model: string | null
+  created_at: string
+}
+
+export interface AdminArticlesResponse {
+  articles: AdminArticleListItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+// =============================================================================
+// Expenses Types (Расходы проекта)
+// =============================================================================
+
+export interface ExpenseCategory {
+  id: number
+  name: string
+  color: string
+  icon: string
+  is_system: boolean
+  sort_order: number
+  created_at?: string
+}
+
+export interface Expense {
+  id: number
+  date: string
+  name: string
+  category_id: number | null
+  category_name?: string
+  category_color?: string
+  category_icon?: string
+  amount: number
+  paid_by: 'Денис' | 'Данил'
+  created_at: string
+  updated_at: string
+}
+
+export interface ExpensesResponse {
+  expenses: Expense[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface ExpenseStats {
+  total_amount: number
+  by_category: Array<{
+    category_id: number | null
+    category_name: string | null
+    color: string | null
+    amount: number
+    count: number
+  }>
+  by_paid_by: Array<{
+    paid_by: string
+    amount: number
+    count: number
+  }>
+}
+
+export interface CreateExpenseDto {
+  date: string
+  name: string
+  category_id: number
+  amount: number
+  paid_by: 'Денис' | 'Данил' | 'Оба'
+}
+
+export interface ExpenseFilters {
+  start_date?: string
+  end_date?: string
+  category_id?: number
+  paid_by?: string
 }

@@ -11,6 +11,7 @@ interface ActivityItemProps {
   onTaskDelete?: (taskId: number) => void
   onNoteDelete?: (noteId: number) => void
   onTopicClick?: (topicId: number) => void
+  onArticleClick?: (articleId: number) => void
 }
 
 export function ActivityItem({
@@ -19,6 +20,7 @@ export function ActivityItem({
   onTaskDelete,
   onNoteDelete,
   onTopicClick,
+  onArticleClick,
 }: ActivityItemProps) {
   const { usdRate } = useCurrencyStore()
 
@@ -54,6 +56,8 @@ export function ActivityItem({
         return '🏷️'
       case 'field_change':
         return '✏️'
+      case 'article':
+        return '📄'
       default:
         return '📌'
     }
@@ -63,6 +67,13 @@ export function ActivityItem({
     const topicId = event.event_data.topic_id as number | undefined
     if (topicId && onTopicClick) {
       onTopicClick(topicId)
+    }
+  }
+
+  const handleArticleClick = () => {
+    const articleId = event.event_data.article_id as number | undefined
+    if (articleId && onArticleClick) {
+      onArticleClick(articleId)
     }
   }
 
@@ -185,6 +196,39 @@ export function ActivityItem({
         return (
           <div className={styles.fieldChange}>
             <span>Изменено поле <strong>{data.field_name as string}</strong></span>
+          </div>
+        )
+
+      case 'article':
+        return (
+          <div
+            className={`${styles.article} ${onArticleClick ? styles.clickable : ''}`}
+            onClick={handleArticleClick}
+            role={onArticleClick ? 'button' : undefined}
+            tabIndex={onArticleClick ? 0 : undefined}
+            onKeyDown={(e) => e.key === 'Enter' && handleArticleClick()}
+          >
+            <div className={styles.articleHeader}>
+              <span className={styles.articleLabel}>Статья</span>
+              {onArticleClick && (
+                <span className={styles.clickHint}>→</span>
+              )}
+            </div>
+            {data.topic ? (
+              <div className={styles.articleTopic}>
+                {String(data.topic)}
+                {String(data.topic).length >= 100 && '...'}
+              </div>
+            ) : null}
+            <div className={styles.articleMeta}>
+              <span>{Number(data.article_length || 0).toLocaleString()} симв.</span>
+              <span className={styles.articleCost}>
+                {formatCost((data.cost_usd as number) || 0)}
+              </span>
+              {data.llm_model ? (
+                <span className={styles.articleModel}>{String(data.llm_model)}</span>
+              ) : null}
+            </div>
           </div>
         )
 

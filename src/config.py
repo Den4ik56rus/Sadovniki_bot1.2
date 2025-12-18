@@ -84,6 +84,12 @@ class Settings(BaseSettings):
         description="Temperature для OpenAI (None = не передавать, 0.0-1.0 = конкретное значение)",
     )
 
+    # --- QueryRouter (Gemini Embeddings) ---
+    queryrouter_api_key: str = Field(
+        "",
+        description="API-ключ QueryRouter для Gemini Embeddings",
+    )
+
     # --- Администраторы ---
     admin_ids: str = Field(
         "",

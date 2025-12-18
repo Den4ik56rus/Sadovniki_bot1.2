@@ -8,6 +8,7 @@
   background: linear-gradient(180deg, #1E3A2F 0%, #152A22 100%);
   border-right: none;
   flex-shrink: 0;
+  overflow: visible;
 }
 
 /* ═══════════════════════════════════════════════════════════
@@ -43,7 +44,7 @@
   display: flex;
   flex-direction: column;
   padding: var(--space-3) 0;
-  overflow-y: auto;
+  overflow: visible;
   gap: var(--space-1);
 }
 
@@ -148,4 +149,91 @@
 @keyframes pulse {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.6; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SUBMENU
+   ═══════════════════════════════════════════════════════════ */
+
+.navItemWithSubmenu {
+  position: relative;
+  width: 100%;
+}
+
+.submenu {
+  position: absolute;
+  left: 100%;
+  top: 0;
+  opacity: 0;
+  visibility: hidden;
+  background: #1E3A2F;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  min-width: 160px;
+  padding: var(--space-2) 0;
+  z-index: 1000;
+  margin-left: 8px;
+  transition: opacity 0.15s ease, visibility 0.15s ease;
+  pointer-events: none;
+}
+
+/* Invisible bridge to keep submenu open while moving mouse across the gap */
+.submenu::before {
+  content: '';
+  position: absolute;
+  left: -16px;
+  top: 0;
+  width: 16px;
+  height: 100%;
+  background: transparent;
+}
+
+.navItemWithSubmenu:hover .submenu {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.submenuItem {
+  display: block;
+  width: 100%;
+  padding: var(--space-2) var(--space-4);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 13px;
+  font-weight: var(--font-medium);
+  transition: all var(--transition-fast);
+}
+
+.submenuItem:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.95);
+}
+
+.submenuItem.active {
+  color: #6FCF97;
+  background: rgba(111, 207, 151, 0.15);
+}
+
+.submenuCreate {
+  color: #6FCF97;
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: var(--space-1);
+  padding-top: var(--space-2);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.submenuCreate:hover {
+  background: rgba(111, 207, 151, 0.15);
+}
+
+.submenuIcon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }

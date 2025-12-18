@@ -5,28 +5,33 @@ import { ConsultationView } from '@/components/consultation/ConsultationView'
 import { LiveFeed } from '@/components/live/LiveFeed'
 import { StatsPanel } from '@/components/stats/StatsPanel'
 import { DocumentUpload } from '@/components/documents/DocumentUpload'
-import { KanbanBoard } from '@/components/crm/KanbanBoard'
-import { BuyersKanbanBoard } from '@/components/buyers'
+import { FunnelKanban } from '@/components/funnel/FunnelKanban'
 import { Dashboard } from '@/components/pages/Dashboard'
 import { PlaceholderPage } from '@/components/pages/PlaceholderPage'
+import { ExpensesPage } from '@/components/expenses'
 import { useUIStore } from '@/store'
+import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
 import styles from './App.module.css'
 
 function App() {
   const { currentView } = useUIStore()
+  const { currentFunnelId } = useFunnelStore()
 
   // Auto-refresh data and restore state on page reload
   useAutoRefresh()
   useRestoreState()
+
+  // Determine if we're in a funnel view
+  const isFunnelView = currentView === 'crm' || currentView === 'buyers' || currentView.startsWith('funnel:')
 
   return (
     <AppLayout>
       {/* Рабочий стол - Dashboard со статистикой */}
       {currentView === 'dashboard' && <Dashboard />}
 
-      {/* Сделки - CRM Kanban */}
-      {currentView === 'crm' && <KanbanBoard />}
+      {/* Воронки - единый FunnelKanban для всех воронок (CRM, Покупатели, кастомные) */}
+      {isFunnelView && currentFunnelId && <FunnelKanban funnelId={currentFunnelId} />}
 
       {/* Сообщения - заглушка */}
       {currentView === 'messages' && (
@@ -36,9 +41,6 @@ function App() {
           description="Раздел поддержки и сообщений находится в разработке"
         />
       )}
-
-      {/* Покупатели - Kanban Board */}
-      {currentView === 'buyers' && <BuyersKanbanBoard />}
 
       {/* Задачи - заглушка */}
       {currentView === 'tasks' && (
@@ -60,6 +62,9 @@ function App() {
 
       {/* Аналитика - существующий StatsPanel */}
       {currentView === 'stats' && <StatsPanel />}
+
+      {/* Расходы */}
+      {currentView === 'expenses' && <ExpensesPage />}
 
       {/* Настройки - заглушка */}
       {currentView === 'settings' && (

@@ -109,7 +109,7 @@ async def handle_article_topic_input(message: Message) -> None:
 
     try:
         # Генерация статьи
-        article_text = await generate_article(
+        article_text, article_id = await generate_article(
             topic=topic,
             telegram_user_id=telegram_user_id,
         )
@@ -117,7 +117,7 @@ async def handle_article_topic_input(message: Message) -> None:
         # Удаляем статус
         await status_msg.delete()
 
-        print(f"[article_writing] Статья сгенерирована: {len(article_text)} символов")
+        print(f"[article_writing] Статья сгенерирована: {len(article_text)} символов, id={article_id}")
 
         # Отправляем статью (с автоматической разбивкой если длинная)
         await send_long_message(message, article_text)
@@ -126,8 +126,10 @@ async def handle_article_topic_input(message: Message) -> None:
         await message.answer(
             "✅ <b>Статья сгенерирована</b>\n\n"
             f"📊 Длина: {len(article_text)} символов\n"
-            f"💡 Тема: {topic}\n\n"
-            "Токены НЕ списаны (админский режим)",
+            f"💡 Тема: {topic}\n"
+            f"🆔 ID статьи: {article_id}\n\n"
+            "Токены НЕ списаны (админский режим)\n"
+            "Статья сохранена в админке для просмотра",
             parse_mode="HTML"
         )
 

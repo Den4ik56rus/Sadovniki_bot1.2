@@ -51,6 +51,27 @@ import type {
   ExpenseStats,
   CreateExpenseDto,
   ExpenseFilters,
+  // Prompt Documents
+  PromptCulture,
+  PromptSubculture,
+  PromptWorkType,
+  PromptDocument,
+  PromptDocumentsResponse,
+  PromptDocumentFilters,
+  // RAG Documents v2.0
+  RagDocument,
+  RagDocumentsResponse,
+  RagChunk,
+  RagChunksResponse,
+  PassportOptions,
+  UpdatePassportDto,
+  GenerateContextResponse,
+  // Prompts
+  PromptGroupsResponse,
+  Prompt,
+  PromptsResponse,
+  PromptHistoryResponse,
+  VersionDiffResponse,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -787,5 +808,207 @@ export const api = {
     documentStatus: (documentId: number): string => {
       return `${API_BASE}/events/documents/${documentId}`
     },
+  },
+
+  // =============================================================================
+  // Prompt Documents (Документы для промптов)
+  // =============================================================================
+
+  async getPromptCultures(): Promise<PromptCulture[]> {
+    return fetchApi<PromptCulture[]>('/prompt-documents/cultures')
+  },
+
+  async getPromptSubcultures(cultureId: number): Promise<PromptSubculture[]> {
+    return fetchApi<PromptSubculture[]>(`/prompt-documents/subcultures?culture_id=${cultureId}`)
+  },
+
+  async getPromptWorkTypes(): Promise<PromptWorkType[]> {
+    return fetchApi<PromptWorkType[]>('/prompt-documents/work-types')
+  },
+
+  async getPromptDocuments(filters?: PromptDocumentFilters): Promise<PromptDocumentsResponse> {
+    const params = new URLSearchParams()
+    if (filters?.culture_id) params.set('culture_id', String(filters.culture_id))
+    if (filters?.subculture_id) params.set('subculture_id', String(filters.subculture_id))
+    if (filters?.work_type_id) params.set('work_type_id', String(filters.work_type_id))
+
+    const query = params.toString()
+    return fetchApi<PromptDocumentsResponse>(`/prompt-documents${query ? `?${query}` : ''}`)
+  },
+
+  async getPromptDocument(id: number): Promise<PromptDocument> {
+    return fetchApi<PromptDocument>(`/prompt-documents/${id}`)
+  },
+
+  async getPromptDocumentContent(id: number): Promise<{ content: string | null; message?: string }> {
+    return fetchApi<{ content: string | null; message?: string }>(`/prompt-documents/${id}/content`)
+  },
+
+  async uploadPromptDocument(
+    file: File,
+    cultureId: number,
+    subcultureId: number | null,
+    workTypeId: number
+  ): Promise<PromptDocument> {
+    const formData = new FormData()
+    formData.append('file', file)
+    formData.append('culture_id', String(cultureId))
+    if (subcultureId !== null) {
+      formData.append('subculture_id', String(subcultureId))
+    }
+    formData.append('work_type_id', String(workTypeId))
+
+    const response = await fetch(`${API_BASE}/prompt-documents/upload`, {
+      method: 'POST',
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(text || `Upload failed: ${response.status}`)
+    }
+
+    return response.json()
+  },
+
+  async deletePromptDocument(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/prompt-documents/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async replacePromptDocument(id: number, file: File): Promise<PromptDocument> {
+    const formData = new FormData()
+    formData.append('file', file)
+
+    const response = await fetch(`${API_BASE}/prompt-documents/${id}/replace`, {
+      method: 'PUT',
+      headers: {
+        'ngrok-skip-browser-warning': 'true',
+      },
+      body: formData,
+    })
+
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(text || `Replace failed: ${response.status}`)
+    }
+
+    return response.json()
+  },
+
+  // ============================================
+  // RAG Documents API v2.0 — Паспортизация чанков
+  // ============================================
+
+  async getRagDocuments(): Promise<RagDocumentsResponse> {
+    const response = await fetch(`${API_BASE}/rag-documents`)
+    if (!response.ok) throw new Error('Failed to fetch RAG documents')
+    return response.json()
+  },
+
+  async getRagDocument(id: number): Promise<RagDocument> {
+    const response = await fetch(`${API_BASE}/rag-documents/${id}`)
+    if (!response.ok) throw new Error('RAG document not found')
+    return response.json()
+  },
+
+  async getRagDocumentChunks(id: number): Promise<RagChunksResponse> {
+    const response = await fetch(`${API_BASE}/rag-documents/${id}/chunks`)
+    if (!response.ok) throw new Error('Failed to fetch chunks')
+    return response.json()
+  },
+
+  async getPassportOptions(): Promise<PassportOptions> {
+    const response = await fetch(`${API_BASE}/rag-documents/passport-options`)
+    if (!response.ok) throw new Error('Failed to fetch passport options')
+    return response.json()
+  },
+
+  async updateChunkPassport(chunkId: number, passport: UpdatePassportDto): Promise<{ success: boolean; chunk: RagChunk }> {
+    const response = await fetch(`${API_BASE}/rag-documents/chunks/${chunkId}/passport`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(passport),
+    })
+    if (!response.ok) throw new Error('Failed to update passport')
+    return response.json()
+  },
+
+  async generateChunkContext(chunkId: number): Promise<GenerateContextResponse> {
+    const response = await fetch(`${API_BASE}/rag-documents/chunks/${chunkId}/generate-context`, {
+      method: 'POST',
+    })
+    if (!response.ok) throw new Error('Failed to generate context')
+    return response.json()
+  },
+
+  async deleteRagDocument(id: number): Promise<{ success: boolean; message: string }> {
+    const response = await fetch(`${API_BASE}/rag-documents/${id}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Failed to delete document')
+    return response.json()
+  },
+
+  async clearAllRagDocuments(): Promise<{ success: boolean; deleted_documents: number; deleted_chunks: number }> {
+    const response = await fetch(`${API_BASE}/rag-documents/clear-all`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) throw new Error('Failed to clear documents')
+    return response.json()
+  },
+
+  // ============================================================================
+  // Prompts API (Редактор промптов)
+  // ============================================================================
+
+  async getPromptGroups(): Promise<PromptGroupsResponse> {
+    return fetchApi<PromptGroupsResponse>('/prompts/groups')
+  },
+
+  async getPrompts(filters?: { group_id?: number; subgroup_id?: number; is_enabled?: boolean }): Promise<PromptsResponse> {
+    const params = new URLSearchParams()
+    if (filters?.group_id !== undefined) params.set('group_id', String(filters.group_id))
+    if (filters?.subgroup_id !== undefined) params.set('subgroup_id', String(filters.subgroup_id))
+    if (filters?.is_enabled !== undefined) params.set('is_enabled', String(filters.is_enabled))
+    const queryString = params.toString()
+    return fetchApi<PromptsResponse>(`/prompts${queryString ? `?${queryString}` : ''}`)
+  },
+
+  async getPrompt(id: number): Promise<{ prompt: Prompt }> {
+    return fetchApi<{ prompt: Prompt }>(`/prompts/${id}`)
+  },
+
+  async updatePrompt(id: number, content: string, updatedBy?: string): Promise<{ prompt: Prompt; success: boolean }> {
+    return fetchApi<{ prompt: Prompt; success: boolean }>(`/prompts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ content, updated_by: updatedBy || 'admin' }),
+    })
+  },
+
+  async togglePromptEnabled(id: number, enabled: boolean): Promise<{ prompt: Prompt; success: boolean }> {
+    return fetchApi<{ prompt: Prompt; success: boolean }>(`/prompts/${id}/toggle`, {
+      method: 'PATCH',
+      body: JSON.stringify({ enabled }),
+    })
+  },
+
+  async getPromptHistory(id: number): Promise<PromptHistoryResponse> {
+    return fetchApi<PromptHistoryResponse>(`/prompts/${id}/history`)
+  },
+
+  async getPromptVersionDiff(id: number, version: number): Promise<VersionDiffResponse> {
+    return fetchApi<VersionDiffResponse>(`/prompts/${id}/history/${version}/diff`)
+  },
+
+  async revertPromptToVersion(id: number, version: number, revertedBy?: string): Promise<{ prompt: Prompt; success: boolean }> {
+    return fetchApi<{ prompt: Prompt; success: boolean }>(`/prompts/${id}/revert`, {
+      method: 'POST',
+      body: JSON.stringify({ version, reverted_by: revertedBy || 'admin' }),
+    })
   },
 }

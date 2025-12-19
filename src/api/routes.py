@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts
 
 
 def setup_routes(app: web.Application) -> None:
@@ -154,6 +154,37 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get(r"/api/admin/expenses/{id:\d+}", expenses.get_expense)
     app.router.add_put(r"/api/admin/expenses/{id:\d+}", expenses.update_expense)
     app.router.add_delete(r"/api/admin/expenses/{id:\d+}", expenses.delete_expense)
+
+    # Prompt Documents API (документы для промптов)
+    app.router.add_get("/api/admin/prompt-documents/cultures", prompt_documents.get_cultures)
+    app.router.add_get("/api/admin/prompt-documents/subcultures", prompt_documents.get_subcultures)
+    app.router.add_get("/api/admin/prompt-documents/work-types", prompt_documents.get_work_types)
+    app.router.add_get("/api/admin/prompt-documents", prompt_documents.get_documents)
+    app.router.add_post("/api/admin/prompt-documents/upload", prompt_documents.upload_document)
+    app.router.add_get(r"/api/admin/prompt-documents/{id:\d+}", prompt_documents.get_document)
+    app.router.add_get(r"/api/admin/prompt-documents/{id:\d+}/content", prompt_documents.get_document_content)
+    app.router.add_delete(r"/api/admin/prompt-documents/{id:\d+}", prompt_documents.delete_document)
+    app.router.add_put(r"/api/admin/prompt-documents/{id:\d+}/replace", prompt_documents.replace_document)
+
+    # RAG Documents API v2.0 (паспортизация чанков)
+    app.router.add_get("/api/admin/rag-documents", rag_documents.get_rag_documents)
+    app.router.add_get("/api/admin/rag-documents/passport-options", rag_documents.get_passport_options_handler)
+    app.router.add_delete("/api/admin/rag-documents/clear-all", rag_documents.clear_all_rag_documents)
+    app.router.add_get(r"/api/admin/rag-documents/{id:\d+}", rag_documents.get_rag_document)
+    app.router.add_get(r"/api/admin/rag-documents/{id:\d+}/chunks", rag_documents.get_document_chunks)
+    app.router.add_delete(r"/api/admin/rag-documents/{id:\d+}", rag_documents.delete_rag_document)
+    app.router.add_patch(r"/api/admin/rag-documents/chunks/{id:\d+}/passport", rag_documents.update_chunk_passport_handler)
+    app.router.add_post(r"/api/admin/rag-documents/chunks/{id:\d+}/generate-context", rag_documents.generate_chunk_context_handler)
+
+    # Prompts API (редактор промптов)
+    app.router.add_get("/api/admin/prompts/groups", prompts.get_prompt_groups)
+    app.router.add_get("/api/admin/prompts", prompts.get_prompts)
+    app.router.add_get(r"/api/admin/prompts/{id:\d+}", prompts.get_prompt)
+    app.router.add_put(r"/api/admin/prompts/{id:\d+}", prompts.update_prompt)
+    app.router.add_patch(r"/api/admin/prompts/{id:\d+}/toggle", prompts.toggle_prompt_enabled)
+    app.router.add_get(r"/api/admin/prompts/{id:\d+}/history", prompts.get_prompt_history)
+    app.router.add_get(r"/api/admin/prompts/{id:\d+}/history/{version:\d+}/diff", prompts.get_version_diff)
+    app.router.add_post(r"/api/admin/prompts/{id:\d+}/revert", prompts.revert_prompt_version)
 
     # Health check endpoint
     app.router.add_get("/api/health", health_check)

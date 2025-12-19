@@ -1,8 +1,8 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2025-12-15
+**Last Updated:** 2025-12-19
 **Project:** Sadovniki-bot v1.2.2
-**Status:** Production-ready with advanced CRM functionality
+**Status:** Production-ready with advanced prompt management
 
 ## Quick Navigation
 
@@ -186,23 +186,21 @@ User Question
 
 ## Active Context
 
-### Current Phase: CRM Enhancement — Buyers Section
+### Current Phase: Prompt System Enhancement
 
 **Focus Areas:**
-1. Complete CRM lifecycle: Deals (sales) → Buyers (subscription management)
-2. Auto-move from Deals to Buyers on "paid" status
-3. Kanban boards for both sections with settings mode
-4. Subscription lifecycle tracking (pending → paid → active → expired)
+1. Unified prompt management (consolidate prompt_documents into prompts system)
+2. Version control improvements (visual diff between versions)
+3. Proper handling of disabled prompts (no fallback to Python when intentionally disabled)
 
-**Last Session Changes (2025-12-15):**
-- Implemented Buyers section with full Kanban board
-- Database: schema_18_buyers.sql (buyer_status, buyer_funnel_columns)
-- Backend: buyer_repo.py, buyers.py API handlers (7 endpoints)
-- Frontend: 4 new components (BuyersKanbanBoard, BuyerColumn, BuyerCard, BuyerCardFull)
-- Auto-move logic: Deals "paid" status triggers Buyers "pending_payment"
-- Settings mode: Works for both CRM and Buyers sections
-- System vs custom columns: System columns cannot be deleted
-- Version bump: 1.2.1 → 1.2.2
+**Last Session Changes (2025-12-19):**
+- Migrated prompt_documents to unified prompts system (8 documents → prompt_docs group)
+- Implemented version diff functionality with visual comparison
+- Fixed disabled prompt logic (distinguish DB unavailable vs intentionally disabled)
+- Backend: Added diff generation endpoint, enhanced prompt_repo.py
+- Frontend: Completely rewrote PromptHistory component (two-column layout with diff viewer)
+- Migration: Created migrate_prompt_docs_to_prompts.py script
+- No schema changes, no version bump (internal improvements only)
 
 ### Constraints & Invariants
 

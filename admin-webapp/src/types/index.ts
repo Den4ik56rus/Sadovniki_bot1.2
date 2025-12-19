@@ -192,7 +192,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'prompt-docs' | 'rag-docs' | 'prompts'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -571,4 +571,229 @@ export interface ExpenseFilters {
   end_date?: string
   category_id?: number
   paid_by?: string
+}
+
+// =============================================================================
+// Prompt Documents Types (Документы для промптов)
+// =============================================================================
+
+export interface PromptCulture {
+  id: number
+  name: string
+  sort_order: number
+  created_at?: string
+}
+
+export interface PromptSubculture {
+  id: number
+  culture_id: number
+  name: string
+  sort_order: number
+  created_at?: string
+}
+
+export interface PromptWorkType {
+  id: number
+  name: string
+  sort_order: number
+  created_at?: string
+}
+
+export type PromptDocumentExtractionStatus = 'pending' | 'completed' | 'failed'
+
+export interface PromptDocument {
+  id: number
+  culture_id: number
+  culture_name: string
+  subculture_id: number | null
+  subculture_name: string | null
+  work_type_id: number
+  work_type_name: string
+  filename: string
+  original_filename: string
+  file_size: number
+  file_type: string
+  extraction_status: PromptDocumentExtractionStatus
+  extraction_error: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PromptDocumentsResponse {
+  documents: PromptDocument[]
+  total: number
+}
+
+export interface PromptDocumentFilters {
+  culture_id?: number
+  subculture_id?: number
+  work_type_id?: number
+}
+
+// ============================================
+// RAG Documents v2.0 — Паспортизация чанков
+// ============================================
+
+export interface RagDocument {
+  id: number
+  filename: string
+  subcategory: string | null
+  status: DocumentStatus
+  error: string | null
+  chunks_count: number
+  passported_chunks: number
+  file_size: number
+  context_cost: number
+  context_tokens: number
+  created_at: string | null
+}
+
+export interface RagDocumentsResponse {
+  documents: RagDocument[]
+  total: number
+}
+
+export interface RagChunk {
+  id: number
+  chunk_index: number
+  chunk_text: string
+  chunk_size: number
+  page_number: number | null
+  culture: string | null
+  culture_subtype: string | null
+  goal: string | null
+  growth_phase: string | null
+  prefix: string | null
+  context: string | null
+  is_passported: boolean
+  created_at: string | null
+}
+
+export interface RagChunksResponse {
+  document_id: number
+  filename: string
+  chunks: RagChunk[]
+  total: number
+}
+
+export interface PassportOption {
+  id: number
+  name: string
+}
+
+export interface PassportOptions {
+  cultures: PassportOption[]
+  subtypes: Record<number, PassportOption[]>
+  goals: PassportOption[]
+  phases: PassportOption[]
+}
+
+export interface UpdatePassportDto {
+  culture: string | null
+  culture_subtype: string | null
+  goal: string | null
+  growth_phase: string | null
+}
+
+export interface GenerateContextResponse {
+  success: boolean
+  context: string
+  tokens: {
+    input: number
+    output: number
+  }
+  cost: number
+  chunk: {
+    id: number
+    context: string
+  }
+}
+
+// =============================================================================
+// Prompts Types (Редактор промптов)
+// =============================================================================
+
+export interface PromptSubgroup {
+  id: number
+  slug: string
+  name: string
+  description: string | null
+  sort_order: number
+  is_system: boolean
+  prompts_count: number
+}
+
+export interface PromptGroup {
+  id: number
+  slug: string
+  name: string
+  description: string | null
+  icon: string | null
+  sort_order: number
+  is_system: boolean
+  prompts_count: number
+  subgroups: PromptSubgroup[]
+}
+
+export interface Prompt {
+  id: number
+  group_id: number
+  subgroup_id: number | null
+  slug: string
+  name: string
+  description: string | null
+  content: string
+  is_enabled: boolean
+  use_minimal_base: boolean
+  is_system: boolean
+  version: number
+  updated_by: string | null
+  created_at: string
+  updated_at: string
+  group_slug?: string
+  group_name?: string
+  subgroup_slug?: string | null
+  subgroup_name?: string | null
+}
+
+export interface PromptHistoryItem {
+  id: number
+  version: number
+  content: string
+  changed_by: string | null
+  change_reason: string | null
+  created_at: string
+}
+
+export interface PromptGroupsResponse {
+  groups: PromptGroup[]
+}
+
+export interface PromptsResponse {
+  prompts: Prompt[]
+}
+
+export interface PromptHistoryResponse {
+  history: PromptHistoryItem[]
+}
+
+// Diff для сравнения версий
+export interface DiffChange {
+  type: 'unchanged' | 'added' | 'removed'
+  line: string
+  old_line_number: number | null
+  new_line_number: number | null
+}
+
+export interface DiffResult {
+  unified: string
+  lines_added: number
+  lines_removed: number
+  changes: DiffChange[]
+}
+
+export interface VersionDiffResponse {
+  diff: DiffResult
+  version: PromptHistoryItem
+  current_version: number
 }

@@ -227,3 +227,29 @@ def get_base_system_prompt_minimal(
         default_growing_type=default_growing_type,
         include_response_format=False
     )
+
+
+def build_base_prompt_from_sections(
+    section_contents: list,
+    default_location: str = "средняя полоса",
+    default_growing_type: str = "открытый грунт",
+) -> str:
+    """
+    Собирает базовый промпт из списка секций (для использования с данными из БД).
+
+    Args:
+        section_contents: Список строк с содержимым секций
+        default_location: Местоположение для подстановки в defaults
+        default_growing_type: Тип выращивания для подстановки в defaults
+
+    Returns:
+        Собранный базовый промпт
+    """
+    # Подставляем переменные (если есть плейсхолдеры)
+    processed = []
+    for content in section_contents:
+        content = content.replace("{default_location}", default_location)
+        content = content.replace("{default_growing_type}", default_growing_type)
+        processed.append(content)
+
+    return "\n\n".join(processed)

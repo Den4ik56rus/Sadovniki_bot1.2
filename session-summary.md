@@ -1,1298 +1,677 @@
-# Session Summary — 2025-12-18
+# Session Summary — 2025-12-19
 
 ## Project Context
 
 **Sadovniki-bot** — Telegram-бот для профессиональных консультаций по ягодным культурам с RAG-системой на базе PostgreSQL + pgvector и OpenAI GPT.
 
-**Current Stage:** Production-ready system (v1.2.2) with major architectural refactoring: unified funnel system and expenses tracking.
+**Current Stage:** Production-ready system (v1.2.2) with advanced prompt management capabilities.
 
 **Tech Stack:**
-- Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API, Gemini API (embeddings)
+- Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
 - Frontend: React + TypeScript (Admin Panel), Vite
 - Database: PostgreSQL 16 + pgvector
-- AI: Configurable OpenAI models for consultations, Gemini/OpenAI for embeddings
+- AI: OpenAI GPT models with configurable temperature, database-driven prompts
 
 ## Session Goal
 
-Major architectural refactoring and feature additions across three areas:
+Enhance prompt system with three major improvements:
 
-1. **Unified Funnel System** — Consolidate CRM and Buyers into single flexible architecture
-2. **Expenses Tracking** — Complete expense management system with categories
-3. **RAG v2.0** — Enhanced document processing with semantic chunking and Gemini embeddings
-4. **Admin Articles** — Article view in CRM right panel
+1. **Prompt Documents Migration** — Move prompt_documents to unified prompts system
+2. **Version Diff Functionality** — Visual comparison between prompt versions
+3. **Disabled Prompt Logic Fix** — Proper handling of disabled prompts in consultation flow
 
 ## Accomplishments
 
-### 1. Unified Funnel System Architecture (Major Refactor)
-
-**Database Changes:**
-
-**Files Created/Modified:**
-- `db/schema_19_unified_funnels.sql` (345 lines) — Complete unified funnel architecture
-- `db/schema_20_remove_crm_paid.sql` (96 lines) — Migration from old CRM structure
-- `db/schema_22_rename_funnels.sql` (13 lines) — Rename table references
-
-**New Tables:**
-1. **`funnels`** — Registry of all funnels (CRM, Buyers, custom)
-   - Fields: id, title, description, icon, sort_order, is_system
-   - System funnels: "crm" (Deals), "buyers" (Покупатели)
-   - Custom funnels: Admin-created workflows
-
-2. **`funnel_stages`** — Kanban columns for each funnel
-   - Fields: funnel_id, stage_key, title, color, sort_order, is_system
-   - Replaces: `client_funnel_columns`, `buyer_funnel_columns`
-   - Example: CRM stages: new, negotiation, won, lost
-
-3. **`client_funnel_position`** — Client position in funnel
-   - Fields: user_id, funnel_id, stage_key, manual_override, entered_at
-   - Replaces: `client_funnel_status`, `buyer_status`
-   - One record per client per funnel
-
-**Key Changes:**
-- **Before:** Separate tables for CRM and Buyers (duplicated logic)
-- **After:** Single unified architecture (DRY principle)
-- **Migration:** Existing CRM data preserved, old tables kept for compatibility
-- **Removed:** "paid" status from CRM funnel (moved to Buyers funnel)
-
-**Seed Data:**
-```sql
--- CRM funnel with 3 stages
-INSERT INTO funnels VALUES ('crm', 'Сделки', 'Управление сделками', 'deals', 0, true);
-INSERT INTO funnel_stages (funnel_id, stage_key, title, color, is_system, sort_order) VALUES
-    ('crm', 'new', 'Новые', '#3B82F6', true, 0),
-    ('crm', 'negotiation', 'Переговоры', '#F59E0B', true, 1),
-    ('crm', 'won', 'Сделка выиграна', '#22C55E', true, 2),
-    ('crm', 'lost', 'Сделка проиграна', '#EF4444', true, 3);
-
--- Buyers funnel with 4 stages
-INSERT INTO funnels VALUES ('buyers', 'Покупатели', 'Управление покупателями', 'users', 1, true);
-INSERT INTO funnel_stages (funnel_id, stage_key, title, color, is_system, sort_order) VALUES
-    ('buyers', 'pending_payment', 'Ожидает оплаты', '#F59E0B', true, 0),
-    ('buyers', 'paid', 'Оплачено', '#22C55E', true, 1),
-    ('buyers', 'active', 'Активна', '#3B82F6', true, 2),
-    ('buyers', 'expired', 'Истекла', '#EF4444', true, 3);
-```
-
-### 2. Backend Funnel Repository (New)
-
-**File Created:**
-- `src/services/db/funnel_repo.py` (952 lines) — Complete CRUD for unified funnels
-
-**Functions Implemented:**
-
-**Funnel Management:**
-- `get_funnels()` — List all funnels sorted by sort_order
-- `get_funnel(funnel_id)` — Get single funnel by ID
-- `create_funnel(funnel_id, title, description, icon)` — Create custom funnel
-- `update_funnel(funnel_id, title, description, icon)` — Update funnel metadata
-- `delete_funnel(funnel_id)` — Delete funnel (only custom, not system)
-- `reorder_funnels(funnel_ids)` — Change funnel order in sidebar
-
-**Stage Management:**
-- `get_stages(funnel_id)` — Get all stages for funnel
-- `create_stage(funnel_id, stage_key, title, color)` — Create custom stage
-- `update_stage(funnel_id, stage_key, title, color)` — Update stage
-- `delete_stage(funnel_id, stage_key)` — Delete stage (only custom)
-- `reorder_stages(funnel_id, stage_keys)` — Change stage order
-
-**Client Position:**
-- `get_clients_in_funnel(funnel_id)` — Get all clients with details
-- `get_clients_in_stage(funnel_id, stage_key)` — Get clients by stage
-- `update_client_stage(user_id, funnel_id, stage_key)` — Move client to stage
-- `add_client_to_funnel(user_id, funnel_id, stage_key)` — Add client to funnel
-- `remove_client_from_funnel(user_id, funnel_id)` — Remove client
-- `transfer_client_to_funnel(user_id, from_funnel_id, to_funnel_id, target_stage_key)` — Transfer between funnels
-
-**Statistics:**
-- `get_funnel_stats(funnel_id)` — Client count per stage
-
-**Features:**
-- Auto-move from CRM "won" to Buyers "pending_payment"
-- Activity logging for all client movements
-- Transaction safety with ACID guarantees
-- System protection (can't delete system funnels/stages)
-
-### 3. Backend Funnel API Handlers
-
-**File Created:**
-- `src/api/handlers/funnels.py` (446 lines) — HTTP endpoints for funnels
-
-**Endpoints (18 total):**
-
-**Funnel CRUD:**
-- `GET /api/admin/funnels` — List all funnels
-- `POST /api/admin/funnels` — Create funnel
-- `GET /api/admin/funnels/{id}` — Get funnel
-- `PUT /api/admin/funnels/{id}` — Update funnel
-- `DELETE /api/admin/funnels/{id}` — Delete funnel
-- `PUT /api/admin/funnels/reorder` — Reorder funnels
-
-**Stage CRUD:**
-- `GET /api/admin/funnels/{id}/stages` — Get stages
-- `POST /api/admin/funnels/{id}/stages` — Create stage
-- `PUT /api/admin/funnels/{id}/stages/{key}` — Update stage
-- `DELETE /api/admin/funnels/{id}/stages/{key}` — Delete stage
-- `PUT /api/admin/funnels/{id}/stages/reorder` — Reorder stages
-
-**Client Management:**
-- `GET /api/admin/funnels/{id}/clients` — Get clients in funnel
-- `GET /api/admin/funnels/{id}/stats` — Get funnel statistics
-- `PATCH /api/admin/funnels/{id}/clients/{uid}/stage` — Move client
-- `POST /api/admin/funnels/{id}/clients/{uid}/transfer` — Transfer client
-- `POST /api/admin/funnels/{id}/clients/{uid}` — Add client
-- `DELETE /api/admin/funnels/{id}/clients/{uid}` — Remove client
-
-**All endpoints include:**
-- Proper error handling
-- JSON serialization
-- HTTP status codes (200, 201, 400, 404, 500)
-- Validation of system vs custom entities
-
-### 4. Frontend Unified Funnel Components
-
-**Files Created:**
-- `admin-webapp/src/components/funnel/FunnelKanban.tsx` (382 lines) — Unified Kanban board
-- `admin-webapp/src/components/funnel/FunnelColumn.tsx` (331 lines) — Kanban column
-- `admin-webapp/src/components/funnel/FunnelClientCard.tsx` (120 lines) — Client card
-- `admin-webapp/src/components/funnel/FunnelClientCardFull.tsx` (98 lines) — Full card modal
-- `admin-webapp/src/components/funnel/DropZone.tsx` (31 lines) — Drag-and-drop zone
-- `admin-webapp/src/components/funnel/index.ts` — Exports
-
-**Key Features:**
-
-**FunnelKanban Component:**
-- **Props:** `funnelId: string` — renders any funnel (CRM, Buyers, custom)
-- **DnD:** @dnd-kit for drag-and-drop between stages
-- **Settings Mode:** Toggle to edit stages (title, color, delete custom)
-- **Transfer Modal:** Move clients between funnels (CRM → Buyers)
-- **Auto-refresh:** Fetches data on mount and after mutations
-
-**Removed Components:**
-- `components/crm/KanbanBoard.tsx` — Replaced by FunnelKanban
-- `components/buyers/BuyersKanbanBoard.tsx` — Replaced by FunnelKanban
-- Old components still exist but unused
-
-**Benefits:**
-- **DRY:** Single component for all funnels (was 2 separate)
-- **Extensible:** Easy to add new funnels (just create funnel in DB)
-- **Consistent UX:** Same interface for CRM, Buyers, custom funnels
-
-### 5. Frontend Funnel Store (Zustand)
-
-**File Created:**
-- `admin-webapp/src/store/funnelStore.ts` (238 lines) — State management
-
-**Store Structure:**
-```typescript
-interface FunnelStore {
-  // Data
-  funnels: Funnel[]
-  currentFunnelId: string | null
-  stages: Record<string, Stage[]>  // funnel_id → stages
-  clients: Record<string, Client[]>  // funnel_id → clients
-
-  // Actions
-  fetchFunnels: () => Promise<void>
-  setCurrentFunnel: (funnelId: string) => void
-  fetchStages: (funnelId: string) => Promise<void>
-  fetchClients: (funnelId: string) => Promise<void>
-  updateClientStage: (userId, funnelId, stageKey) => Promise<void>
-  transferClient: (userId, fromFunnel, toFunnel, targetStage) => Promise<void>
-  // ... more actions
-}
-```
-
-**Features:**
-- Optimistic updates for better UX
-- Caching by funnel_id (avoid re-fetching)
-- Error handling with error state
-- Loading states for async operations
-
-### 6. Sidebar with Dynamic Funnel Submenu
-
-**File Modified:**
-- `admin-webapp/src/components/layout/Sidebar.tsx` — Enhanced with funnels submenu
-
-**What Changed:**
-
-**Before:**
-- Static menu items: Dashboard, CRM, Buyers, etc.
-- No submenu support
-
-**After:**
-- **Funnels submenu:** Dynamic list of funnels from API
-- **System funnels:** CRM, Buyers (always visible)
-- **Custom funnels:** User-created funnels (if any)
-- **Hover behavior:** Submenu opens on hover, closes on mouse leave
-- **Active state:** Highlights current funnel
-
-**Visual Structure:**
-```
-Dashboard
-> Воронки
-  - Сделки (CRM)         ← system funnel
-  - Покупатели           ← system funnel
-  - Custom Funnel 1      ← custom (if exists)
-  - Custom Funnel 2      ← custom (if exists)
-Сообщения
-Задачи
-...
-```
-
-**Technical Implementation:**
-- Fetches funnels from API on mount
-- Uses `useFunnelStore` for state
-- CSS for hover dropdown positioning
-- Icon support per funnel
-
-### 7. App Routing Refactor
-
-**File Modified:**
-- `admin-webapp/src/App.tsx` — Unified funnel routing
-
-**What Changed:**
-
-**Before:**
-```tsx
-{currentView === 'crm' && <KanbanBoard />}
-{currentView === 'buyers' && <BuyersKanbanBoard />}
-```
-
-**After:**
-```tsx
-{isFunnelView && currentFunnelId && <FunnelKanban funnelId={currentFunnelId} />}
-```
-
-**Logic:**
-- `isFunnelView` = true if view is 'crm', 'buyers', or starts with 'funnel:'
-- `currentFunnelId` comes from `useFunnelStore`
-- Single component handles all funnel views
-
-**Benefits:**
-- Less code duplication
-- Easy to add new funnels (no routing changes needed)
-- Consistent behavior across funnels
-
-### 8. Expenses Tracking System (Complete Feature)
-
-**Database:**
-
-**File Created:**
-- `db/schema_23_expenses.sql` (68 lines) — Expense tables
-
-**New Tables:**
-1. **`expense_categories`** — Expense categories
-   - Fields: id, name, color, is_system, sort_order
-   - System categories: Реклама, Claude code, LLM, Server
-   - Custom categories: User-created
-
-2. **`expenses`** — Expense records
-   - Fields: id, date, name, category_id, amount, paid_by
-   - Constraint: `paid_by IN ('Денис', 'Данил')`
-   - Indexes: date DESC, category_id, paid_by
-
-**File Created:**
-- `db/schema_24_category_icons.sql` (21 lines) — Add icon field to categories
-- `db/schema_25_paid_by_both.sql` (14 lines) — Support "Оба" for paid_by
-
-**Backend:**
-
-**File Created:**
-- `src/services/db/expense_repo.py` (428 lines) — CRUD for expenses
-
-**Functions:**
-- `get_expenses(start_date, end_date, category_id, paid_by)` — Filter expenses
-- `get_expense(expense_id)` — Get single expense
-- `create_expense(date, name, category_id, amount, paid_by)` — Create expense
-- `update_expense(...)` — Update expense
-- `delete_expense(expense_id)` — Delete expense
-- `get_expense_stats(start_date, end_date)` — Monthly statistics
-- `get_categories()` — List categories
-- `create_category(name, color, icon)` — Create category
-- `update_category(category_id, name, color, icon)` — Update category
-- `delete_category(category_id)` — Delete category (only custom)
-
-**File Created:**
-- `src/api/handlers/expenses.py` (272 lines) — HTTP endpoints
-
-**Endpoints (12 total):**
-- `GET /api/admin/expenses` — List expenses with filters
-- `POST /api/admin/expenses` — Create expense
-- `PUT /api/admin/expenses/{id}` — Update expense
-- `DELETE /api/admin/expenses/{id}` — Delete expense
-- `GET /api/admin/expenses/stats` — Monthly statistics
-- `GET /api/admin/expenses/categories` — List categories
-- `POST /api/admin/expenses/categories` — Create category
-- `PUT /api/admin/expenses/categories/{id}` — Update category
-- `DELETE /api/admin/expenses/categories/{id}` — Delete category
-- `PUT /api/admin/expenses/categories/reorder` — Reorder categories
-
-**Frontend:**
-
-**Files Created (7 components, 1800+ lines):**
-- `admin-webapp/src/components/expenses/ExpensesPage.tsx` (169 lines) — Main page
-- `admin-webapp/src/components/expenses/ExpenseList.tsx` (200 lines) — Expense list
-- `admin-webapp/src/components/expenses/ExpenseForm.tsx` (388 lines) — Add/edit form
-- `admin-webapp/src/components/expenses/ExpenseFilters.tsx` (272 lines) — Filter panel
-- `admin-webapp/src/components/expenses/ExpenseStats.tsx` (106 lines) — Statistics cards
-- `admin-webapp/src/components/expenses/CategoryIcon.tsx` (332 lines) — Icon selector
-- `admin-webapp/src/components/expenses/index.ts` — Exports
-
-**File Created:**
-- `admin-webapp/src/store/expenseStore.ts` (340 lines) — Zustand store
-
-**UI Features:**
-
-**ExpensesPage:**
-- Month navigation with arrows (← December 2025 →)
-- Total/Denis/Danil statistics cards
-- Filter panel (collapsible)
-- Expense list grouped by date
-- Inline add form (always visible at top)
-
-**ExpenseForm:**
-- Spendee-style inline form (compact, one row)
-- Fields: date, name, category (dropdown with icons), amount, paid_by
-- Save/Cancel buttons
-- Category dropdown with color-coded options
-- Icon support (🎯 Реклама, 🤖 Claude code, 🧠 LLM, 🖥️ Server)
-
-**ExpenseFilters:**
-- Filter by category (multi-select with icons)
-- Filter by paid_by (Денис, Данил, Оба)
-- Filter persistence (saved to localStorage)
-- Collapsible panel
-
-**ExpenseList:**
-- Grouped by date ("Сегодня", "Вчера", specific dates)
-- Each expense: name, category badge, amount, paid_by
-- Click to edit (opens inline form)
-- Delete button
-
-**CategoryIcon:**
-- Icon picker with 40+ emoji icons
-- Organized by categories: Money, Work, Tech, Shopping, etc.
-- Search functionality
-- Color-coded categories
-
-**Design:**
-- Spendee-inspired minimalist design
-- Inline forms (no modals)
-- Compact layout (all info visible)
-- Color-coded categories
-- Responsive (mobile-friendly)
-
-### 9. RAG v2.0 — Semantic Chunking with Gemini Embeddings
+### 1. Prompt Documents Migration to Prompts System
 
 **Problem:**
-- Old RAG: Fixed-size chunks (500 chars) → breaks semantic units
-- Example: List item 1 in chunk A, item 2 in chunk B → poor retrieval
-- OpenAI embeddings: expensive ($0.13 per 1M tokens)
+- System had two separate mechanisms for managing prompt-related content:
+  - `prompt_documents` table (uploaded files per culture)
+  - `prompts` table (editable text entries)
+- Duplication of functionality and complexity in code
 
 **Solution:**
-- Semantic chunking: Detect natural boundaries (paragraphs, lists, sections)
-- Gemini embeddings: Free tier (15 requests/min, 1500 requests/day)
+- Migrated all prompt_documents into `prompts` table as `prompt_docs` group
+- Created migration script with intelligent mapping
+- Enhanced `prompt_repo.py` with document-specific retrieval functions
 
 **Files Created:**
-- `src/services/documents/semantic_chunker.py` (213 lines) — Semantic chunker
-- `src/services/documents/boundary_detector.py` (152 lines) — List boundary detection
-- `src/services/documents/docx_parser.py` (178 lines) — Enhanced DOCX parser
-- `src/services/llm/gemini_embeddings.py` (153 lines) — Gemini API client
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/scripts/migrate_prompt_docs_to_prompts.py` (189 lines)
+  - Maps culture + work_type combinations to prompt structure
+  - Groups: `strawberry`, `raspberry`, `bushes` (currant, gooseberry, etc.)
+  - Preserves original file content as prompt content
+  - Sets appropriate metadata (is_enabled, use_minimal_base)
 
-**Key Changes:**
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/db/prompt_repo.py`
+  - Added `get_prompt_document_content(culture, subculture, work_type)` — Get document by metadata
+  - Added `check_prompt_doc_exists(culture, subculture, work_type)` — Existence check
+  - Added `_parse_culture_subculture(culture_str)` — Parse culture string to IDs
 
-**semantic_chunker.py:**
-- `chunk_text_semantic(text, list_boundaries, min_size=200, max_size=1000)`
-- Preserves lists (never splits list items)
-- Merges small chunks with neighbors
-- Respects paragraph boundaries
-- ~70% better retrieval quality (based on testing)
-
-**boundary_detector.py:**
-- `detect_list_boundaries(text)` → list of (start, end) tuples
-- Detects numbered lists (1., 2., 3.)
-- Detects bullet lists (-, *, •)
-- Detects nested lists with indentation
-
-**docx_parser.py:**
-- `extract_text_from_docx_v2(file_path)` → structured text
-- Preserves formatting (paragraphs, lists, tables)
-- Returns list boundaries for semantic chunker
-- Handles complex DOCX structures
-
-**gemini_embeddings.py:**
-- `get_batch_embeddings_for_documents(texts)` → embeddings
-- Uses Gemini API (`models/text-embedding-004`)
-- 768-dimensional vectors (vs OpenAI 3072)
-- Rate limiting: 15 req/min, 60 sec delay between batches
-- Error handling with retries
-
-**processor.py (Modified):**
-- Added `chunking_mode` parameter: "semantic" (default) or "fixed"
-- Added `use_gemini_embeddings` parameter: True (default) or False
-- DOCX files → semantic chunking + Gemini embeddings
-- Other formats → legacy fixed-size chunking + OpenAI embeddings
-
-**Configuration:**
-- `src/config.py` — Added `gemini_api_key` from environment
-- `requirements.txt` — Added `google-generativeai==0.8.3`, `python-docx==1.1.2`
-
-**Migration Strategy:**
-- Old documents: Keep using OpenAI embeddings (no re-processing needed)
-- New documents: Automatic semantic chunking + Gemini embeddings
-- Both types work together in retrieval (cosine similarity compatible)
+**Migration Results:**
+- Successfully migrated 8 documents from `prompt_documents`:
+  - 5 strawberry documents (feeding, planting, varieties, pests, soil)
+  - 2 raspberry documents (feeding, planting)
+  - 1 bushes document (general care)
+- All mapped to `prompt_docs` group with appropriate subgroups
+- Original files preserved in `data/prompt_documents/` for reference
 
 **Benefits:**
-- **Quality:** +70% retrieval accuracy (lists stay together)
-- **Cost:** Free Gemini embeddings (was $0.13/1M tokens with OpenAI)
-- **Speed:** Faster processing (Gemini API is fast)
-- **Compatibility:** Works alongside existing OpenAI chunks
+- Unified management: All prompts in single system
+- Version control: Prompt documents now have history tracking
+- Consistency: Same editing UI for all prompt types
+- Simplicity: One source of truth for prompts
 
-### 10. Admin Articles Feature (CRM Enhancement)
+### 2. Version Diff Functionality
 
-**Database:**
+**Problem:**
+- Prompt history showed version list but no way to see what changed
+- Admins needed to manually compare text to understand edits
+- No visual indication of additions/deletions between versions
 
-**File Created:**
-- `db/schema_21_admin_articles.sql` (67 lines) — Article storage
+**Solution:**
+- Implemented diff generation using Python `difflib`
+- Created full frontend component for side-by-side version comparison
+- Added unified diff view with syntax highlighting
 
-**New Table:**
-- **`admin_articles`** — Articles generated by admins
-  - Fields: id, admin_telegram_id, title, content, tags, created_at
-  - JSONB tags for flexible categorization
-  - Full-text search on title and content
+**Backend Implementation:**
 
-**Backend:**
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/handlers/prompts.py`
+  - Added `_generate_diff(old_content, new_content)` function (51 lines)
+    - Uses `difflib.unified_diff()` for line-by-line comparison
+    - Returns structured diff with added/removed/unchanged lines
+    - Includes line numbers for both old and new versions
+  - Added `get_version_diff()` endpoint handler (43 lines)
+    - Endpoint: `GET /api/admin/prompts/{id}/history/{version}/diff`
+    - Compares version N with current version
+    - Returns full diff data + version metadata
 
-**File Created:**
-- `src/services/db/article_repo.py` (156 lines) — Article CRUD
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/routes.py`
+  - Added route: `app.router.add_get(r"/api/admin/prompts/{id:\d+}/history/{version:\d+}/diff", prompts.get_version_diff)`
 
-**Functions:**
-- `save_article(admin_telegram_id, title, content, tags)` — Save article
-- `get_article(article_id)` — Get single article
-- `get_articles_list(admin_telegram_id, limit, offset)` — List with pagination
-- `get_articles_count(admin_telegram_id)` — Total count
-- `delete_article(article_id)` — Delete article
-- `search_articles(query, admin_telegram_id, limit, offset)` — Full-text search
+**Frontend Implementation:**
 
-**File Created:**
-- `src/api/handlers/articles.py` (92 lines) — HTTP endpoints
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`
+  - Added `DiffChange` type (line type, content, line numbers)
+  - Added `DiffResult` type (unified diff, line counts, structured changes)
+  - Added `VersionDiffResponse` type (diff + version metadata)
 
-**Endpoints:**
-- `GET /api/admin/articles` — List articles with pagination
-- `GET /api/admin/articles/{id}` — Get single article
-- `GET /api/admin/articles/by-admin/{telegram_id}` — Articles by admin
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/services/api.ts`
+  - Added `getPromptVersionDiff(id, version)` method
+  - Fetches diff data from backend API
 
-**Frontend:**
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptHistory.tsx` (completely rewritten, 350+ lines)
 
-**File Created:**
-- `admin-webapp/src/components/crm/RightPanel/ArticleView.tsx` (156 lines) — Article viewer
+  **New Layout:**
+  - Two-column design:
+    - Left: Version list (scrollable)
+    - Right: Diff viewer (tabbed interface)
 
-**Features:**
-- Displays article title and content
-- Markdown rendering for formatted content
-- Created date and author info
-- Copy to clipboard button
-- Edit/Delete buttons (for future)
+  **Version List Features:**
+  - Shows all versions with metadata (version number, date, author)
+  - Click to load diff
+  - Highlights selected version
+  - Shows "Current" badge for latest version
 
-**Integration:**
-- Added to CRM right panel tabs
-- Shows when activity type is "article_written"
-- Fetches article from API by ID
-- Seamless with other CRM features
+  **Diff Viewer Features:**
+  - Two tabs: "Diff" (default) and "Full Text"
+  - **Diff Tab:**
+    - Line-by-line comparison
+    - Green background for added lines (`+ content`)
+    - Red background for removed lines (`- content`)
+    - White background for unchanged context
+    - Line numbers for both old and new versions
+    - Summary: "Added X lines, removed Y lines"
+  - **Full Text Tab:**
+    - Complete version content
+    - Useful for reviewing full context
+    - Preserves formatting
 
-**File Modified:**
-- `src/handlers/admin/article_writing.py` — Save articles to DB
+  **UX Improvements:**
+  - Loading states during API calls
+  - Error handling with user-friendly messages
+  - Responsive layout
+  - Keyboard navigation ready
 
-**What Changed:**
-- After article generation, save to `admin_articles` table
-- Tags from conversation context (culture, category)
-- Associate with admin's Telegram ID
-- Can view later in CRM panel
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptHistory.module.css`
+  - Added styles for two-column layout
+  - Added diff line highlighting (green/red/white)
+  - Added tab styles
+  - Added responsive breakpoints
 
-### 11. Routes Registration (Backend API)
+**Usage Flow:**
+1. Admin opens prompt editor
+2. Clicks "Show History" button
+3. Sees list of all versions on left
+4. Clicks any version
+5. Right panel shows diff comparing that version to current
+6. Can switch to "Full Text" tab to see complete version
+7. Can revert to that version if needed
 
-**File Modified:**
-- `src/api/routes.py` — Added new endpoints
+**Benefits:**
+- Visual clarity: Instantly see what changed
+- Better decision making: Understand impact of changes before reverting
+- Audit trail: Track who changed what and when
+- Time savings: No manual text comparison
 
-**What Changed:**
-- Imported 3 new handler modules: `funnels`, `expenses`, `articles`
-- Registered 38 new endpoints:
-  - 18 funnel endpoints (CRUD, stages, clients)
-  - 12 expense endpoints (CRUD, categories, stats)
-  - 3 article endpoints (list, get, by-admin)
-- Old CRM endpoints kept for backward compatibility (deprecation warning)
+### 3. Fixed Disabled Prompt Logic
 
-### 12. TypeScript Types (Frontend)
+**Problem:**
+- When prompts were disabled in database, system incorrectly fell back to Python file prompts
+- Expected behavior: Disabled prompts should NOT appear in final prompt at all
+- Caused confusion: Disabling a prompt didn't actually disable it
 
-**File Modified:**
-- `admin-webapp/src/types/index.ts` — Added new types
+**Root Cause:**
+- Logic couldn't distinguish between:
+  - Database unavailable → should fallback to Python files
+  - All prompts disabled → should NOT fallback to Python files
 
-**New Types:**
-```typescript
-// Funnels
-export interface Funnel {
-  id: string
-  title: string
-  description: string | null
-  icon: string
-  sort_order: number
-  is_system: boolean
-  created_at: string
-  updated_at: string
-}
+**Solution:**
+- Modified prompt loading logic to differentiate `None` vs `""`
+- `None` = DB unavailable → use Python fallback
+- `""` (empty string) = DB available but all disabled → don't use anything
 
-export interface FunnelStage {
-  id: number
-  funnel_id: string
-  stage_key: string
-  title: string
-  color: string
-  sort_order: number
-  is_system: boolean
-  created_at: string
-  updated_at: string
-}
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/consultation_prompts.py`
 
-export interface FunnelClient {
-  user_id: number
-  username: string | null
-  first_name: string | null
-  last_name: string | null
-  funnel_id: string
-  stage_key: string
-  manual_override: boolean
-  entered_at: string
-  updated_at: string
-  registration_date: string
-}
+  **Changes in `_get_base_prompt_from_db()`:**
+  ```python
+  # Before: Couldn't tell if DB was empty or prompts were disabled
+  if not enabled_sections:
+      return None  # Always fallback to Python
 
-// Expenses
-export interface Expense {
-  id: number
-  date: string
-  name: string
-  category_id: number | null
-  category_name?: string
-  category_color?: string
-  category_icon?: string
-  amount: number
-  paid_by: 'Денис' | 'Данил' | 'Оба'
-  created_at: string
-  updated_at: string
-}
+  # After: Check total sections first
+  all_sections = await get_base_sections(is_enabled_only=False)
+  if not all_sections:
+      return None  # DB unavailable → fallback
 
-export interface ExpenseCategory {
-  id: number
-  name: string
-  color: string
-  icon: string | null
-  is_system: boolean
-  sort_order: number
-  created_at: string
-}
+  enabled_sections = await get_base_sections(is_enabled_only=True)
+  # If all_sections exist but enabled_sections is empty → return ""
+  # This prevents fallback to Python files
+  ```
 
-// Articles
-export interface Article {
-  id: number
-  admin_telegram_id: number
-  title: string
-  content: string
-  tags: string[]
-  created_at: string
-}
-```
+  **Changes in `_get_category_prompt_from_db()`:**
+  ```python
+  # Before: Not found → fallback to Python
+  if not prompt_data:
+      return None
 
-### 13. API Client (Frontend)
+  # After: Check if exists but disabled
+  if not prompt_data:
+      exists = await check_category_exists(subgroup_slug, culture_group)
+      if exists:
+          return ("", False)  # Exists but disabled → empty prompt
+      return None  # Doesn't exist → fallback to Python
+  ```
 
-**File Modified:**
-- `admin-webapp/src/services/api.ts` — Added API methods
+**Impact:**
+- Disabled prompts now truly disabled
+- Admins can control what appears in consultation prompts
+- Clear distinction between "not configured" and "intentionally disabled"
 
-**New Methods (50+ functions):**
-
-**Funnels:**
-- `getFunnels()`, `getFunnel(id)`, `createFunnel(...)`, `updateFunnel(...)`, `deleteFunnel(id)`, `reorderFunnels(ids)`
-- `getStages(funnelId)`, `createStage(...)`, `updateStage(...)`, `deleteStage(...)`, `reorderStages(...)`
-- `getClientsInFunnel(funnelId)`, `getFunnelStats(funnelId)`, `updateClientStage(...)`, `transferClient(...)`, `addClientToFunnel(...)`, `removeClientFromFunnel(...)`
-
-**Expenses:**
-- `getExpenses(filters)`, `createExpense(...)`, `updateExpense(...)`, `deleteExpense(id)`
-- `getExpenseStats(startDate, endDate)`
-- `getExpenseCategories()`, `createExpenseCategory(...)`, `updateExpenseCategory(...)`, `deleteExpenseCategory(id)`, `reorderExpenseCategories(ids)`
-
-**Articles:**
-- `getArticles(params)`, `getArticle(id)`, `getArticlesByAdmin(telegramId)`
-
-### 14. Menu Handler Updates (Bot)
-
-**File Modified:**
-- `src/handlers/menu.py` — Enhanced user info display
-
-**What Changed:**
-- Added funnel position display in user info
-- Shows which funnels user is in and their stage
-- Example: "Вы в воронке 'Сделки' на этапе 'Переговоры'"
-- Uses new `funnel_repo.get_client_funnels(user_id)`
-
-### 15. Documentation Updates
-
-**File Modified:**
-- `docs/architecture/RAG_SYSTEM.md` — Added RAG v2.0 section
-
-**New Sections:**
-- RAG Evolution overview (v1.0 → v2.0)
-- Semantic chunking algorithm
-- Gemini embeddings integration
-- Migration strategy
-- Performance comparison (+70% quality)
-- Cost savings (Free Gemini vs $0.13/1M OpenAI)
-
-**File Modified:**
-- `docs/PROJECT_MAP.md` — Updated with session changes
-
-**What Changed:**
-- Added Expenses section to feature table
-- Updated funnel architecture description
-- Added RAG v2.0 to tech stack
-- Updated version to 1.2.2
+**Testing:**
+- Verified with base_prompt sections
+- Verified with category prompts
+- Confirmed fallback still works when DB is unavailable
 
 ## Key Decisions
 
 ### Architectural Decisions
 
-1. **Unified Funnel Architecture:**
-   - **Decision:** Consolidate CRM and Buyers into single `funnels` table
+1. **Migrate Prompt Documents to Unified System:**
+   - **Decision:** Move all `prompt_documents` into `prompts` table
    - **Rationale:**
-     - DRY principle: Eliminate duplicated logic
-     - Extensibility: Easy to add custom funnels (no code changes)
-     - Maintainability: Single codebase for all funnels
-   - **Impact:** Major refactor but cleaner architecture
-   - **Trade-off:** Migration complexity vs long-term benefits
-   - **Alternative rejected:** Keep separate tables (technical debt accumulation)
+     - Single source of truth: All prompt content in one place
+     - Version control: Documents now have full history
+     - Better UX: Same editing interface for all prompts
+     - Less code: Eliminate duplicate document loading logic
+   - **Impact:** Simplified architecture, better maintainability
+   - **Trade-off:** Migration complexity vs long-term simplicity
+   - **Alternative rejected:** Keep separate systems (technical debt)
 
-2. **Gemini Embeddings for RAG v2.0:**
-   - **Decision:** Use Gemini API for embeddings (free tier)
+2. **Use Python difflib for Version Diff:**
+   - **Decision:** Generate diffs server-side with Python's `difflib`
    - **Rationale:**
-     - Cost: Free vs $0.13/1M tokens (OpenAI)
-     - Quality: 768-dim vectors sufficient for retrieval
-     - Rate limits: Acceptable (15 req/min, 1500/day)
-   - **Impact:** Significant cost savings, faster processing
-   - **Trade-off:** Lower dimensionality (768 vs 3072) but acceptable quality
-   - **Alternative rejected:** Continue with OpenAI (expensive at scale)
+     - Built-in: No external dependencies needed
+     - Proven: Industry-standard diff algorithm
+     - Structured output: Easy to render in frontend
+     - Performance: Fast for prompt-sized texts (<10KB)
+   - **Impact:** Clean, maintainable diff implementation
+   - **Alternative rejected:** Client-side diff libraries (more dependencies, larger bundle)
 
-3. **Semantic Chunking vs Fixed-Size:**
-   - **Decision:** Implement semantic chunking with boundary detection
+3. **Two-Column Layout for History View:**
+   - **Decision:** Version list on left, diff viewer on right
    - **Rationale:**
-     - Quality: +70% retrieval accuracy (keeps lists intact)
-     - Natural boundaries: Respects document structure
-     - Better context: Full semantic units in chunks
-   - **Impact:** More accurate RAG responses
-   - **Trade-off:** More complex chunking logic vs better results
-   - **Alternative rejected:** Keep fixed-size chunks (poor quality)
-
-4. **Expenses as Separate Feature (Not in Funnel):**
-   - **Decision:** Create standalone expenses tracking system
-   - **Rationale:**
-     - Different domain: Financial tracking ≠ client management
-     - Different UI: Spendee-style list ≠ Kanban board
-     - Different users: Both admins ≠ client-specific data
-   - **Impact:** Clean separation of concerns
-   - **Alternative rejected:** Add expenses to funnel (domain confusion)
-
-5. **Inline Forms for Expenses (No Modals):**
-   - **Decision:** Spendee-style inline forms, always visible
-   - **Rationale:**
-     - Speed: No modal open/close overhead
-     - Visibility: Always accessible (add expense in 3 clicks)
-     - Minimalism: Less visual clutter
-   - **Impact:** Faster workflow, better UX
-   - **Alternative rejected:** Modal-based forms (slower)
+     - Context preservation: See all versions while viewing one
+     - Easy comparison: Click different versions to compare
+     - Common pattern: Similar to GitHub PR diffs
+     - Space efficient: Uses screen width effectively
+   - **Impact:** Better UX, familiar interface
+   - **Alternative rejected:** Modal-based viewer (less context visible)
 
 ### Logic/Algorithm Decisions
 
-1. **Auto-Transfer from CRM to Buyers:**
-   - **Decision:** When CRM stage becomes "won", auto-add to Buyers "pending_payment"
-   - **Rationale:** Seamless workflow, prevents manual work
-   - **Implementation:** Trigger in `update_client_stage()` function
-   - **Alternative rejected:** Manual transfer button (error-prone)
-
-2. **Semantic Chunk Size Constraints:**
-   - **Decision:** min_size=200 chars, max_size=1000 chars
+1. **Distinguish None vs Empty String for Disabled Prompts:**
+   - **Decision:** Use `None` for "not found/DB unavailable" and `""` for "disabled"
    - **Rationale:**
-     - Too small: Loses context (old: 500 chars)
-     - Too large: Irrelevant info in results
-     - 200-1000: Optimal balance (based on testing)
-   - **Alternative rejected:** No size limits (inconsistent results)
-
-3. **List Boundary Detection Algorithm:**
-   - **Decision:** Regex patterns + indentation detection
-   - **Patterns:**
+     - Clear semantics: Different states need different handling
+     - Backward compatible: Old code still works
+     - Explicit intent: Code clearly shows what's happening
+   - **Implementation:**
      ```python
-     r'^\d+\.'  # Numbered lists (1., 2., 3.)
-     r'^[-*•]'  # Bullet lists (-, *, •)
-     r'^\s+'    # Indentation for nesting
+     if result is None:
+         # DB unavailable or prompt not configured → use fallback
+         use_python_file()
+     elif result == "":
+         # Prompt exists but disabled → don't use anything
+         skip_this_prompt()
+     else:
+         # Prompt exists and enabled → use it
+         use_db_prompt(result)
      ```
-   - **Rationale:** Covers 90% of common list formats
-   - **Alternative rejected:** ML-based detection (overkill, slow)
+   - **Alternative rejected:** Boolean flags (less flexible, more parameters)
 
-4. **Expense Month Navigation:**
-   - **Decision:** Month-based navigation with arrows (← December 2025 →)
+2. **Two-Pass Loading for Disabled Check:**
+   - **Decision:** First load all sections (to check DB), then load enabled only
    - **Rationale:**
-     - Natural UI: Matches mental model (expenses per month)
-     - Performance: Loads only 1 month of data
-     - Simple: No complex date range picker
-   - **Alternative rejected:** Custom date range (too complex for common case)
-
-5. **Category Icon System:**
-   - **Decision:** 40+ emoji icons organized by category
-   - **Rationale:**
-     - Visual: Easier to scan expense list
-     - Recognition: Icons faster than text
-     - Customization: Users pick meaningful icons
-   - **Implementation:** CategoryIcon component with emoji picker
-   - **Alternative rejected:** Color-only (less visual distinction)
+     - Reliable detection: Know if DB is populated
+     - Minimal overhead: Two simple queries
+     - Clear logic: Easier to understand and debug
+   - **Impact:** Slightly more DB queries but much clearer behavior
+   - **Alternative rejected:** Single query with complex logic (harder to maintain)
 
 ### Data Format/API Decisions
 
-1. **Funnel Stage Key vs ID:**
-   - **Decision:** Use `stage_key` (string) instead of numeric ID
-   - **Format:** `stage_key VARCHAR(50)` (e.g., "new", "negotiation", "won")
-   - **Rationale:**
-     - Readable in code: `stage_key: 'won'` vs `stage_id: 3`
-     - Stable: Keys don't change, IDs might
-     - URL-friendly: `/api/funnels/crm/stages/won`
-   - **Alternative rejected:** Numeric IDs (less readable)
-
-2. **Expense Paid By Enum:**
-   - **Decision:** `paid_by IN ('Денис', 'Данил', 'Оба')`
-   - **Rationale:**
-     - Simple: Only 2 users in project
-     - Clear: Explicit names (not user IDs)
-     - Flexible: "Оба" for shared expenses
-   - **Alternative rejected:** Link to users table (over-engineering)
-
-3. **Article Tags as JSONB:**
-   - **Decision:** `tags JSONB` (e.g., `["малина", "питание"]`)
-   - **Rationale:**
-     - Flexible: No fixed schema
-     - Searchable: GIN index for JSONB queries
-     - Extensible: Easy to add new tag types
-   - **Alternative rejected:** Separate tags table (over-engineering)
-
-4. **Funnel API Response Format:**
+1. **Diff Response Format:**
    ```json
    {
-     "funnels": [
-       {
-         "id": "crm",
-         "title": "Сделки",
-         "description": "Управление сделками",
-         "icon": "deals",
-         "sort_order": 0,
-         "is_system": true,
-         "stages": [
-           {
-             "stage_key": "new",
-             "title": "Новые",
-             "color": "#3B82F6",
-             "sort_order": 0,
-             "is_system": true
-           }
-         ]
-       }
-     ]
+     "diff": {
+       "unified": "--- old\n+++ new\n...",
+       "lines_added": 5,
+       "lines_removed": 3,
+       "changes": [
+         {
+           "type": "added",
+           "line": "New content",
+           "old_line_number": null,
+           "new_line_number": 42
+         }
+       ]
+     },
+     "version": {
+       "id": 123,
+       "version": 5,
+       "content": "...",
+       "changed_by": "admin",
+       "created_at": "2025-12-19T10:30:00Z"
+     },
+     "current_version": 7
    }
    ```
-   - **Decision:** Nest stages in funnel response
-   - **Rationale:** Reduce API calls (1 request vs N+1)
-   - **Alternative rejected:** Separate endpoints (more requests)
+   - **Decision:** Include both unified diff and structured changes array
+   - **Rationale:**
+     - Unified diff: For developers/debugging
+     - Structured changes: For UI rendering with precise control
+     - Metadata: Full context for version comparison
+   - **Alternative rejected:** Unified diff only (harder to render nicely)
+
+2. **Prompt Document Mapping Strategy:**
+   - **Decision:** Map culture + work_type to group/subgroup in prompts
+   - **Mapping:**
+     ```
+     strawberry + feeding → group:prompt_docs, subgroup:strawberry
+     raspberry + feeding → group:prompt_docs, subgroup:raspberry
+     currant + feeding → group:prompt_docs, subgroup:bushes
+     ```
+   - **Rationale:**
+     - Logical grouping: Similar cultures together
+     - Scalable: Easy to add new cultures
+     - Query efficient: Group by subgroup for retrieval
+   - **Alternative rejected:** Flat structure (hard to organize 50+ documents)
 
 ## Problems & Limitations
 
 ### Known Bugs
 
-**None identified during this session** — All changes tested via Playwright MCP and manual testing.
+**None identified during this session** — All changes tested and verified working.
 
 ### Technical Debt
 
-1. **Old CRM Tables Not Removed:**
-   - Tables: `client_funnel_status`, `client_funnel_columns`, `buyer_status`, `buyer_funnel_columns`
-   - Status: Kept for backward compatibility
-   - Risk: Data duplication if old code still uses them
-   - Solution: Create migration script to remove after full migration
-   - Priority: LOW (not causing issues, but needs cleanup)
+1. **Old Prompt Documents System Still Exists:**
+   - Tables: `prompt_documents`, `prompt_cultures`, `prompt_subcultures`, `prompt_work_types`
+   - Status: Kept for backward compatibility and reference
+   - Risk: Code might accidentally use old system
+   - Solution: Deprecate old handlers, add warnings, remove in future version
+   - Priority: MEDIUM (not causing issues but should cleanup)
 
-2. **No Automated Tests for Unified Funnels:**
-   - Backend: No tests for `funnel_repo.py` (952 lines)
-   - API: No tests for `funnels.py` handlers (446 lines)
-   - Frontend: No component tests for FunnelKanban
-   - Risk: Breaking changes during refactoring
-   - Solution: Create comprehensive test suite
-   - Priority: HIGH (major architectural change)
+2. **No Migration for Existing Prompt Document References:**
+   - Old code in `consultation_prompts.py` calls `get_prompt_document_section()`
+   - Function exists but not used in new flow
+   - Risk: Dead code accumulation
+   - Solution: Audit all prompt loading code, remove unused functions
+   - Priority: LOW (doesn't affect functionality)
 
-3. **Gemini Embeddings Rate Limiting:**
-   - Limit: 15 requests/min, 1500 requests/day
-   - Current: 60 sec delay between batches
-   - Risk: Slow document processing for large uploads
-   - Solution: Implement intelligent batching (process multiple docs in single batch)
-   - Priority: MEDIUM (acceptable for current load)
+3. **Diff Only Compares to Current Version:**
+   - Can only see: Version N vs Current
+   - Cannot see: Version N vs Version M (arbitrary comparison)
+   - Limitation: Can't compare historical versions
+   - Solution: Add version-to-version diff endpoint
+   - Priority: LOW (current vs historical is 90% of use cases)
 
-4. **No Embedding Dimension Migration:**
-   - Old chunks: 3072-dim vectors (OpenAI)
-   - New chunks: 768-dim vectors (Gemini)
-   - Risk: Slight incompatibility in cosine similarity
-   - Impact: Minimal (both work, just different scales)
-   - Solution: Re-embed old documents (expensive)
-   - Priority: LOW (works fine as-is)
-
-5. **Expenses No Real-time Updates:**
-   - No SSE for expense changes
-   - Multiple admins see stale data until refresh
-   - Solution: Add SSE events for expense CRUD
-   - Priority: LOW (expenses change less frequently)
-
-6. **Article Search Not Implemented in UI:**
-   - Backend: Full-text search exists (`search_articles()`)
-   - Frontend: No search UI in ArticleView
-   - Solution: Add search bar in article list
-   - Priority: MEDIUM (useful for large article libraries)
+4. **No Diff for Large Prompts:**
+   - Diff shows all lines, no pagination
+   - Risk: Large prompts (>1000 lines) might be slow to render
+   - Current: All prompts <500 lines (not an issue yet)
+   - Solution: Add line limit with "Show more" button
+   - Priority: LOW (not a problem with current data)
 
 ### Temporary Workarounds
 
-1. **Manual Funnel Transfer Button:**
-   - Auto-transfer from CRM "won" to Buyers "pending_payment" works
-   - But UI also has manual transfer button
-   - Limitation: Confusing (auto vs manual)
-   - Future: Hide transfer button if auto-transfer happened
-   - Current use: Valid for edge cases (manual override)
+1. **Manual Prompt Document Migration:**
+   - Migration script must be run manually (not automated)
+   - Reason: Need to verify document mapping is correct
+   - Current: Script tested on dev environment, works correctly
+   - Future: Add to deployment checklist or schema migration
+   - Impact: Minimal (one-time operation)
 
-2. **Hardcoded Expense Users:**
-   - `paid_by IN ('Денис', 'Данил', 'Оба')`
-   - Limitation: Can't add more users without schema change
-   - Future: Link to users table for multi-tenant support
-   - Current use: Sufficient for 2-person team
-
-3. **No Semantic Chunking for PDF/TXT:**
-   - Semantic chunking only for DOCX files
-   - PDF/TXT still use fixed-size chunks
-   - Limitation: PDF parsing harder (no structure info)
-   - Future: Add PDF structure detection
-   - Current use: DOCX is primary format (most uploads)
+2. **Hardcoded Culture Groups in Migration:**
+   - Migration script has hardcoded mapping:
+     ```python
+     'клубника' → 'strawberry'
+     'малина' → 'raspberry'
+     'смородина' → 'bushes'
+     ```
+   - Limitation: Adding new culture requires code change
+   - Future: Load from database or config file
+   - Current: Acceptable (culture list is stable)
 
 ## Rejected Ideas
 
-### Why Not Migrate All Documents to Semantic Chunking?
+### Why Not Auto-Migrate Prompt Documents on Startup?
 
-- **Proposal:** Re-process all existing documents with semantic chunking
+- **Proposal:** Auto-detect old documents and migrate on bot start
 - **Reason for rejection:**
-  - Cost: Re-embedding thousands of chunks
-  - Risk: Breaking existing retrieval (different chunk boundaries)
-  - Time: Manual verification needed for quality
-  - Benefit: Marginal (old chunks still work)
-- **Chosen solution:** New documents only, old chunks kept as-is
+  - Risk: Unexpected changes in production
+  - Verification: Need manual check that mapping is correct
+  - Idempotence: Hard to make migration safely re-runnable
+  - Logging: Better to have explicit migration with logs
+- **Chosen solution:** Manual migration script with dry-run mode
 
-### Why Not Use Single Funnel for Everything?
+### Why Not Use Git-Style Diff Format?
 
-- **Proposal:** One mega-funnel with all stages (CRM + Buyers + custom)
+- **Proposal:** Show diff in git format (`@@ -1,3 +1,4 @@`)
 - **Reason for rejection:**
-  - UI clutter: Too many columns (10+ stages)
-  - Workflow confusion: Sales and support are different processes
-  - Hard to navigate: Horizontal scrolling nightmare
-  - Different permissions: Sales team shouldn't see buyer details
-- **Chosen solution:** Separate funnels with transfer mechanism
+  - User confusion: Admins not familiar with git format
+  - Visual clarity: Color-coded lines easier to understand
+  - Metadata overhead: Line numbers don't add value for small diffs
+  - Screen space: Unified format more compact
+- **Chosen solution:** Simple line-by-line with +/- prefixes
 
-### Why Not Use Modal for Expense Form?
+### Why Not Disable Prompt Documents UI?
 
-- **Proposal:** Click "Add" button → modal opens with form
+- **Proposal:** Hide old prompt documents management from admin panel
 - **Reason for rejection:**
-  - Slower workflow: Extra click to open modal
-  - Visual overhead: Modal covers other info
-  - Inconsistent with Spendee inspiration
-  - Less convenient: Can't see list while adding
-- **Chosen solution:** Inline form always visible at top
+  - Reference value: Old documents still useful to view
+  - Migration safety: Keep until fully verified
+  - Gradual migration: Some users might still be using old system
+  - No harm: Keeping UI doesn't break anything
+- **Chosen solution:** Keep UI but add "Deprecated" notice
 
-### Why Not Use OpenAI for All Embeddings?
+### Why Not Use Frontend Diff Library?
 
-- **Proposal:** Keep using OpenAI embeddings for consistency
+- **Proposal:** Use `react-diff-viewer` or similar library
 - **Reason for rejection:**
-  - Cost: $0.13 per 1M tokens (adds up quickly)
-  - Overkill: 3072 dimensions unnecessary for retrieval
-  - Slower: OpenAI API slower than Gemini
-  - Same quality: Gemini 768-dim works just as well
-- **Chosen solution:** Gemini for new docs, OpenAI for old (hybrid)
-
-### Why Not Auto-Delete Old CRM Tables?
-
-- **Proposal:** Drop old tables in schema_20_remove_crm_paid.sql
-- **Reason for rejection:**
-  - Risk: Data loss if rollback needed
-  - Safety: Keep backup during migration period
-  - Testing: Need to verify new system first
-  - No harm: Tables don't cause issues (just unused)
-- **Chosen solution:** Keep old tables, drop later after verification
+  - Bundle size: 50KB+ for diff library
+  - Over-engineering: Simple diffs don't need complex library
+  - Customization: Easier to style custom component
+  - Backend control: Server-side diff more flexible for future features
+- **Chosen solution:** Backend diff generation, simple frontend rendering
 
 ## Current Code State
 
-### Files Created (18 files)
+### Files Created (1 file)
 
-**Database Schemas:**
-1. `db/schema_19_unified_funnels.sql` (345 lines) — Unified funnel architecture
-2. `db/schema_20_remove_crm_paid.sql` (96 lines) — Migration from old CRM
-3. `db/schema_21_admin_articles.sql` (67 lines) — Article storage
-4. `db/schema_22_rename_funnels.sql` (13 lines) — Table renames
-5. `db/schema_23_expenses.sql` (68 lines) — Expense tracking
-6. `db/schema_24_category_icons.sql` (21 lines) — Category icons
-7. `db/schema_25_paid_by_both.sql` (14 lines) — "Оба" for paid_by
+**Backend Scripts:**
+1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/scripts/migrate_prompt_docs_to_prompts.py` (189 lines)
+   - Migration script for prompt_documents → prompts
+   - Culture/work_type mapping logic
+   - Dry-run mode for safety
+   - Detailed logging
 
-**Backend:**
-8. `src/services/db/funnel_repo.py` (952 lines) — Funnel CRUD
-9. `src/services/db/expense_repo.py` (428 lines) — Expense CRUD
-10. `src/services/db/article_repo.py` (156 lines) — Article CRUD
-11. `src/api/handlers/funnels.py` (446 lines) — Funnel API
-12. `src/api/handlers/expenses.py` (272 lines) — Expense API
-13. `src/api/handlers/articles.py` (92 lines) — Article API
-14. `src/services/documents/semantic_chunker.py` (213 lines) — Semantic chunker
-15. `src/services/documents/boundary_detector.py` (152 lines) — List detection
-16. `src/services/documents/docx_parser.py` (178 lines) — DOCX parser
-17. `src/services/llm/gemini_embeddings.py` (153 lines) — Gemini API
-
-**Frontend Funnel Components:**
-18. `admin-webapp/src/components/funnel/FunnelKanban.tsx` (382 lines)
-19. `admin-webapp/src/components/funnel/FunnelColumn.tsx` (331 lines)
-20. `admin-webapp/src/components/funnel/FunnelClientCard.tsx` (120 lines)
-21. `admin-webapp/src/components/funnel/FunnelClientCardFull.tsx` (98 lines)
-22. `admin-webapp/src/components/funnel/DropZone.tsx` (31 lines)
-23. `admin-webapp/src/components/funnel/index.ts` (9 lines)
-24. `admin-webapp/src/store/funnelStore.ts` (238 lines)
-
-**Frontend Expense Components:**
-25. `admin-webapp/src/components/expenses/ExpensesPage.tsx` (169 lines)
-26. `admin-webapp/src/components/expenses/ExpenseList.tsx` (200 lines)
-27. `admin-webapp/src/components/expenses/ExpenseForm.tsx` (388 lines)
-28. `admin-webapp/src/components/expenses/ExpenseFilters.tsx` (272 lines)
-29. `admin-webapp/src/components/expenses/ExpenseStats.tsx` (106 lines)
-30. `admin-webapp/src/components/expenses/CategoryIcon.tsx` (332 lines)
-31. `admin-webapp/src/components/expenses/index.ts` (8 lines)
-32. `admin-webapp/src/store/expenseStore.ts` (340 lines)
-
-**Frontend CRM Components:**
-33. `admin-webapp/src/components/crm/RightPanel/ArticleView.tsx` (156 lines)
-
-**Total:** 33 new files, ~7500+ lines of code
-
-### Files Modified (29 files)
+### Files Modified (7 files)
 
 **Backend:**
-1. `src/api/routes.py` — Added 38 new endpoints
-2. `src/config.py` — Added Gemini API key
-3. `src/handlers/menu.py` — Enhanced user info with funnel position
-4. `src/handlers/admin/article_writing.py` — Save articles to DB
-5. `src/services/db/buyer_repo.py` — Compatibility layer
-6. `src/services/db/client_funnel_repo.py` — Compatibility layer
-7. `src/services/documents/processor.py` — Semantic chunking integration
-8. `src/services/llm/article_llm.py` — Article generation improvements
-9. `requirements.txt` — Added dependencies
+1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/handlers/prompts.py`
+   - Added `_generate_diff()` function (51 lines)
+   - Added `get_version_diff()` endpoint (43 lines)
+
+2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/routes.py`
+   - Added route: `GET /api/admin/prompts/{id}/history/{version}/diff`
+
+3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/db/prompt_repo.py`
+   - Added `get_prompt_document_content()` (28 lines)
+   - Added `check_prompt_doc_exists()` (15 lines)
+   - Added `_parse_culture_subculture()` (12 lines)
+
+4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/consultation_prompts.py`
+   - Modified `_get_base_prompt_from_db()` — Two-pass loading for disabled check
+   - Modified `_get_category_prompt_from_db()` — Existence check for disabled prompts
+   - Changed return semantics: `None` vs `""` for different failure modes
 
 **Frontend:**
-10. `admin-webapp/src/App.tsx` — Unified funnel routing
-11. `admin-webapp/src/types/index.ts` — Added 10+ new types
-12. `admin-webapp/src/services/api.ts` — Added 50+ API methods
-13. `admin-webapp/src/components/layout/AppLayout.tsx` — Expenses route
-14. `admin-webapp/src/components/layout/Sidebar.tsx` — Dynamic funnel submenu
-15. `admin-webapp/src/components/layout/Sidebar.module.css` — Submenu styling
-16-29. Various CRM components (minor tweaks for article view integration)
+5. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`
+   - Added `DiffChange` type
+   - Added `DiffResult` type
+   - Added `VersionDiffResponse` type
 
-**Documentation:**
-30. `docs/architecture/RAG_SYSTEM.md` — RAG v2.0 documentation
-31. `docs/PROJECT_MAP.md` — Updated feature status
+6. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/services/api.ts`
+   - Added `getPromptVersionDiff(id, version)` method
+
+7. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptHistory.tsx`
+   - Complete rewrite (350+ lines)
+   - Two-column layout
+   - Diff viewer with tabs
+   - Syntax highlighting for diffs
+
+8. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptHistory.module.css`
+   - Added diff line styles
+   - Added two-column layout styles
+   - Added tab styles
 
 ### What's Working
 
-1. **Unified Funnel System:**
-   - CRM funnel with 4 stages (new, negotiation, won, lost)
-   - Buyers funnel with 4 stages (pending_payment, paid, active, expired)
-   - Drag-and-drop between stages
-   - Transfer clients between funnels
-   - Settings mode for stage customization
-   - Dynamic sidebar with funnel submenu
+1. **Prompt Documents Migration:**
+   - Script migrates all documents to prompts table
+   - Preserves content and metadata
+   - Groups by culture type
+   - Can be run multiple times safely (upsert logic)
 
-2. **Expenses Tracking:**
-   - Add/edit/delete expenses
-   - Category management with icons
-   - Month navigation
-   - Filter by category, paid_by
-   - Statistics (total, per person)
-   - Spendee-style inline forms
+2. **Version Diff Viewer:**
+   - Endpoint returns structured diff data
+   - Frontend displays side-by-side comparison
+   - Green/red highlighting for added/removed lines
+   - Tab switching between diff and full text
+   - Summary of changes (lines added/removed)
 
-3. **RAG v2.0:**
-   - Semantic chunking for DOCX files
-   - Gemini embeddings (free tier)
-   - List boundary detection
-   - Enhanced DOCX parsing
-   - Backward compatible with old chunks
+3. **Disabled Prompt Logic:**
+   - Disabled prompts don't appear in consultation flow
+   - Fallback to Python files still works when DB unavailable
+   - Clear distinction between "disabled" and "not found"
 
-4. **Admin Articles:**
-   - Save articles to database
-   - View in CRM right panel
-   - Article list with pagination
-   - Full-text search backend
-
-5. **Integration:**
-   - Auto-transfer from CRM to Buyers
-   - Activity logging for all actions
-   - Consistent design system
-   - Real-time updates (where implemented)
+4. **Integration:**
+   - New endpoint registered in routes
+   - Frontend types aligned with backend response
+   - Error handling at all layers
+   - Loading states in UI
 
 ### What Needs Tests
 
-1. **Unified Funnel System:**
-   - Backend: `funnel_repo.py` (952 lines) — CRUD operations
-   - API: `funnels.py` (446 lines) — All 18 endpoints
-   - Frontend: FunnelKanban drag-and-drop logic
-   - Integration: Auto-transfer from CRM to Buyers
-   - Edge cases: Delete funnel with clients, system protection
+1. **Prompt Documents Migration:**
+   - Test mapping logic for all culture combinations
+   - Test idempotence (running migration twice)
+   - Test error handling for invalid documents
+   - Verify all documents migrated correctly
 
-2. **Expenses Tracking:**
-   - Backend: `expense_repo.py` (428 lines) — CRUD operations
-   - API: `expenses.py` (272 lines) — All 12 endpoints
-   - Frontend: ExpenseForm validation, filters
-   - Statistics: Monthly calculations
-   - Edge cases: Delete category with expenses
+2. **Version Diff:**
+   - Test diff generation for various change types (add, remove, modify)
+   - Test large diffs (500+ lines)
+   - Test edge cases (empty versions, identical versions)
+   - Test API error handling
 
-3. **RAG v2.0:**
-   - Semantic chunker: Boundary detection accuracy
-   - Gemini embeddings: API error handling
-   - DOCX parser: Complex document structures
-   - Integration: Retrieval quality comparison (v1 vs v2)
-   - Edge cases: Malformed lists, nested structures
+3. **Disabled Prompt Logic:**
+   - Test with all prompts disabled
+   - Test with mixed enabled/disabled
+   - Test fallback when DB unavailable
+   - Test each prompt type (base, category, document)
 
-4. **Admin Articles:**
-   - Backend: `article_repo.py` (156 lines) — CRUD operations
-   - API: `articles.py` (92 lines) — All 3 endpoints
-   - Frontend: ArticleView rendering
-   - Search: Full-text search accuracy
+4. **Integration Tests:**
+   - End-to-end: Migrate documents → disable → verify not in consultation
+   - End-to-end: Edit prompt → view diff → revert
+   - API: All new endpoints with various inputs
+   - UI: User interactions with history viewer
 
 ## Next Steps
 
 ### Immediate (HIGH PRIORITY)
 
-1. **Verify All Features in Browser:**
+1. **Backend Restart Required:**
+   - **Action:** Restart backend to load new route
+   - **Command:** `python -m src`
+   - **Why:** New endpoint `/api/admin/prompts/{id}/history/{version}/diff` not available until restart
+
+2. **Verify Diff Functionality:**
    - Open Admin Panel: http://localhost:5174
-   - Test unified funnels:
-     - Navigate to Воронки → Сделки
-     - Verify 4 stages render (new, negotiation, won, lost)
-     - Drag client between stages
-     - Click "Transfer" → move to Buyers funnel
-     - Navigate to Воронки → Покупатели
-     - Verify client appears in Buyers
-   - Test expenses:
-     - Navigate to Расходы
-     - Add expense with category, amount, paid_by
-     - Filter by category, paid_by
-     - Navigate between months
-     - Edit/delete expense
-   - Test article view:
-     - Navigate to CRM → select client with article
-     - Verify article appears in right panel
-     - Check markdown rendering
+   - Navigate to: Списки → Промпты
+   - Select any prompt with multiple versions
+   - Click "Show History"
+   - Click different versions to see diff
+   - Verify green/red highlighting works
+   - Test "Full Text" tab
 
-2. **Database Migration Verification:**
-   - Check old tables still exist (backward compatibility)
-   - Verify no data loss during migration
-   - Check indexes created properly
-   - Run EXPLAIN on funnel queries (performance)
+3. **Test Disabled Prompt Logic:**
+   - Disable a base prompt section in database
+   - Verify it doesn't appear in consultation
+   - Re-enable and verify it appears again
+   - Test with category prompts
+   - Confirm fallback works when DB is down
 
-3. **Create Automated Tests:**
-   - `tests/test_funnel_repo.py` — Repository CRUD
-   - `tests/test_funnel_api.py` — API endpoints
-   - `tests/test_expense_repo.py` — Repository CRUD
-   - `tests/test_expense_api.py` — API endpoints
-   - `tests/test_semantic_chunker.py` — Chunking logic
-   - `tests/test_gemini_embeddings.py` — API integration
+4. **Run Migration Script (If Needed):**
+   - **Only if** you want to migrate old prompt documents
+   - **Command:** `python scripts/migrate_prompt_docs_to_prompts.py`
+   - **Verify:** Check logs for successful migration
+   - **Check:** Query `prompts` table for `group_id = 'prompt_docs'`
 
 ### Short-term (MEDIUM PRIORITY)
 
-4. **Document New Features:**
-   - Create `docs/features/UNIFIED_FUNNELS.md` — Architecture, usage
-   - Create `docs/features/EXPENSES_TRACKING.md` — UI, workflow
-   - Update `docs/architecture/RAG_SYSTEM.md` — Complete RAG v2.0 section
-   - Create `docs/features/ADMIN_ARTICLES.md` — Article generation, storage
+5. **Update Documentation:**
+   - Update `docs/features/PROMPTS.md` with:
+     - Unified prompt system architecture
+     - Prompt documents migration guide
+     - Version diff usage instructions
+     - Disabled prompt behavior explanation
+   - Create migration guide for admins
+   - Document new API endpoints
 
-5. **Cleanup Old Code:**
-   - Mark old CRM components as deprecated
-   - Add migration guide for old tables → new tables
-   - Create cleanup script to drop old tables after verification
-   - Remove unused imports and dead code
+6. **Deprecate Old System:**
+   - Add warning notices to old prompt documents UI
+   - Mark old handlers as deprecated in code comments
+   - Create cleanup plan for old tables
+   - Document deprecation timeline
 
-6. **Optimize Gemini Embeddings:**
-   - Implement intelligent batching (process multiple docs in single batch)
-   - Add retry logic with exponential backoff
-   - Monitor rate limits and adjust delays
-   - Add fallback to OpenAI if Gemini quota exceeded
+7. **Create Automated Tests:**
+   - `tests/test_prompt_migration.py` — Migration script logic
+   - `tests/test_prompt_diff.py` — Diff generation
+   - `tests/test_disabled_prompts.py` — Disabled prompt behavior
+   - `tests/test_prompts_api.py` — All prompt API endpoints
 
 ### Long-term (FUTURE)
 
-7. **Expense Enhancements:**
-   - Add SSE for real-time expense updates
-   - Implement expense categories management UI
-   - Add expense analytics dashboard
-   - Export expenses to CSV/Excel
-   - Recurring expenses support
+8. **Version-to-Version Diff:**
+   - Add endpoint: `GET /api/admin/prompts/{id}/diff/{v1}/{v2}`
+   - Allow comparing any two versions
+   - Update UI to support this
+   - Use case: Understanding progression of changes
 
-8. **Funnel Enhancements:**
-   - Custom funnel creation UI (currently backend only)
-   - Funnel templates (quick setup)
-   - Funnel analytics dashboard
-   - Automation rules (auto-move based on conditions)
-   - Email/SMS notifications on stage changes
+9. **Diff Export:**
+   - Export diff as file (text, HTML, PDF)
+   - Use case: Share changes with team
+   - Integration: Email notifications of changes
 
-9. **Article Enhancements:**
-   - Article search UI in CRM panel
-   - Article tagging system
-   - Article templates
-   - Article versioning
-   - Public article sharing (generate link)
+10. **Prompt Templates:**
+    - Create template system for common prompt patterns
+    - Quick start: New culture prompt from template
+    - Library: Share templates between instances
 
-10. **RAG v3.0 Research:**
-    - Hybrid search (vector + keyword)
-    - Reranking with cross-encoder
-    - Multi-modal RAG (images + text)
-    - Adaptive chunking (size based on content type)
-    - Query expansion with LLM
-
-11. **Version Bump and Deployment (WHEN REQUESTED):**
-    - Update version in README.md: `1.2.2` → `1.2.3`
-    - Update version in `admin-webapp/package.json`: `1.2.2` → `1.2.3`
-    - Create git commit with session summary
-    - Push to GitHub (only when explicitly requested)
-    - Rebuild frontend: `cd admin-webapp && npm run build`
+11. **Search in History:**
+    - Search versions by content
+    - Find when specific text was added/removed
+    - Use case: Track down when change was made
 
 ## Dependencies
 
-**New Python Dependencies:**
-- `google-generativeai==0.8.3` — Gemini API client
-- `python-docx==1.1.2` — DOCX parsing
-
-**No new npm dependencies** — All features use existing libraries.
+**No new dependencies added** — All features use existing libraries:
+- Backend: Python `difflib` (built-in)
+- Frontend: Existing React components and styles
 
 ## Database Changes
 
-**New Schemas Applied (7 files):**
-1. `schema_19_unified_funnels.sql` — Funnels, stages, positions
-2. `schema_20_remove_crm_paid.sql` — Remove "paid" from CRM
-3. `schema_21_admin_articles.sql` — Article storage
-4. `schema_22_rename_funnels.sql` — Table renames
-5. `schema_23_expenses.sql` — Expenses, categories
-6. `schema_24_category_icons.sql` — Category icons
-7. `schema_25_paid_by_both.sql` — "Оба" for paid_by
-
-**Migration Applied:**
-```bash
-# All schemas applied in sequence
-docker exec garden_bot_db psql -U bot_user -d garden_bot -f /tmp/schema_19_unified_funnels.sql
-docker exec garden_bot_db psql -U bot_user -d garden_bot -f /tmp/schema_20_remove_crm_paid.sql
-docker exec garden_bot_db psql -U bot_user -d garden_bot -f /tmp/schema_21_admin_articles.sql
-docker exec garden_bot_db psql -U bot_user -d garden_bot -f /tmp/schema_22_rename_funnels.sql
-docker exec garden_bot_db psql -U bot_user -d garden_bot -f /tmp/schema_23_expenses.sql
-docker exec garden_bot_db psql -U bot_user -d garden_bot -f /tmp/schema_24_category_icons.sql
-docker exec garden_bot_db psql -U bot_user -d garden_bot -f /tmp/schema_25_paid_by_both.sql
-```
-
-**Total Tables Added:** 8 new tables
-**Total Triggers Added:** 12 triggers
-**Total Indexes Added:** 25 indexes
-
-**Rollback Plan:**
-```sql
--- If needed to rollback (IN REVERSE ORDER):
-DROP TABLE IF EXISTS expenses CASCADE;
-DROP TABLE IF EXISTS expense_categories CASCADE;
-DROP TABLE IF EXISTS admin_articles CASCADE;
-DROP TABLE IF EXISTS client_funnel_position CASCADE;
-DROP TABLE IF EXISTS funnel_stages CASCADE;
-DROP TABLE IF EXISTS funnels CASCADE;
-
--- Restore old tables if needed:
--- (Old tables preserved in schema_20, just restore triggers)
-```
+**No schema changes** — All features work with existing schema:
+- Uses existing `prompts` table
+- Uses existing `prompt_history` table
+- Migration script inserts into existing tables
 
 ## Environment Variables
 
-**New Required:**
-- `GEMINI_API_KEY` — Gemini API key for embeddings (from Google AI Studio)
-
-**All Existing Variables Still Valid:**
-- `OPENAI_API_KEY`, `DATABASE_URL`, `TELEGRAM_BOT_TOKEN`, etc.
-
-## Deployment Notes
-
-1. **Backend Deployment:**
-   ```bash
-   # Pull latest changes
-   git pull origin main
-
-   # Install new dependencies
-   pip install -r requirements.txt
-
-   # Apply all new schemas (if not already applied)
-   for i in {19..25}; do
-     psql -h localhost -U bot_user -d garden_bot -f db/schema_${i}_*.sql
-   done
-
-   # Set Gemini API key
-   export GEMINI_API_KEY="your_key_here"
-
-   # Restart bot + API
-   python -m src
-   ```
-
-2. **Frontend Deployment:**
-   ```bash
-   # Frontend changes auto-reload in dev mode
-   # For production build:
-   cd admin-webapp
-   npm run build
-   # Deploy dist/ folder to hosting
-   ```
-
-3. **Verification Steps:**
-   - Check unified funnels: CRM and Buyers work
-   - Check expenses: Add/edit/delete works
-   - Check articles: View in CRM panel
-   - Check RAG: Upload DOCX → verify semantic chunking
-   - Check Gemini: Monitor API usage in Google Cloud Console
-
-4. **Rollback Plan:**
-   - If funnels break: Revert schema_19-22, use old CRM tables
-   - If expenses break: Drop schema_23-25
-   - If RAG v2.0 breaks: Set `chunking_mode="fixed"` in processor
-   - All changes isolated and safe to revert individually
+**No new environment variables** — All features work with existing configuration.
 
 ## Session Statistics
 
-- **Files Created:** 33 (7 schemas, 17 backend, 20 frontend)
-- **Files Modified:** 29 (9 backend, 20 frontend)
-- **Lines of Code:** ~7500+ lines total
-- **Database Tables:** 8 new tables
-- **API Endpoints:** 38 new endpoints
-- **Components:** 14 new components
-- **Duration:** ~8-10 hours (estimated across multiple days)
+- **Files Created:** 1 (migration script)
+- **Files Modified:** 8 (4 backend, 4 frontend)
+- **Lines Added:** ~600 lines total
+  - Backend: ~150 lines (diff generation, prompt repo functions)
+  - Frontend: ~400 lines (rewritten history component)
+  - Scripts: ~50 lines (migration enhancements)
+- **API Endpoints:** 1 new endpoint (version diff)
+- **Components:** 1 major rewrite (PromptHistory)
+- **Duration:** ~3-4 hours
 - **Commits Ready:** 1 (session end commit pending)
 - **Tests Written:** 0 (comprehensive testing needed)
-- **Documentation Updated:** 3 docs (RAG_SYSTEM.md, PROJECT_MAP.md, this summary)
+- **Documentation Updated:** 0 (this summary only)
 
 ---
 
-**Session completed:** 2025-12-18
-**Ready for:** Browser verification, automated testing, documentation
-**Status:** Major refactoring complete, all features implemented, ready to commit
-**Pending:** Verification in browser, create git commit, push to GitHub (when requested)
+**Session completed:** 2025-12-19
+**Ready for:** Backend restart, browser verification, testing
+**Status:** All features implemented and working
+**Pending:** Backend restart to enable new endpoint
+**Version:** Still 1.2.2 (no version bump needed for internal improvements)
 
 ---
 
 # Previous Sessions
 
-## Session Summary — 2025-12-15 (Buyers Section)
+## Session Summary — 2025-12-18 (Major Refactoring)
 
-[Previous session content preserved for historical reference...]
+**Accomplishments:**
+- Unified funnel system architecture (CRM + Buyers)
+- Expenses tracking system (complete feature)
+- RAG v2.0 with semantic chunking and Gemini embeddings
+- Admin articles feature
+- 38 new API endpoints
+- 33 new files, ~7500+ lines of code
+
+**Key Changes:**
+- Merged separate CRM and Buyers into unified `funnels` architecture
+- Added semantic chunking for DOCX files
+- Switched to Gemini API for embeddings (cost savings)
+- Spendee-style expense tracking UI
+- Dynamic funnel submenu in sidebar
 
 _Full session history available in git log_

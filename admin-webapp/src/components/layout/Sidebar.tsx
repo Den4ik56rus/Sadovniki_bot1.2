@@ -11,7 +11,7 @@ interface SubmenuItem {
 }
 
 interface MenuItem {
-  id: View | 'deals-group'
+  id: View | 'deals-group' | 'lists-group'
   icon: React.ReactNode
   label: string
   badge?: number
@@ -104,7 +104,16 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
   },
   { id: 'messages', icon: Icons.messages, label: 'Сообщения' },
   { id: 'tasks', icon: Icons.tasks, label: 'Задачи' },
-  { id: 'lists', icon: Icons.lists, label: 'Списки' },
+  {
+    id: 'lists-group',
+    icon: Icons.lists,
+    label: 'Списки',
+    submenu: [
+      { id: 'prompts', label: 'Промпты' },
+      { id: 'prompt-docs', label: 'Промт-документы' },
+      { id: 'rag-docs', label: 'RAG Документы' },
+    ],
+  },
   { id: 'stats', icon: Icons.stats, label: 'Аналитика' },
   { id: 'expenses', icon: Icons.expenses, label: 'Расходы' },
   { id: 'settings', icon: Icons.settings, label: 'Настройки' },

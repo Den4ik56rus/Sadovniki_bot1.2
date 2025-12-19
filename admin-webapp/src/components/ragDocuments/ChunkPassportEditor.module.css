@@ -1,0 +1,376 @@
+/* ChunkPassportEditor — Редактор паспортов чанков */
+
+.editor {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--bg-primary);
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.btnBack {
+  padding: 8px 16px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.btnBack:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.headerRight {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.progressBar {
+  width: 120px;
+  height: 8px;
+  background: var(--bg-tertiary);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--color-success);
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progressText {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Main content */
+.main {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+/* Chunk panel (left) */
+.chunkPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 20px;
+  overflow-y: auto;
+  border-right: 1px solid var(--border-color);
+}
+
+.chunkHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.chunkLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.chunkSize {
+  font-size: 12px;
+  color: var(--text-muted);
+  background: var(--bg-tertiary);
+  padding: 4px 8px;
+  border-radius: 4px;
+}
+
+.chunkText {
+  flex: 1;
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  white-space: pre-wrap;
+  overflow-y: auto;
+}
+
+.contextSection {
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: var(--color-info-bg);
+  border: 1px solid var(--color-info-border);
+  border-radius: 8px;
+}
+
+.contextSection h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-info);
+}
+
+.contextSection p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-primary);
+}
+
+/* Passport panel (right) */
+.passportPanel {
+  width: 360px;
+  padding: 20px;
+  background: var(--bg-secondary);
+  overflow-y: auto;
+}
+
+.passportTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 20px 0;
+}
+
+.formGroup {
+  margin-bottom: 16px;
+}
+
+.formGroup label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.formGroup select {
+  width: 100%;
+  padding: 10px 12px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.formGroup select:hover {
+  border-color: var(--color-primary);
+}
+
+.formGroup select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-alpha);
+}
+
+.formGroup select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Prefix preview */
+.prefixPreview {
+  margin-top: 24px;
+  padding: 16px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+}
+
+.prefixPreview h4 {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.prefixPreview code {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--color-primary);
+  word-break: break-word;
+}
+
+/* Generate context button */
+.btnGenerateContext {
+  width: 100%;
+  margin-top: 16px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, var(--color-info), var(--color-primary));
+  border: none;
+  border-radius: 8px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnGenerateContext:hover:not(:disabled) {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(74, 124, 89, 0.3);
+}
+
+.btnGenerateContext:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Footer navigation */
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 24px;
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-color);
+}
+
+.footerCenter {
+  display: flex;
+  align-items: center;
+}
+
+.chunkIndicator {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.footerRight {
+  display: flex;
+  gap: 12px;
+}
+
+.btnNav {
+  padding: 10px 20px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnNav:hover:not(:disabled) {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.btnNav:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnSkip {
+  padding: 10px 20px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnSkip:hover:not(:disabled) {
+  background: var(--bg-hover);
+}
+
+.btnSkip:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnSaveNext {
+  padding: 10px 24px;
+  background: var(--color-primary);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnSaveNext:hover:not(:disabled) {
+  background: var(--color-primary-hover);
+}
+
+.btnSaveNext:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Loading state */
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+/* Error state */
+.error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  gap: 16px;
+}
+
+.error p {
+  font-size: 16px;
+  color: var(--text-secondary);
+}
+
+.error button {
+  padding: 10px 20px;
+  background: var(--color-primary);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+}

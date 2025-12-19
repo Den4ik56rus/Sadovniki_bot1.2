@@ -1,0 +1,464 @@
+.backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--bg-secondary);
+  border-radius: 16px;
+  width: 95%;
+  max-width: 1200px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.promptName {
+  font-size: 14px;
+  color: var(--text-secondary);
+  flex: 1;
+}
+
+.closeButton {
+  width: 32px;
+  height: 32px;
+  border: none;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
+  font-size: 20px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.closeButton:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  min-height: 0;
+}
+
+.loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  color: var(--text-secondary);
+}
+
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 200px;
+  text-align: center;
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 16px;
+  opacity: 0.5;
+}
+
+.emptyText {
+  font-size: 16px;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.emptySubtext {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Two-column layout */
+.historyLayout {
+  display: flex;
+  gap: 16px;
+  height: 100%;
+  min-height: 400px;
+}
+
+/* History list - left column */
+.historyList {
+  width: 280px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.historyItem {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 10px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+
+.historyItem:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+.historyItem.selected {
+  border-color: var(--accent-primary);
+  background: var(--accent-primary-light, rgba(74, 124, 89, 0.1));
+}
+
+.historyHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.version {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.date {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.author {
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+
+.revertButton {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  padding: 4px 8px;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  opacity: 0.6;
+  transition: all 0.15s ease;
+}
+
+.revertButton:hover:not(:disabled) {
+  opacity: 1;
+  background: var(--bg-tertiary);
+}
+
+.revertButton:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.historyContent {
+  border-top: 1px solid var(--border-color);
+  padding: 16px;
+  background: var(--bg-tertiary);
+}
+
+.contentPreview {
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+  margin: 0;
+}
+
+/* Confirmation dialog */
+.confirmBackdrop {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 16px;
+}
+
+.confirmDialog {
+  background: var(--bg-secondary);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 400px;
+  text-align: center;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+}
+
+.confirmTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.confirmText {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0 0 20px 0;
+}
+
+.confirmButtons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.cancelButton,
+.confirmButton {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.cancelButton {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+}
+
+.cancelButton:hover {
+  background: var(--bg-hover);
+}
+
+.confirmButton {
+  background: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+  color: white;
+}
+
+.confirmButton:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+}
+
+.confirmButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Diff panel - right column */
+.diffPanel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.diffPlaceholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  padding: 40px;
+  text-align: center;
+}
+
+.diffLoading {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.diffError {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--danger);
+  font-size: 14px;
+}
+
+.diffHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--bg-tertiary);
+}
+
+.diffStats {
+  display: flex;
+  gap: 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.diffAdded {
+  color: var(--success, #22c55e);
+}
+
+.diffRemoved {
+  color: var(--danger, #ef4444);
+}
+
+.diffTabs {
+  display: flex;
+  gap: 4px;
+}
+
+.diffTab {
+  padding: 6px 12px;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.diffTab:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.diffTab.activeTab {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: white;
+}
+
+.diffContent {
+  flex: 1;
+  overflow-y: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.diffLine {
+  display: flex;
+  padding: 0 12px;
+  min-height: 20px;
+}
+
+.diffLine.added {
+  background: rgba(34, 197, 94, 0.15);
+}
+
+.diffLine.removed {
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.diffLine.unchanged {
+  background: transparent;
+}
+
+.lineNumber {
+  width: 40px;
+  flex-shrink: 0;
+  color: var(--text-tertiary);
+  text-align: right;
+  padding-right: 8px;
+  user-select: none;
+}
+
+.linePrefix {
+  width: 16px;
+  flex-shrink: 0;
+  font-weight: 600;
+  user-select: none;
+}
+
+.diffLine.added .linePrefix {
+  color: var(--success, #22c55e);
+}
+
+.diffLine.removed .linePrefix {
+  color: var(--danger, #ef4444);
+}
+
+.lineContent {
+  flex: 1;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-primary);
+}
+
+.noDiff {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-tertiary);
+  font-size: 14px;
+  padding: 40px;
+}
+
+.contentPreview pre {
+  margin: 0;
+  padding: 16px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 12px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text-secondary);
+  overflow-y: auto;
+  max-height: 100%;
+}

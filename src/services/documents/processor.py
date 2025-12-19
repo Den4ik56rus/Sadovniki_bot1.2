@@ -51,8 +51,13 @@ from src.services.db.documents_repo import (
     document_update_status,
     document_exists_by_hash,
 )
-from src.services.db.document_chunks_repo import chunks_bulk_insert
+from src.services.db.document_chunks_repo import (
+    chunks_bulk_insert,
+    bulk_update_chunk_contexts,
+    get_chunks_by_document,
+)
 from src.services.llm.core_llm import calculate_embedding_cost
+from src.services.llm.context_generator import generate_contexts_for_document
 
 from src.config import settings
 
@@ -600,7 +605,43 @@ async def process_document(
         result["error"] = f"Chunk insertion failed: {e}"
         return result
 
-    # 13. Обновление статуса документа на 'completed' с токенами, стоимостью и моделью
+    # 13. RAG v2.0: Генерация контекста для чанков через LLM
+    context_cost = 0.0
+    context_tokens = 0
+    try:
+        print(f"[process_document] Generating context for {len(chunks_for_db)} chunks...")
+
+        # Получаем чанки из БД (нужны их ID)
+        db_chunks = await get_chunks_by_document(document_id)
+
+        # Генерируем контексты
+        context_result = await generate_contexts_for_document(
+            document_text=full_text,
+            chunks=db_chunks,
+        )
+
+        context_cost = context_result.total_cost
+        context_tokens = context_result.total_input_tokens + context_result.total_output_tokens
+
+        # Обновляем контексты в БД
+        if context_result.success_count > 0:
+            updates = [
+                {"chunk_id": cr.chunk_id, "context": cr.context}
+                for cr in context_result.contexts
+                if cr.context  # Только непустые контексты
+            ]
+            await bulk_update_chunk_contexts(updates)
+
+        print(
+            f"[process_document] Context generation: {context_result.success_count}/{len(db_chunks)} chunks, "
+            f"tokens: {context_tokens}, cost: ${context_cost:.4f}"
+        )
+
+    except Exception as e:
+        # Ошибка генерации контекста не критична — документ всё равно загружен
+        print(f"[process_document] Context generation failed (non-critical): {e}")
+
+    # 14. Обновление статуса документа на 'completed' с токенами, стоимостью и моделью
     try:
         await document_update_status(
             document_id,
@@ -609,16 +650,20 @@ async def process_document(
             embedding_tokens=total_tokens,
             embedding_cost_usd=embedding_cost,
             embedding_model=embedding_model,
+            context_generation_cost=context_cost,
+            context_generation_tokens=context_tokens,
         )
         print(f"[process_document] Document {document_id} processing completed")
     except Exception as e:
         result["error"] = f"Failed to update document status: {e}"
         return result
 
-    # 14. Успех
+    # 15. Успех
     result["success"] = True
     result["document_id"] = document_id
     result["chunks_count"] = len(chunks_for_db)
+    result["context_cost"] = context_cost
+    result["context_tokens"] = context_tokens
 
     return result
 

@@ -9,6 +9,9 @@ import { FunnelKanban } from '@/components/funnel/FunnelKanban'
 import { Dashboard } from '@/components/pages/Dashboard'
 import { PlaceholderPage } from '@/components/pages/PlaceholderPage'
 import { ExpensesPage } from '@/components/expenses'
+import { PromptDocsPage } from '@/components/promptDocs'
+import { RagDocsPage } from '@/components/ragDocuments'
+import { PromptsPage } from '@/components/prompts'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
@@ -51,14 +54,14 @@ function App() {
         />
       )}
 
-      {/* Списки - заглушка */}
-      {currentView === 'lists' && (
-        <PlaceholderPage
-          icon="📋"
-          title="Списки"
-          description="Раздел списков находится в разработке"
-        />
-      )}
+      {/* Редактор промптов */}
+      {currentView === 'prompts' && <PromptsPage />}
+
+      {/* Промт-документы */}
+      {currentView === 'prompt-docs' && <PromptDocsPage />}
+
+      {/* RAG Документы v2.0 — паспортизация чанков */}
+      {currentView === 'rag-docs' && <RagDocsPage />}
 
       {/* Аналитика - существующий StatsPanel */}
       {currentView === 'stats' && <StatsPanel />}

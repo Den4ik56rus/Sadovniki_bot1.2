@@ -54,6 +54,8 @@ async def document_update_status(
     embedding_tokens: Optional[int] = None,
     embedding_cost_usd: Optional[float] = None,
     embedding_model: Optional[str] = None,
+    context_generation_cost: Optional[float] = None,
+    context_generation_tokens: Optional[int] = None,
 ) -> None:
     """
     Обновляет статус обработки документа.
@@ -70,7 +72,9 @@ async def document_update_status(
                     total_chunks = $3,
                     embedding_tokens = COALESCE($5, embedding_tokens),
                     embedding_cost_usd = COALESCE($6, embedding_cost_usd),
-                    embedding_model = COALESCE($7, embedding_model)
+                    embedding_model = COALESCE($7, embedding_model),
+                    context_generation_cost = COALESCE($8, context_generation_cost),
+                    context_generation_tokens = COALESCE($9, context_generation_tokens)
                 WHERE id = $4;
                 """,
                 status,
@@ -80,6 +84,8 @@ async def document_update_status(
                 embedding_tokens,
                 embedding_cost_usd,
                 embedding_model,
+                context_generation_cost,
+                context_generation_tokens,
             )
         else:
             await conn.execute(

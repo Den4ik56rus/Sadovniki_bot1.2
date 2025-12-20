@@ -58,6 +58,8 @@ export function ActivityItem({
         return '✏️'
       case 'article':
         return '📄'
+      case 'payment':
+        return '💰'
       default:
         return '📌'
     }
@@ -231,6 +233,37 @@ export function ActivityItem({
             </div>
           </div>
         )
+
+      case 'payment': {
+        const paymentData = data as {
+          payment_id: number
+          amount_rub: number
+          payment_type: 'subscription' | 'tokens'
+          paid: boolean
+          product_name: string
+          paid_at: string | null
+        }
+
+        return (
+          <div className={styles.payment}>
+            <div className={styles.paymentHeader}>
+              <span className={styles.paymentType}>
+                {paymentData.payment_type === 'subscription' ? 'Подписка' : 'Токены'}
+              </span>
+              <span className={paymentData.paid ? styles.paymentBadge : styles.paymentBadgePending}>
+                {paymentData.paid ? '✓ Оплачено' : '⏳ Ожидание'}
+              </span>
+            </div>
+            <div className={styles.paymentProduct}>{paymentData.product_name}</div>
+            <div className={styles.paymentMeta}>
+              <span className={styles.paymentAmount}>{paymentData.amount_rub.toFixed(0)} ₽</span>
+              {paymentData.paid_at && (
+                <span>{format(new Date(paymentData.paid_at), 'd MMM yyyy', { locale: ru })}</span>
+              )}
+            </div>
+          </div>
+        )
+      }
 
       default:
         return <div>Неизвестное событие</div>

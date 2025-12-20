@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, webhooks, payments
 
 
 def setup_routes(app: web.Application) -> None:
@@ -155,6 +155,11 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_put(r"/api/admin/expenses/{id:\d+}", expenses.update_expense)
     app.router.add_delete(r"/api/admin/expenses/{id:\d+}", expenses.delete_expense)
 
+    # Payments API (платежи и подписки)
+    app.router.add_get("/api/admin/payments", payments.get_all_payments)
+    app.router.add_get(r"/api/admin/payments/user/{id:\d+}", payments.get_user_payments)
+    app.router.add_get("/api/admin/payments/stats", payments.get_payment_stats)
+
     # Prompt Documents API (документы для промптов)
     app.router.add_get("/api/admin/prompt-documents/cultures", prompt_documents.get_cultures)
     app.router.add_get("/api/admin/prompt-documents/subcultures", prompt_documents.get_subcultures)
@@ -185,6 +190,10 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get(r"/api/admin/prompts/{id:\d+}/history", prompts.get_prompt_history)
     app.router.add_get(r"/api/admin/prompts/{id:\d+}/history/{version:\d+}/diff", prompts.get_version_diff)
     app.router.add_post(r"/api/admin/prompts/{id:\d+}/revert", prompts.revert_prompt_version)
+
+    # Webhooks (платежные системы)
+    app.router.add_post("/api/webhooks/yookassa", webhooks.yookassa_webhook)
+    app.router.add_post("/api/webhooks/yookassa/test", webhooks.yookassa_webhook_test)
 
     # Health check endpoint
     app.router.add_get("/api/health", health_check)

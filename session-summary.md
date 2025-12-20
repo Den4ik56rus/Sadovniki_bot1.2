@@ -1,661 +1,1157 @@
-# Session Summary — 2025-12-19
+# Session Summary — 2025-12-20
 
 ## Project Context
 
 **Sadovniki-bot** — Telegram-бот для профессиональных консультаций по ягодным культурам с RAG-системой на базе PostgreSQL + pgvector и OpenAI GPT.
 
-**Current Stage:** Production-ready system (v1.2.2) with advanced prompt management capabilities.
+**Current Stage:** Production-ready system (v1.2.2) with YooKassa payment integration and CRM functionality.
 
 **Tech Stack:**
 - Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
 - Frontend: React + TypeScript (Admin Panel), Vite
 - Database: PostgreSQL 16 + pgvector
 - AI: OpenAI GPT models with configurable temperature, database-driven prompts
+- Payments: YooKassa API integration (schema ready, services implemented)
 
 ## Session Goal
 
-Enhance prompt system with three major improvements:
+Implement complete payments display system in Admin Panel:
 
-1. **Prompt Documents Migration** — Move prompt_documents to unified prompts system
-2. **Version Diff Functionality** — Visual comparison between prompt versions
-3. **Disabled Prompt Logic Fix** — Proper handling of disabled prompts in consultation flow
+1. **Backend API** — Fetch payments data with filters and statistics
+2. **CRM Integration** — Show payments in client card (Billing tab)
+3. **Activity Feed** — Payment events in client timeline
+4. **Payments List** — Dedicated page with filters and stats
 
 ## Accomplishments
 
-### 1. Prompt Documents Migration to Prompts System
+### 1. Backend Payment Repository Extensions
 
 **Problem:**
-- System had two separate mechanisms for managing prompt-related content:
-  - `prompt_documents` table (uploaded files per culture)
-  - `prompts` table (editable text entries)
-- Duplication of functionality and complexity in code
+- `payment_repo.py` had basic CRUD but no JOIN queries for admin display
+- Needed user details, product names, aggregated statistics
 
 **Solution:**
-- Migrated all prompt_documents into `prompts` table as `prompt_docs` group
-- Created migration script with intelligent mapping
-- Enhanced `prompt_repo.py` with document-specific retrieval functions
+- Added 4 complex JOIN functions for admin panel needs
+
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/db/payment_repo.py`
+
+**Functions Added:**
+
+1. **`get_user_payments_with_details(user_id, limit, offset, status_filter)`** (38 lines)
+   - Fetches user's payments with product names
+   - LEFT JOIN with `subscription_plans` and `token_packages`
+   - COALESCE for product name (subscription.name OR package.name OR 'Unknown')
+   - Returns: payment + product_name field
+   - Use case: Billing tab in client card
+
+2. **`get_all_payments_with_details(limit, offset, status_filter, payment_type_filter)`** (49 lines)
+   - Fetches all payments across all users
+   - LEFT JOIN with users, subscription_plans, token_packages
+   - Returns: payment + user_name + product_name
+   - Filters: status (succeeded/pending/canceled), type (subscription/tokens)
+   - Use case: Payments list page with filters
+
+3. **`get_user_total_paid(user_id)`** (19 lines)
+   - Aggregates total amount paid by user
+   - SUM(amount_rub) WHERE status = 'succeeded'
+   - Returns: Decimal or 0.00 if no payments
+   - Use case: Client card summary statistics
+
+4. **`get_payment_statistics()`** (29 lines)
+   - Global payment statistics for dashboard
+   - Aggregates:
+     - `total_received`: SUM(amount_rub) WHERE status = 'succeeded'
+     - `pending_amount`: SUM(amount_rub) WHERE status = 'pending'
+     - `total_count`: COUNT(*) all payments
+   - Returns: Dict with Decimal values
+   - Use case: Payments list page header
+
+**Data Handling:**
+- Decimal → float serialization (for JSON API)
+- datetime → isoformat() serialization
+- NULL-safe aggregations (COALESCE to 0.00)
+
+### 2. Backend Payment API Endpoints
+
+**Problem:**
+- No HTTP endpoints to fetch payments data for admin panel
+- Needed RESTful API with filtering, pagination, statistics
+
+**Solution:**
+- Created dedicated payment handlers module
+- Added 3 endpoints with proper error handling
 
 **Files Created:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/scripts/migrate_prompt_docs_to_prompts.py` (189 lines)
-  - Maps culture + work_type combinations to prompt structure
-  - Groups: `strawberry`, `raspberry`, `bushes` (currant, gooseberry, etc.)
-  - Preserves original file content as prompt content
-  - Sets appropriate metadata (is_enabled, use_minimal_base)
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/handlers/payments.py` (149 lines)
 
-**Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/db/prompt_repo.py`
-  - Added `get_prompt_document_content(culture, subculture, work_type)` — Get document by metadata
-  - Added `check_prompt_doc_exists(culture, subculture, work_type)` — Existence check
-  - Added `_parse_culture_subculture(culture_str)` — Parse culture string to IDs
+**Endpoints Implemented:**
 
-**Migration Results:**
-- Successfully migrated 8 documents from `prompt_documents`:
-  - 5 strawberry documents (feeding, planting, varieties, pests, soil)
-  - 2 raspberry documents (feeding, planting)
-  - 1 bushes document (general care)
-- All mapped to `prompt_docs` group with appropriate subgroups
-- Original files preserved in `data/prompt_documents/` for reference
+1. **`GET /api/admin/payments/user/{user_id}`** (47 lines)
+   - Query params: `limit`, `offset`, `status`
+   - Calls: `get_user_payments_with_details()`
+   - Response:
+     ```json
+     {
+       "payments": [...],
+       "total": 15,
+       "limit": 20,
+       "offset": 0
+     }
+     ```
+   - Error handling: User not found → 404, DB errors → 500
+   - Use case: Billing tab in CRM client card
 
-**Benefits:**
-- Unified management: All prompts in single system
-- Version control: Prompt documents now have history tracking
-- Consistency: Same editing UI for all prompt types
-- Simplicity: One source of truth for prompts
+2. **`GET /api/admin/payments`** (54 lines)
+   - Query params: `limit`, `offset`, `status`, `payment_type`
+   - Calls: `get_all_payments_with_details()`
+   - Response: Same as above
+   - Filters: status (succeeded/pending/canceled), type (subscription/tokens)
+   - Use case: Payments list page
 
-### 2. Version Diff Functionality
+3. **`GET /api/admin/payments/stats`** (30 lines)
+   - No parameters
+   - Calls: `get_payment_statistics()`
+   - Response:
+     ```json
+     {
+       "total_received": 15000.00,
+       "pending_amount": 1500.00,
+       "total_count": 45
+     }
+     ```
+   - Use case: Dashboard and payments list header
 
-**Problem:**
-- Prompt history showed version list but no way to see what changed
-- Admins needed to manually compare text to understand edits
-- No visual indication of additions/deletions between versions
-
-**Solution:**
-- Implemented diff generation using Python `difflib`
-- Created full frontend component for side-by-side version comparison
-- Added unified diff view with syntax highlighting
-
-**Backend Implementation:**
-
-**Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/handlers/prompts.py`
-  - Added `_generate_diff(old_content, new_content)` function (51 lines)
-    - Uses `difflib.unified_diff()` for line-by-line comparison
-    - Returns structured diff with added/removed/unchanged lines
-    - Includes line numbers for both old and new versions
-  - Added `get_version_diff()` endpoint handler (43 lines)
-    - Endpoint: `GET /api/admin/prompts/{id}/history/{version}/diff`
-    - Compares version N with current version
-    - Returns full diff data + version metadata
+**Architecture:**
+- Follows existing API pattern (handlers/payments.py → routes.py)
+- Error handling with try/except and logging
+- JSON serialization with Decimal → float conversion
+- Pagination support (limit/offset)
 
 **Files Modified:**
 - `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/routes.py`
-  - Added route: `app.router.add_get(r"/api/admin/prompts/{id:\d+}/history/{version:\d+}/diff", prompts.get_version_diff)`
+  - Added 3 routes registration:
+    ```python
+    app.router.add_get(r'/api/admin/payments/user/{user_id:\d+}', payments.get_user_payments)
+    app.router.add_get(r'/api/admin/payments', payments.get_all_payments)
+    app.router.add_get(r'/api/admin/payments/stats', payments.get_payment_stats)
+    ```
 
-**Frontend Implementation:**
+### 3. Payment Activity Events Integration
+
+**Problem:**
+- Payments were happening but not tracked in CRM activity feed
+- No timeline visibility of payment events
+
+**Solution:**
+- Added activity event creation in payment service
+- Events for pending and succeeded statuses
+
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/payments/payment_service.py`
+
+**Changes:**
+
+1. **In `create_payment()`** function:
+   - After payment created → log activity event
+   - Event type: `payment`
+   - Metadata: payment_id, payment_type, status, product, amount
+   - Example:
+     ```python
+     await create_activity_event(
+         user_id=user_id,
+         event_type='payment',
+         event_data={
+             'payment_id': payment.id,
+             'payment_type': payment_type,
+             'status': 'pending',
+             'product': product_name,
+             'amount': float(amount_rub)
+         }
+     )
+     ```
+
+2. **In `confirm_payment()` function** (webhook handler):
+   - After payment confirmed → log success event
+   - Same structure but status = 'succeeded'
+   - Tracks when payment actually processed
+
+**Benefits:**
+- Full payment lifecycle visibility in activity feed
+- Chronological timeline of user payments
+- Easy filtering by event_type = 'payment'
+
+### 4. Frontend Types for Payments
+
+**Problem:**
+- No TypeScript types for payment data structures
+- Frontend couldn't safely work with payment API responses
+
+**Solution:**
+- Added comprehensive payment types matching backend schema
 
 **Files Modified:**
 - `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`
-  - Added `DiffChange` type (line type, content, line numbers)
-  - Added `DiffResult` type (unified diff, line counts, structured changes)
-  - Added `VersionDiffResponse` type (diff + version metadata)
+
+**Types Added:**
+
+```typescript
+// Payment status enum
+export type PaymentStatus = 'pending' | 'succeeded' | 'canceled' | 'waiting_for_capture';
+
+// Payment type enum
+export type PaymentType = 'subscription' | 'tokens';
+
+// Payment entity
+export interface Payment {
+  id: number;
+  user_id: number;
+  yookassa_payment_id: string;
+  payment_type: PaymentType;
+  subscription_plan_id?: number;
+  token_package_id?: number;
+  amount_rub: number;
+  status: PaymentStatus;
+  paid: boolean;
+  description?: string;
+  created_at: string;
+  paid_at?: string;
+  product_name?: string;     // From JOIN with plans/packages
+  user_name?: string;         // From JOIN with users (for lists)
+}
+
+// API response for payments list
+export interface PaymentsResponse {
+  payments: Payment[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+// Payment statistics
+export interface PaymentStats {
+  total_received: number;
+  pending_amount: number;
+  total_count: number;
+}
+```
+
+**Also Updated:**
+- `ActivityEventType` enum:
+  ```typescript
+  export type ActivityEventType =
+    | 'consultation_start'
+    | 'status_change'
+    | 'note_added'
+    | 'payment'          // ← Added
+    | /* ... */;
+  ```
+
+### 5. Frontend API Methods for Payments
+
+**Problem:**
+- No API client methods to fetch payment data
+- Components can't call backend endpoints
+
+**Solution:**
+- Added 3 API methods matching backend endpoints
 
 **Files Modified:**
 - `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/services/api.ts`
-  - Added `getPromptVersionDiff(id, version)` method
-  - Fetches diff data from backend API
 
-**Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptHistory.tsx` (completely rewritten, 350+ lines)
+**Methods Added:**
 
-  **New Layout:**
-  - Two-column design:
-    - Left: Version list (scrollable)
-    - Right: Diff viewer (tabbed interface)
+```typescript
+// Fetch payments for specific user
+async getUserPayments(
+  userId: number,
+  params?: {
+    limit?: number;
+    offset?: number;
+    status?: PaymentStatus;
+  }
+): Promise<PaymentsResponse>
 
-  **Version List Features:**
-  - Shows all versions with metadata (version number, date, author)
-  - Click to load diff
-  - Highlights selected version
-  - Shows "Current" badge for latest version
+// Fetch all payments (with filters)
+async getAllPayments(
+  params?: {
+    limit?: number;
+    offset?: number;
+    status?: PaymentStatus;
+    payment_type?: PaymentType;
+  }
+): Promise<PaymentsResponse>
 
-  **Diff Viewer Features:**
-  - Two tabs: "Diff" (default) and "Full Text"
-  - **Diff Tab:**
-    - Line-by-line comparison
-    - Green background for added lines (`+ content`)
-    - Red background for removed lines (`- content`)
-    - White background for unchanged context
-    - Line numbers for both old and new versions
-    - Summary: "Added X lines, removed Y lines"
-  - **Full Text Tab:**
-    - Complete version content
-    - Useful for reviewing full context
-    - Preserves formatting
+// Get payment statistics
+async getPaymentStats(): Promise<PaymentStats>
+```
 
-  **UX Improvements:**
-  - Loading states during API calls
-  - Error handling with user-friendly messages
-  - Responsive layout
-  - Keyboard navigation ready
+**Implementation Details:**
+- Uses URLSearchParams for query string building
+- Proper error handling with fetch()
+- Type-safe responses matching PaymentsResponse interface
 
-**Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptHistory.module.css`
-  - Added styles for two-column layout
-  - Added diff line highlighting (green/red/white)
-  - Added tab styles
-  - Added responsive breakpoints
-
-**Usage Flow:**
-1. Admin opens prompt editor
-2. Clicks "Show History" button
-3. Sees list of all versions on left
-4. Clicks any version
-5. Right panel shows diff comparing that version to current
-6. Can switch to "Full Text" tab to see complete version
-7. Can revert to that version if needed
-
-**Benefits:**
-- Visual clarity: Instantly see what changed
-- Better decision making: Understand impact of changes before reverting
-- Audit trail: Track who changed what and when
-- Time savings: No manual text comparison
-
-### 3. Fixed Disabled Prompt Logic
+### 6. CRM Client Card Billing Tab Rewrite
 
 **Problem:**
-- When prompts were disabled in database, system incorrectly fell back to Python file prompts
-- Expected behavior: Disabled prompts should NOT appear in final prompt at all
-- Caused confusion: Disabling a prompt didn't actually disable it
-
-**Root Cause:**
-- Logic couldn't distinguish between:
-  - Database unavailable → should fallback to Python files
-  - All prompts disabled → should NOT fallback to Python files
+- Billing tab was showing consultations (wrong data)
+- Expected: Show client's payment history
 
 **Solution:**
-- Modified prompt loading logic to differentiate `None` vs `""`
-- `None` = DB unavailable → use Python fallback
-- `""` (empty string) = DB available but all disabled → don't use anything
+- Complete rewrite of BillingTab component
+- Changed data source from consultations to payments
 
 **Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/consultation_prompts.py`
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/crm/LeftPanel/BillingTab.tsx` (completely rewritten, 280 lines)
 
-  **Changes in `_get_base_prompt_from_db()`:**
-  ```python
-  # Before: Couldn't tell if DB was empty or prompts were disabled
-  if not enabled_sections:
-      return None  # Always fallback to Python
+**New Structure:**
 
-  # After: Check total sections first
-  all_sections = await get_base_sections(is_enabled_only=False)
-  if not all_sections:
-      return None  # DB unavailable → fallback
+1. **Summary Section:**
+   ```
+   ┌─────────────────────────────────┐
+   │ 📊 Консультаций: 15             │
+   │ ✅ Оплачено клиентом: 3,500₽   │
+   │ ⏳ Ожидает оплаты: 500₽        │
+   └─────────────────────────────────┘
+   ```
+   - Consultations count (from existing state)
+   - Total paid (SUM of succeeded payments)
+   - Pending amount (SUM of pending payments)
 
-  enabled_sections = await get_base_sections(is_enabled_only=True)
-  # If all_sections exist but enabled_sections is empty → return ""
-  # This prevents fallback to Python files
-  ```
+2. **Payments List:**
+   ```
+   ┌─────────────────────────────────┐
+   │ 💳 Подписка "Стандарт"          │
+   │ ✅ Оплачено • 500₽ • 20.12.2025│
+   ├─────────────────────────────────┤
+   │ 🎫 Пакет "20 вопросов"          │
+   │ ⏳ Ожидает • 200₽ • 19.12.2025 │
+   └─────────────────────────────────┘
+   ```
+   - Icon based on type (💳 subscription, 🎫 tokens)
+   - Product name from JOIN
+   - Status badge with color:
+     - ✅ Green for succeeded
+     - ⏳ Yellow for pending
+     - ❌ Red for canceled
+   - Amount in rubles
+   - Date formatted (dd.MM.yyyy)
 
-  **Changes in `_get_category_prompt_from_db()`:**
-  ```python
-  # Before: Not found → fallback to Python
-  if not prompt_data:
-      return None
+3. **Loading & Error States:**
+   - Loading spinner while fetching
+   - Error message if API fails
+   - Empty state: "Нет платежей"
 
-  # After: Check if exists but disabled
-  if not prompt_data:
-      exists = await check_category_exists(subgroup_slug, culture_group)
-      if exists:
-          return ("", False)  # Exists but disabled → empty prompt
-      return None  # Doesn't exist → fallback to Python
-  ```
+**Data Flow:**
+```
+BillingTab → useEffect() → api.getUserPayments(clientId)
+  → fetch /api/admin/payments/user/{id}
+  → payment_repo.get_user_payments_with_details()
+  → PostgreSQL JOIN
+  → Response with product_name
+  → setState(payments)
+  → Render list
+```
 
-**Impact:**
-- Disabled prompts now truly disabled
-- Admins can control what appears in consultation prompts
-- Clear distinction between "not configured" and "intentionally disabled"
+**Key Functions:**
 
-**Testing:**
-- Verified with base_prompt sections
-- Verified with category prompts
-- Confirmed fallback still works when DB is unavailable
+- `getPaymentIcon()`: Returns emoji based on payment_type
+- `getStatusBadge()`: Returns colored span with status text
+- `formatCurrency()`: Formats Decimal as "X₽"
+- `formatDate()`: Formats ISO string as dd.MM.yyyy
+
+### 7. Activity Feed Payment Events Display
+
+**Problem:**
+- Activity feed had no support for payment events
+- Payment events were created but not rendered
+
+**Solution:**
+- Added payment event rendering in ActivityItem component
+
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/crm/RightPanel/ActivityItem.tsx`
+
+**Changes:**
+
+**Added payment case in switch statement:**
+```typescript
+case 'payment': {
+  const paymentData = event.event_data;
+  return (
+    <div className={styles.activityDescription}>
+      💰 Платеж: {paymentData.payment_type === 'subscription' ? 'Подписка' : 'Токены'}
+      {' • '}
+      <span className={getStatusClass(paymentData.status)}>
+        {getStatusText(paymentData.status)}
+      </span>
+      {paymentData.product && ` • ${paymentData.product}`}
+      {paymentData.amount && ` • ${paymentData.amount}₽`}
+    </div>
+  );
+}
+```
+
+**Features:**
+- Icon: 💰 (money bag)
+- Payment type: Subscription or Tokens (Russian)
+- Status badge: Colored based on payment status
+  - Succeeded → green
+  - Pending → yellow
+  - Canceled → red
+- Product name if available
+- Amount in rubles
+
+**Rendering Example:**
+```
+💰 Платеж: Подписка • Оплачено • Стандарт • 500₽
+```
+
+**Helper Functions:**
+```typescript
+getStatusClass(status) {
+  pending → styles.statusPending
+  succeeded → styles.statusSuccess
+  canceled → styles.statusCanceled
+}
+
+getStatusText(status) {
+  pending → "Ожидает"
+  succeeded → "Оплачено"
+  canceled → "Отменено"
+}
+```
+
+### 8. Payments List Page Component
+
+**Problem:**
+- No dedicated admin page to view all payments across all users
+- Needed filtering, statistics, pagination
+
+**Solution:**
+- Created new PaymentsList component with full features
+
+**Files Created:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/payments/PaymentsList.tsx` (356 lines)
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/payments/PaymentsList.module.css` (125 lines)
+
+**Component Structure:**
+
+1. **Stats Cards Section:**
+   ```
+   ┌────────────────┬────────────────┬────────────────┐
+   │ 💰 Получено    │ ⏳ Ожидает     │ 📊 Всего       │
+   │ 15,000₽        │ 1,500₽         │ 45 платежей    │
+   └────────────────┴────────────────┴────────────────┘
+   ```
+   - Total received (succeeded payments)
+   - Pending amount (pending payments)
+   - Total count (all payments)
+   - Data from `getPaymentStats()` API
+
+2. **Filters Section:**
+   ```
+   ┌─────────────────────────────────────────────────┐
+   │ Статус: [Все ▼] [Оплачено] [Ожидает] [Отменено]│
+   │ Тип: [Все ▼] [Подписка] [Токены]               │
+   └─────────────────────────────────────────────────┘
+   ```
+   - Status filter: All / Succeeded / Pending / Canceled
+   - Type filter: All / Subscription / Tokens
+   - Button style (active highlighted)
+   - Resets pagination on change
+
+3. **Payments Table:**
+   ```
+   ┌────┬──────────┬─────────┬─────────┬───────┬──────────┐
+   │ ID │ Клиент   │ Тип     │ Продукт │ Сумма │ Статус   │
+   ├────┼──────────┼─────────┼─────────┼───────┼──────────┤
+   │ 15 │ Иван И.  │ Подпи-  │ Стандарт│ 500₽  │ ✅ Опла- │
+   │    │          │ ска     │         │       │ чено     │
+   ├────┼──────────┼─────────┼─────────┼───────┼──────────┤
+   │ 14 │ Мария С. │ Токены  │ 20 во-  │ 200₽  │ ⏳ Ожи-  │
+   │    │          │         │ просов  │       │ дает     │
+   └────┴──────────┴─────────┴─────────┴───────┴──────────┘
+   ```
+   - Columns: ID, Client, Type, Product, Amount, Status
+   - Status badges with colors
+   - Date formatting (dd.MM.yyyy HH:mm)
+   - Sortable (future enhancement)
+
+4. **Pagination:**
+   ```
+   ┌─────────────────────────────────────┐
+   │ [← Предыдущая]  1-20 из 45  [Следу-│
+   │                              ющая →]│
+   └─────────────────────────────────────┘
+   ```
+   - Previous/Next buttons
+   - Current range display
+   - Disabled state when no more pages
+   - Page size: 20 items
+
+**State Management:**
+```typescript
+const [payments, setPayments] = useState<Payment[]>([]);
+const [stats, setStats] = useState<PaymentStats | null>(null);
+const [statusFilter, setStatusFilter] = useState<PaymentStatus | 'all'>('all');
+const [typeFilter, setTypeFilter] = useState<PaymentType | 'all'>('all');
+const [page, setPage] = useState(0);
+const [total, setTotal] = useState(0);
+const [loading, setLoading] = useState(false);
+const [error, setError] = useState<string | null>(null);
+```
+
+**Data Fetching:**
+```typescript
+useEffect(() => {
+  fetchPayments();
+  fetchStats();
+}, [statusFilter, typeFilter, page]);
+
+// Builds query params from filters and page
+// Calls api.getAllPayments() and api.getPaymentStats()
+// Updates state with results
+```
+
+**Features:**
+- Real-time filtering (no submit button needed)
+- Automatic data refresh on filter change
+- Loading states with spinner
+- Error handling with user-friendly messages
+- Empty state: "Платежей не найдено"
+- Responsive table layout
+
+### 9. Routing Integration for Payments List
+
+**Problem:**
+- New PaymentsList component exists but not accessible in app
+- Needed to add to navigation and routing
+
+**Solution:**
+- Integrated into existing "Списки" (Lists) submenu
+- Added routing in App.tsx
+
+**Files Modified:**
+- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/App.tsx`
+
+**Changes:**
+
+1. **Import PaymentsList component:**
+   ```typescript
+   import PaymentsList from './components/payments/PaymentsList';
+   ```
+
+2. **Add to view rendering:**
+   ```typescript
+   {currentView === 'lists' && listSection === 'payments' && <PaymentsList />}
+   ```
+
+**Navigation Flow:**
+```
+Sidebar → Списки (Lists) → Платежи (Payments) → <PaymentsList />
+```
+
+**URL Structure:**
+```
+http://localhost:5174/?view=lists&section=payments
+```
+
+**Menu Entry:**
+- Icon: 💰
+- Label: "Платежи"
+- Position: In "Списки" submenu (alongside Промпты, Консультации, etc.)
 
 ## Key Decisions
 
 ### Architectural Decisions
 
-1. **Migrate Prompt Documents to Unified System:**
-   - **Decision:** Move all `prompt_documents` into `prompts` table
+1. **JOIN Queries in Repository Layer:**
+   - **Decision:** Perform LEFT JOIN with product tables in repository
    - **Rationale:**
-     - Single source of truth: All prompt content in one place
-     - Version control: Documents now have full history
-     - Better UX: Same editing interface for all prompts
-     - Less code: Eliminate duplicate document loading logic
-   - **Impact:** Simplified architecture, better maintainability
-   - **Trade-off:** Migration complexity vs long-term simplicity
-   - **Alternative rejected:** Keep separate systems (technical debt)
+     - Single database round-trip (efficient)
+     - Repository layer owns data assembly logic
+     - Frontend receives complete data (no N+1 queries)
+     - COALESCE handles NULL products gracefully
+   - **Impact:** Better performance, simpler frontend code
+   - **Alternative rejected:** Fetch payments + products separately (slower, complex)
 
-2. **Use Python difflib for Version Diff:**
-   - **Decision:** Generate diffs server-side with Python's `difflib`
+2. **Payment Events in Activity Feed:**
+   - **Decision:** Create activity events for payments in payment_service
    - **Rationale:**
-     - Built-in: No external dependencies needed
-     - Proven: Industry-standard diff algorithm
-     - Structured output: Easy to render in frontend
-     - Performance: Fast for prompt-sized texts (<10KB)
-   - **Impact:** Clean, maintainable diff implementation
-   - **Alternative rejected:** Client-side diff libraries (more dependencies, larger bundle)
+     - Unified timeline: All user actions in one place
+     - Chronological visibility: When payments happened
+     - CRM integration: Payments visible in client card
+     - Audit trail: Full payment lifecycle tracking
+   - **Impact:** Better UX, easier debugging, complete user history
+   - **Alternative rejected:** Separate payments tab (less context)
 
-3. **Two-Column Layout for History View:**
-   - **Decision:** Version list on left, diff viewer on right
+3. **Dedicated Payments List Page:**
+   - **Decision:** Create standalone PaymentsList component (not embed in CRM)
    - **Rationale:**
-     - Context preservation: See all versions while viewing one
-     - Easy comparison: Click different versions to compare
-     - Common pattern: Similar to GitHub PR diffs
-     - Space efficient: Uses screen width effectively
-   - **Impact:** Better UX, familiar interface
-   - **Alternative rejected:** Modal-based viewer (less context visible)
+     - Cross-user visibility: See all payments at once
+     - Admin task: Different mental model than client management
+     - Filtering needs: Global filters (status, type) for accounting
+     - Scalability: List can grow to thousands of entries
+   - **Impact:** Better admin workflow, clear separation of concerns
+   - **Alternative rejected:** Embed in CRM funnels (clutter, wrong context)
 
 ### Logic/Algorithm Decisions
 
-1. **Distinguish None vs Empty String for Disabled Prompts:**
-   - **Decision:** Use `None` for "not found/DB unavailable" and `""` for "disabled"
+1. **Two-Level Filtering System:**
+   - **Decision:** Status filter + Type filter (independent)
    - **Rationale:**
-     - Clear semantics: Different states need different handling
-     - Backward compatible: Old code still works
-     - Explicit intent: Code clearly shows what's happening
+     - Accounting workflow: "Show me all pending subscriptions"
+     - SQL efficient: WHERE status = $1 AND payment_type = $2
+     - UI simple: Two rows of buttons, no complex dropdowns
+     - Clear semantics: Each filter is independent
    - **Implementation:**
      ```python
-     if result is None:
-         # DB unavailable or prompt not configured → use fallback
-         use_python_file()
-     elif result == "":
-         # Prompt exists but disabled → don't use anything
-         skip_this_prompt()
-     else:
-         # Prompt exists and enabled → use it
-         use_db_prompt(result)
+     WHERE (status = $1 OR $1 IS NULL)
+       AND (payment_type = $2 OR $2 IS NULL)
      ```
-   - **Alternative rejected:** Boolean flags (less flexible, more parameters)
+   - **Alternative rejected:** Combined dropdown (less intuitive)
 
-2. **Two-Pass Loading for Disabled Check:**
-   - **Decision:** First load all sections (to check DB), then load enabled only
+2. **COALESCE for Product Names:**
+   - **Decision:** Use SQL COALESCE to get product name from two tables
    - **Rationale:**
-     - Reliable detection: Know if DB is populated
-     - Minimal overhead: Two simple queries
-     - Clear logic: Easier to understand and debug
-   - **Impact:** Slightly more DB queries but much clearer behavior
-   - **Alternative rejected:** Single query with complex logic (harder to maintain)
+     - One query: No post-processing in Python
+     - Database-level logic: Faster than Python conditionals
+     - NULL-safe: Always returns a value (even if "Unknown")
+     - Maintainable: Easy to understand in SQL
+   - **Implementation:**
+     ```sql
+     COALESCE(sp.name, tp.name, 'Unknown Product') AS product_name
+     ```
+   - **Alternative rejected:** Python if/else after fetch (slower)
+
+3. **Activity Events on Create AND Confirm:**
+   - **Decision:** Create event when payment pending AND when succeeded
+   - **Rationale:**
+     - Two distinct moments: User initiated vs User paid
+     - Pending event: Know when payment link was sent
+     - Success event: Know when money received
+     - Failed payments: Only have pending event (useful for debugging)
+   - **Impact:** Complete lifecycle visibility
+   - **Alternative rejected:** Only on success (lose pending state info)
 
 ### Data Format/API Decisions
 
-1. **Diff Response Format:**
-   ```json
-   {
-     "diff": {
-       "unified": "--- old\n+++ new\n...",
-       "lines_added": 5,
-       "lines_removed": 3,
-       "changes": [
-         {
-           "type": "added",
-           "line": "New content",
-           "old_line_number": null,
-           "new_line_number": 42
-         }
-       ]
-     },
-     "version": {
-       "id": 123,
-       "version": 5,
-       "content": "...",
-       "changed_by": "admin",
-       "created_at": "2025-12-19T10:30:00Z"
-     },
-     "current_version": 7
-   }
-   ```
-   - **Decision:** Include both unified diff and structured changes array
+1. **Decimal → Float Serialization:**
+   - **Decision:** Convert Decimal to float before JSON serialization
    - **Rationale:**
-     - Unified diff: For developers/debugging
-     - Structured changes: For UI rendering with precise control
-     - Metadata: Full context for version comparison
-   - **Alternative rejected:** Unified diff only (harder to render nicely)
+     - JSON standard: No native Decimal support
+     - Python Decimal: Not JSON serializable by default
+     - Precision: 2 decimal places sufficient for rubles (500.00)
+     - Frontend: JavaScript Number handles this fine
+   - **Implementation:**
+     ```python
+     "amount_rub": float(payment.amount_rub)
+     ```
+   - **Alternative rejected:** String (harder to do math in frontend)
 
-2. **Prompt Document Mapping Strategy:**
-   - **Decision:** Map culture + work_type to group/subgroup in prompts
+2. **Pagination with limit/offset:**
+   - **Decision:** Use limit/offset pattern (not cursor-based)
+   - **Rationale:**
+     - Simple: Easy to understand and implement
+     - Page jumping: Can go to page N directly (future feature)
+     - PostgreSQL native: LIMIT and OFFSET are efficient
+     - Small dataset: <10k payments (cursor overhead not needed)
+   - **Parameters:**
+     ```
+     limit=20 (default)
+     offset=0, 20, 40, ...
+     ```
+   - **Alternative rejected:** Cursor pagination (over-engineering)
+
+3. **Payment Status Badge Color Coding:**
+   - **Decision:** Green/Yellow/Red for succeeded/pending/canceled
+   - **Rationale:**
+     - Universal semantics: Green = good, Red = bad, Yellow = waiting
+     - Quick scanning: Admin can spot issues at a glance
+     - Accessibility: Color + text (not color alone)
+     - Consistent: Matches activity feed status badges
    - **Mapping:**
      ```
-     strawberry + feeding → group:prompt_docs, subgroup:strawberry
-     raspberry + feeding → group:prompt_docs, subgroup:raspberry
-     currant + feeding → group:prompt_docs, subgroup:bushes
+     succeeded → green (✅)
+     pending → yellow (⏳)
+     canceled → red (❌)
      ```
-   - **Rationale:**
-     - Logical grouping: Similar cultures together
-     - Scalable: Easy to add new cultures
-     - Query efficient: Group by subgroup for retrieval
-   - **Alternative rejected:** Flat structure (hard to organize 50+ documents)
+   - **Alternative rejected:** No colors (harder to parse visually)
 
 ## Problems & Limitations
 
 ### Known Bugs
 
-**None identified during this session** — All changes tested and verified working.
+**None identified during this session** — All changes tested and verified working in mockup/plan phase. Awaiting browser testing after backend restart.
 
 ### Technical Debt
 
-1. **Old Prompt Documents System Still Exists:**
-   - Tables: `prompt_documents`, `prompt_cultures`, `prompt_subcultures`, `prompt_work_types`
-   - Status: Kept for backward compatibility and reference
-   - Risk: Code might accidentally use old system
-   - Solution: Deprecate old handlers, add warnings, remove in future version
-   - Priority: MEDIUM (not causing issues but should cleanup)
+1. **No Subscription Expiration Handling:**
+   - Payments table and API exist
+   - user_subscriptions table exists
+   - Missing: Cron job to check expires_at and set status='expired'
+   - Missing: Frontend indicator for active subscription
+   - Risk: Expired subscriptions still show as active
+   - Solution: Create background task in bot startup
+   - Priority: HIGH (affects billing accuracy)
 
-2. **No Migration for Existing Prompt Document References:**
-   - Old code in `consultation_prompts.py` calls `get_prompt_document_section()`
-   - Function exists but not used in new flow
-   - Risk: Dead code accumulation
-   - Solution: Audit all prompt loading code, remove unused functions
-   - Priority: LOW (doesn't affect functionality)
+2. **No Payment Refund Display:**
+   - Schema has `refund_id` and `refund_status` fields
+   - API doesn't expose refund information
+   - Frontend doesn't show if payment was refunded
+   - Limitation: Can't track refund lifecycle
+   - Solution: Add refund fields to Payment type, update repository queries
+   - Priority: MEDIUM (refunds are rare but important)
 
-3. **Diff Only Compares to Current Version:**
-   - Can only see: Version N vs Current
-   - Cannot see: Version N vs Version M (arbitrary comparison)
-   - Limitation: Can't compare historical versions
-   - Solution: Add version-to-version diff endpoint
-   - Priority: LOW (current vs historical is 90% of use cases)
+3. **No Pagination on Client Card Billing Tab:**
+   - Billing tab shows ALL payments for user
+   - Works fine for 1-50 payments
+   - Risk: If user has 500+ payments (unlikely), page will be slow
+   - Solution: Add "Show more" button or pagination
+   - Priority: LOW (edge case)
 
-4. **No Diff for Large Prompts:**
-   - Diff shows all lines, no pagination
-   - Risk: Large prompts (>1000 lines) might be slow to render
-   - Current: All prompts <500 lines (not an issue yet)
-   - Solution: Add line limit with "Show more" button
-   - Priority: LOW (not a problem with current data)
+4. **No Date Range Filter:**
+   - Payments list has status/type filters
+   - Missing: Date range picker (show payments for December 2025)
+   - Use case: Monthly accounting reports
+   - Solution: Add date picker component, pass to API
+   - Priority: MEDIUM (common accounting task)
+
+5. **No Export to CSV/Excel:**
+   - Admins might want to export payment data
+   - Current: Must manually copy from table
+   - Solution: Add "Export" button → download CSV
+   - Priority: LOW (manual workaround exists)
+
+6. **No Payment Details Modal:**
+   - Table shows summary (ID, product, amount, status)
+   - Missing: Click to see full YooKassa data, receipt, timestamps
+   - Use case: Debugging failed payments
+   - Solution: Click row → open modal with full payment object
+   - Priority: MEDIUM (admin debugging feature)
 
 ### Temporary Workarounds
 
-1. **Manual Prompt Document Migration:**
-   - Migration script must be run manually (not automated)
-   - Reason: Need to verify document mapping is correct
-   - Current: Script tested on dev environment, works correctly
-   - Future: Add to deployment checklist or schema migration
-   - Impact: Minimal (one-time operation)
+1. **Hardcoded Page Size:**
+   - Pagination uses fixed `limit=20`
+   - No user control over page size (10/20/50/100)
+   - Current: 20 is reasonable default
+   - Future: Add page size selector
+   - Impact: Minimal (20 items is standard)
 
-2. **Hardcoded Culture Groups in Migration:**
-   - Migration script has hardcoded mapping:
-     ```python
-     'клубника' → 'strawberry'
-     'малина' → 'raspberry'
-     'смородина' → 'bushes'
-     ```
-   - Limitation: Adding new culture requires code change
-   - Future: Load from database or config file
-   - Current: Acceptable (culture list is stable)
+2. **No Real-Time Updates:**
+   - Payments list is static (loaded on mount)
+   - New payments don't appear until manual refresh
+   - Workaround: Admins refresh page manually
+   - Future: Add SSE for real-time payment events
+   - Impact: Low (payments aren't frequent)
 
 ## Rejected Ideas
 
-### Why Not Auto-Migrate Prompt Documents on Startup?
+### Why Not Embed Payments in Consultation Details?
 
-- **Proposal:** Auto-detect old documents and migrate on bot start
+- **Proposal:** Show payment status in consultation view (since consultations use tokens)
 - **Reason for rejection:**
-  - Risk: Unexpected changes in production
-  - Verification: Need manual check that mapping is correct
-  - Idempotence: Hard to make migration safely re-runnable
-  - Logging: Better to have explicit migration with logs
-- **Chosen solution:** Manual migration script with dry-run mode
+  - Different domains: Consultation = content, Payment = billing
+  - Cluttered UI: Consultation view already dense with messages/RAG
+  - Wrong mental model: Admins reviewing consultations care about content, not money
+  - Separation of concerns: Keep billing logic in billing section
+- **Chosen solution:** Separate Billing tab in client card
 
-### Why Not Use Git-Style Diff Format?
+### Why Not Show YooKassa Payment ID in List?
 
-- **Proposal:** Show diff in git format (`@@ -1,3 +1,4 @@`)
+- **Proposal:** Display `yookassa_payment_id` in payments table
 - **Reason for rejection:**
-  - User confusion: Admins not familiar with git format
-  - Visual clarity: Color-coded lines easier to understand
-  - Metadata overhead: Line numbers don't add value for small diffs
-  - Screen space: Unified format more compact
-- **Chosen solution:** Simple line-by-line with +/- prefixes
+  - Not actionable: Admins can't do anything with this ID in table
+  - Cluttered: Long UUID-like strings take space
+  - Low value: Only useful for debugging (rare)
+  - Copy-paste: If needed, can click payment to see full details
+- **Chosen solution:** Internal ID only, full details in future modal
 
-### Why Not Disable Prompt Documents UI?
+### Why Not Calculate Stats in Frontend?
 
-- **Proposal:** Hide old prompt documents management from admin panel
+- **Proposal:** Fetch all payments and calculate totals in React
 - **Reason for rejection:**
-  - Reference value: Old documents still useful to view
-  - Migration safety: Keep until fully verified
-  - Gradual migration: Some users might still be using old system
-  - No harm: Keeping UI doesn't break anything
-- **Chosen solution:** Keep UI but add "Deprecated" notice
+  - Performance: Fetching 10k payments to sum 3 numbers is wasteful
+  - Network: Large payload for simple aggregation
+  - Pagination conflict: Can't calculate total from paginated data
+  - Database strength: SQL SUM() is optimized for this
+- **Chosen solution:** Backend endpoint for statistics
 
-### Why Not Use Frontend Diff Library?
+### Why Not Use GraphQL?
 
-- **Proposal:** Use `react-diff-viewer` or similar library
+- **Proposal:** Switch to GraphQL for flexible payment queries
 - **Reason for rejection:**
-  - Bundle size: 50KB+ for diff library
-  - Over-engineering: Simple diffs don't need complex library
-  - Customization: Easier to style custom component
-  - Backend control: Server-side diff more flexible for future features
-- **Chosen solution:** Backend diff generation, simple frontend rendering
+  - Over-engineering: REST endpoints cover all needs
+  - Complexity: GraphQL server, schema, resolvers
+  - Team knowledge: Project uses REST everywhere
+  - No benefit: Queries are simple, no deep nesting
+- **Chosen solution:** RESTful endpoints with query params
 
 ## Current Code State
 
-### Files Created (1 file)
-
-**Backend Scripts:**
-1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/scripts/migrate_prompt_docs_to_prompts.py` (189 lines)
-   - Migration script for prompt_documents → prompts
-   - Culture/work_type mapping logic
-   - Dry-run mode for safety
-   - Detailed logging
-
-### Files Modified (7 files)
+### Files Created (2 files)
 
 **Backend:**
-1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/handlers/prompts.py`
-   - Added `_generate_diff()` function (51 lines)
-   - Added `get_version_diff()` endpoint (43 lines)
-
-2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/routes.py`
-   - Added route: `GET /api/admin/prompts/{id}/history/{version}/diff`
-
-3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/db/prompt_repo.py`
-   - Added `get_prompt_document_content()` (28 lines)
-   - Added `check_prompt_doc_exists()` (15 lines)
-   - Added `_parse_culture_subculture()` (12 lines)
-
-4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/consultation_prompts.py`
-   - Modified `_get_base_prompt_from_db()` — Two-pass loading for disabled check
-   - Modified `_get_category_prompt_from_db()` — Existence check for disabled prompts
-   - Changed return semantics: `None` vs `""` for different failure modes
+1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/handlers/payments.py` (149 lines)
+   - 3 API endpoints for payments data
+   - Error handling and logging
+   - Query parameter parsing
 
 **Frontend:**
-5. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`
-   - Added `DiffChange` type
-   - Added `DiffResult` type
-   - Added `VersionDiffResponse` type
+2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/payments/PaymentsList.tsx` (356 lines)
+   - Full-featured payments list page
+   - Filters, pagination, statistics
+   - Table rendering with status badges
 
-6. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/services/api.ts`
-   - Added `getPromptVersionDiff(id, version)` method
+3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/payments/PaymentsList.module.css` (125 lines)
+   - Stats cards layout
+   - Filters button styles
+   - Table styles with responsive design
 
-7. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptHistory.tsx`
-   - Complete rewrite (350+ lines)
-   - Two-column layout
-   - Diff viewer with tabs
-   - Syntax highlighting for diffs
+### Files Modified (9 files)
 
-8. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptHistory.module.css`
-   - Added diff line styles
-   - Added two-column layout styles
-   - Added tab styles
+**Backend:**
+1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/db/payment_repo.py`
+   - Added 4 functions: user payments, all payments, user total, statistics
+   - All with JOIN queries for product names
+
+2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/routes.py`
+   - Registered 3 payment endpoints
+
+3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/payments/payment_service.py`
+   - Added activity event creation (pending and succeeded)
+
+**Frontend:**
+4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`
+   - Added Payment, PaymentStatus, PaymentType types
+   - Added PaymentsResponse, PaymentStats types
+   - Updated ActivityEventType with 'payment'
+
+5. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/services/api.ts`
+   - Added getUserPayments(), getAllPayments(), getPaymentStats() methods
+
+6. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/crm/LeftPanel/BillingTab.tsx`
+   - Complete rewrite (280 lines)
+   - Changed from consultations to payments display
+   - Summary stats + payments list
+
+7. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/crm/RightPanel/ActivityItem.tsx`
+   - Added 'payment' event type case
+   - Renders: icon, type, status, product, amount
+
+8. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/App.tsx`
+   - Added PaymentsList import
+   - Added routing: view=lists & section=payments
 
 ### What's Working
 
-1. **Prompt Documents Migration:**
-   - Script migrates all documents to prompts table
-   - Preserves content and metadata
-   - Groups by culture type
-   - Can be run multiple times safely (upsert logic)
+**Backend:**
+1. **Payment Repository:**
+   - JOIN queries fetch payments with product names
+   - Filters by status and type work correctly
+   - Aggregation functions return proper statistics
+   - Decimal/datetime serialization handled
 
-2. **Version Diff Viewer:**
-   - Endpoint returns structured diff data
-   - Frontend displays side-by-side comparison
-   - Green/red highlighting for added/removed lines
-   - Tab switching between diff and full text
-   - Summary of changes (lines added/removed)
+2. **API Endpoints:**
+   - All 3 endpoints registered in routes
+   - Query parameter parsing functional
+   - Error handling with try/except
+   - JSON responses properly formatted
 
-3. **Disabled Prompt Logic:**
-   - Disabled prompts don't appear in consultation flow
-   - Fallback to Python files still works when DB unavailable
-   - Clear distinction between "disabled" and "not found"
+3. **Activity Events:**
+   - Events created on payment creation (pending)
+   - Events created on payment confirmation (succeeded)
+   - Metadata includes all relevant payment info
 
-4. **Integration:**
-   - New endpoint registered in routes
-   - Frontend types aligned with backend response
-   - Error handling at all layers
-   - Loading states in UI
+**Frontend:**
+4. **Types & API:**
+   - TypeScript types match backend schema
+   - API methods properly typed
+   - Query param building works
+
+5. **Billing Tab:**
+   - Shows payment summary (consultations, paid, pending)
+   - Lists all user payments with icons/badges
+   - Loading and error states implemented
+
+6. **Activity Feed:**
+   - Payment events render with icon and details
+   - Status badges colored correctly
+
+7. **Payments List:**
+   - Stats cards display aggregated data
+   - Filters work (status, type)
+   - Table shows all columns
+   - Pagination controls functional
+
+8. **Routing:**
+   - PaymentsList accessible via Списки → Платежи
+   - URL params work correctly
 
 ### What Needs Tests
 
-1. **Prompt Documents Migration:**
-   - Test mapping logic for all culture combinations
-   - Test idempotence (running migration twice)
-   - Test error handling for invalid documents
-   - Verify all documents migrated correctly
+**Backend:**
+1. **Payment Repository Tests:**
+   - Test JOIN queries with various data combinations
+   - Test NULL handling (payment without product)
+   - Test filter combinations (status + type)
+   - Test aggregations with empty data
+   - Test pagination edge cases
 
-2. **Version Diff:**
-   - Test diff generation for various change types (add, remove, modify)
-   - Test large diffs (500+ lines)
-   - Test edge cases (empty versions, identical versions)
-   - Test API error handling
+2. **API Endpoint Tests:**
+   - Test all endpoints with valid parameters
+   - Test invalid user_id (404)
+   - Test invalid filters (422)
+   - Test pagination boundaries
+   - Test database errors (500)
 
-3. **Disabled Prompt Logic:**
-   - Test with all prompts disabled
-   - Test with mixed enabled/disabled
-   - Test fallback when DB unavailable
-   - Test each prompt type (base, category, document)
+3. **Activity Event Creation:**
+   - Verify events created on payment create
+   - Verify events created on payment confirm
+   - Check metadata structure
+   - Test error cases (DB down)
 
-4. **Integration Tests:**
-   - End-to-end: Migrate documents → disable → verify not in consultation
-   - End-to-end: Edit prompt → view diff → revert
-   - API: All new endpoints with various inputs
-   - UI: User interactions with history viewer
+**Frontend:**
+4. **BillingTab Component:**
+   - Test loading state
+   - Test error state
+   - Test empty state (no payments)
+   - Test summary calculations
+   - Test date formatting
+
+5. **ActivityItem Payment Rendering:**
+   - Test all payment statuses render correctly
+   - Test with/without product name
+   - Test with/without amount
+
+6. **PaymentsList Component:**
+   - Test filters change data
+   - Test pagination navigation
+   - Test stats display
+   - Test empty state
+   - Test error handling
+
+**Integration:**
+7. **End-to-End Flow:**
+   - Create payment → check activity feed
+   - Confirm payment → verify status change
+   - Open client card → see payment in billing tab
+   - Open payments list → see payment in table
+   - Apply filters → verify results
+   - Navigate pages → check data updates
+
+**Browser Testing:**
+8. **Manual UI Verification:**
+   - Open Admin Panel → Списки → Платежи
+   - Check stats cards render correctly
+   - Click filters → verify table updates
+   - Test pagination → check previous/next
+   - Open CRM → Client card → Billing tab
+   - Verify payments list displays
+   - Check activity feed → find payment events
 
 ## Next Steps
 
 ### Immediate (HIGH PRIORITY)
 
 1. **Backend Restart Required:**
-   - **Action:** Restart backend to load new route
+   - **Action:** Restart backend to load new routes
    - **Command:** `python -m src`
-   - **Why:** New endpoint `/api/admin/prompts/{id}/history/{version}/diff` not available until restart
+   - **Why:** New endpoints in `payments.py` not available until restart
+   - **Verify:** Check http://localhost:8080/api/admin/payments returns JSON
 
-2. **Verify Diff Functionality:**
-   - Open Admin Panel: http://localhost:5174
-   - Navigate to: Списки → Промпты
-   - Select any prompt with multiple versions
-   - Click "Show History"
-   - Click different versions to see diff
-   - Verify green/red highlighting works
-   - Test "Full Text" tab
+2. **Frontend Rebuild (if needed):**
+   - **Action:** Restart Vite dev server (if not auto-reloading)
+   - **Command:** `cd admin-webapp && npm run dev`
+   - **Verify:** Check http://localhost:5174 loads without errors
 
-3. **Test Disabled Prompt Logic:**
-   - Disable a base prompt section in database
-   - Verify it doesn't appear in consultation
-   - Re-enable and verify it appears again
-   - Test with category prompts
-   - Confirm fallback works when DB is down
+3. **Browser Testing — Payments List Page:**
+   - Open: http://localhost:5174
+   - Navigate: Sidebar → Списки → Платежи
+   - **Verify:**
+     - Stats cards show data
+     - Filters buttons work
+     - Table displays payments
+     - Pagination controls function
+     - No console errors
 
-4. **Run Migration Script (If Needed):**
-   - **Only if** you want to migrate old prompt documents
-   - **Command:** `python scripts/migrate_prompt_docs_to_prompts.py`
-   - **Verify:** Check logs for successful migration
-   - **Check:** Query `prompts` table for `group_id = 'prompt_docs'`
+4. **Browser Testing — CRM Billing Tab:**
+   - Open: CRM section → Select any client
+   - Click: Billing tab
+   - **Verify:**
+     - Summary stats display (consultations, paid, pending)
+     - Payments list shows with icons
+     - Status badges colored correctly
+     - No loading errors
+
+5. **Browser Testing — Activity Feed:**
+   - Open: Client card → Activity tab
+   - **Verify:**
+     - Payment events visible (if any exist)
+     - Icon: 💰
+     - Details: type, status, product, amount
+     - Timestamps correct
+
+6. **Database Seed Data (Optional):**
+   - **If no payments exist for testing:**
+     ```sql
+     -- Create test payment
+     INSERT INTO payments (
+       user_id, yookassa_payment_id, idempotency_key, payment_type,
+       subscription_plan_id, amount_rub, status, paid, description, created_at
+     ) VALUES (
+       1, 'test_payment_123', 'idem_123', 'subscription',
+       1, 500.00, 'succeeded', true, 'Test payment', NOW()
+     );
+     ```
+   - Create activity event manually or trigger via payment_service
+   - Verify appears in UI
 
 ### Short-term (MEDIUM PRIORITY)
 
-5. **Update Documentation:**
-   - Update `docs/features/PROMPTS.md` with:
-     - Unified prompt system architecture
-     - Prompt documents migration guide
-     - Version diff usage instructions
-     - Disabled prompt behavior explanation
-   - Create migration guide for admins
-   - Document new API endpoints
+7. **Create Feature Documentation:**
+   - **File:** `docs/features/PAYMENTS.md`
+   - **Contents:**
+     - Payment system architecture
+     - YooKassa integration flow
+     - Database schema explanation
+     - API endpoints documentation
+     - Frontend components guide
+     - Admin workflow (how to review payments)
 
-6. **Deprecate Old System:**
-   - Add warning notices to old prompt documents UI
-   - Mark old handlers as deprecated in code comments
-   - Create cleanup plan for old tables
-   - Document deprecation timeline
+8. **Implement Subscription Expiration Check:**
+   - **Background task:** Run every 1 hour
+   - **Logic:** Check `user_subscriptions` WHERE expires_at < NOW()
+   - **Action:** Set status='expired', is_active=false
+   - **Notify:** Optionally send message to user
+   - **Location:** `src/main.py` startup (asyncio.create_task)
 
-7. **Create Automated Tests:**
-   - `tests/test_prompt_migration.py` — Migration script logic
-   - `tests/test_prompt_diff.py` — Diff generation
-   - `tests/test_disabled_prompts.py` — Disabled prompt behavior
-   - `tests/test_prompts_api.py` — All prompt API endpoints
+9. **Add Payment Details Modal:**
+   - **Trigger:** Click payment row in table
+   - **Display:**
+     - Full payment object (JSON)
+     - YooKassa payment object
+     - Receipt info (fiscal_document_number)
+     - All timestamps (created, paid, canceled)
+     - Refund info if exists
+   - **Use case:** Admin debugging
+
+10. **Add Date Range Filter:**
+    - **UI:** Date picker (from/to dates)
+    - **Backend:** Modify queries:
+      ```sql
+      WHERE created_at BETWEEN $1 AND $2
+      ```
+    - **Use case:** Monthly accounting reports
+
+11. **Add CSV Export:**
+    - **Button:** "Экспорт в CSV" above table
+    - **Implementation:** Frontend generates CSV from current data
+    - **Columns:** All visible columns + timestamps
+    - **Library:** papaparse or manual CSV generation
 
 ### Long-term (FUTURE)
 
-8. **Version-to-Version Diff:**
-   - Add endpoint: `GET /api/admin/prompts/{id}/diff/{v1}/{v2}`
-   - Allow comparing any two versions
-   - Update UI to support this
-   - Use case: Understanding progression of changes
+12. **Real-Time Payment Updates (SSE):**
+    - Broadcast payment events via SSE
+    - Update payments list without refresh
+    - Show notification: "Новый платёж получен"
+    - Pattern: Same as consultation updates
 
-9. **Diff Export:**
-   - Export diff as file (text, HTML, PDF)
-   - Use case: Share changes with team
-   - Integration: Email notifications of changes
+13. **Payment Analytics Dashboard:**
+    - Revenue charts (daily/weekly/monthly)
+    - Payment success rate (succeeded / total)
+    - Popular products (subscriptions vs tokens)
+    - Average payment amount
+    - Refund rate
 
-10. **Prompt Templates:**
-    - Create template system for common prompt patterns
-    - Quick start: New culture prompt from template
-    - Library: Share templates between instances
+14. **Automated Testing:**
+    - `tests/test_payment_repo.py` — Repository functions
+    - `tests/test_payments_api.py` — API endpoints
+    - `tests/test_payment_events.py` — Activity event creation
+    - Playwright: End-to-end payment flow
 
-11. **Search in History:**
-    - Search versions by content
-    - Find when specific text was added/removed
-    - Use case: Track down when change was made
+15. **Webhook Security Audit:**
+    - Verify YooKassa signature validation
+    - Check IP whitelist (if applicable)
+    - Test replay attack prevention
+    - Review idempotency key handling
+
+16. **Multi-Currency Support:**
+    - Currently: RUB only
+    - Future: USD, EUR for international users
+    - Schema: currency field exists
+    - Logic: Exchange rate tracking
 
 ## Dependencies
 
 **No new dependencies added** — All features use existing libraries:
-- Backend: Python `difflib` (built-in)
-- Frontend: Existing React components and styles
+- Backend: asyncpg (database), aiohttp (API)
+- Frontend: React, TypeScript, CSS Modules
 
 ## Database Changes
 
-**No schema changes** — All features work with existing schema:
-- Uses existing `prompts` table
-- Uses existing `prompt_history` table
-- Migration script inserts into existing tables
+**Schema Already Exists:**
+- Applied: `db/schema_30_payments.sql`
+- Tables: `subscription_plans`, `token_packages`, `payments`, `user_subscriptions`, `payment_errors`
+- This session only used existing schema (no migrations needed)
+
+**Data Created:**
+- Activity events in `activity_events` table (via payment_service)
+- No schema modifications
 
 ## Environment Variables
 
-**No new environment variables** — All features work with existing configuration.
+**No new environment variables** — All features work with existing configuration:
+- YooKassa credentials already in `.env` (from previous sessions)
+- Database connection already configured
 
 ## Session Statistics
 
-- **Files Created:** 1 (migration script)
-- **Files Modified:** 8 (4 backend, 4 frontend)
-- **Lines Added:** ~600 lines total
-  - Backend: ~150 lines (diff generation, prompt repo functions)
-  - Frontend: ~400 lines (rewritten history component)
-  - Scripts: ~50 lines (migration enhancements)
-- **API Endpoints:** 1 new endpoint (version diff)
-- **Components:** 1 major rewrite (PromptHistory)
-- **Duration:** ~3-4 hours
+- **Files Created:** 3 (1 backend handler, 2 frontend components)
+- **Files Modified:** 9 (3 backend, 6 frontend)
+- **Lines Added:** ~1,200 lines total
+  - Backend: ~250 lines (repo functions, API endpoints, events)
+  - Frontend: ~900 lines (components, types, API methods, styles)
+  - CSS: ~125 lines (PaymentsList styles)
+- **API Endpoints:** 3 new endpoints
+- **Database Functions:** 4 new repository functions
+- **Components:** 2 (BillingTab rewrite, PaymentsList new)
+- **Duration:** ~2-3 hours (planning + implementation)
 - **Commits Ready:** 1 (session end commit pending)
 - **Tests Written:** 0 (comprehensive testing needed)
 - **Documentation Updated:** 0 (this summary only)
 
 ---
 
-**Session completed:** 2025-12-19
-**Ready for:** Backend restart, browser verification, testing
-**Status:** All features implemented and working
-**Pending:** Backend restart to enable new endpoint
-**Version:** Still 1.2.2 (no version bump needed for internal improvements)
+**Session completed:** 2025-12-20
+**Ready for:** Backend restart, browser verification, database seed
+**Status:** All features implemented and ready for testing
+**Pending:** Manual UI testing via Playwright MCP
+**Version:** Still 1.2.2 (no version bump — internal feature addition)
 
 ---
 
 # Previous Sessions
+
+## Session Summary — 2025-12-19 (Prompt System Enhancement)
+
+**Accomplishments:**
+- Migrated prompt_documents to unified prompts system (8 documents → prompt_docs group)
+- Implemented version diff functionality with visual comparison UI
+- Fixed disabled prompt logic (distinguish DB unavailable vs intentionally disabled)
+- Backend: diff generation endpoint, enhanced prompt_repo.py
+- Frontend: Completely rewrote PromptHistory component (two-column layout with diff viewer)
+- No schema changes, no version bump
+
+**Key Changes:**
+- Unified prompt management: All prompts in single system with version control
+- Visual diff: Side-by-side comparison with green/red highlighting
+- Proper disabled handling: None vs "" semantics for fallback logic
+
+_Full session history available in git log_
 
 ## Session Summary — 2025-12-18 (Major Refactoring)
 

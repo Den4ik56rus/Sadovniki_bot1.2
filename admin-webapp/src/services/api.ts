@@ -963,6 +963,48 @@ export const api = {
   },
 
   // ============================================================================
+  // Payments API (Платежи и подписки)
+  // ============================================================================
+
+  async getUserPayments(
+    userId: number,
+    params?: { limit?: number; offset?: number; status?: PaymentStatus }
+  ): Promise<PaymentsResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    if (params?.status) searchParams.set('status', params.status)
+
+    const query = searchParams.toString()
+    return fetchApi<PaymentsResponse>(
+      `/payments/user/${userId}${query ? `?${query}` : ''}`
+    )
+  },
+
+  async getAllPayments(params?: {
+    limit?: number
+    offset?: number
+    status?: PaymentStatus
+    payment_type?: PaymentType
+    user_id?: number
+  }): Promise<PaymentsResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.payment_type) searchParams.set('payment_type', params.payment_type)
+    if (params?.user_id) searchParams.set('user_id', String(params.user_id))
+
+    const query = searchParams.toString()
+    return fetchApi<PaymentsResponse>(`/payments${query ? `?${query}` : ''}`)
+  },
+
+  async getPaymentStats(period?: 'day' | 'week' | 'month' | 'all'): Promise<PaymentStats> {
+    const query = period ? `?period=${period}` : ''
+    return fetchApi<PaymentStats>(`/payments/stats${query}`)
+  },
+
+  // ============================================================================
   // Prompts API (Редактор промптов)
   // ============================================================================
 

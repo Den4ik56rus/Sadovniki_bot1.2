@@ -244,7 +244,7 @@ export type CustomFieldType = 'text' | 'number' | 'date' | 'checkbox' | 'select'
 export type TaskPriority = 'low' | 'medium' | 'high'
 export type TaskStatus = 'pending' | 'completed' | 'cancelled'
 export type RepeatInterval = 'none' | 'daily' | 'weekly' | 'monthly'
-export type ActivityEventType = 'consultation' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change' | 'article'
+export type ActivityEventType = 'consultation' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change' | 'article' | 'payment'
 
 export interface ClientTag {
   id: number
@@ -574,6 +574,75 @@ export interface ExpenseFilters {
 }
 
 // =============================================================================
+// Payments & Subscriptions Types (Платежи и подписки)
+// =============================================================================
+
+export type PaymentStatus = 'pending' | 'succeeded' | 'canceled'
+export type PaymentType = 'subscription' | 'tokens'
+
+export interface Payment {
+  id: number
+  user_id: number
+  yookassa_payment_id: string
+  payment_type: PaymentType
+  subscription_plan_id: number | null
+  token_package_id: number | null
+  amount_rub: number
+  status: PaymentStatus
+  paid: boolean
+  created_at: string
+  paid_at: string | null
+  canceled_at: string | null
+
+  // Enriched fields (from JOINs)
+  subscription_plan_name?: string | null
+  token_package_name?: string | null
+  duration_days?: number | null
+  tokens_amount?: number | null
+  username?: string | null
+  first_name?: string | null
+  telegram_user_id?: number
+}
+
+export interface PaymentsResponse {
+  payments: Payment[]
+  total: number
+  total_paid?: number
+  stats?: PaymentStats
+}
+
+export interface PaymentStats {
+  total_count: number
+  total_amount: number
+  paid_amount: number
+  pending_amount: number
+  by_type?: {
+    subscription?: { count: number; amount: number }
+    tokens?: { count: number; amount: number }
+  }
+  by_status?: {
+    succeeded?: { count: number; amount: number }
+    pending?: { count: number; amount: number }
+    canceled?: { count: number; amount: number }
+  }
+}
+
+export interface SubscriptionPlan {
+  id: number
+  name: string
+  price_rub: number
+  duration_days: number
+  tokens_included: number
+}
+
+export interface TokenPackage {
+  id: number
+  name: string
+  price_rub: number
+  tokens_amount: number
+}
+
+// =============================================================================
 // Prompt Documents Types (Документы для промптов)
 // =============================================================================
 
@@ -643,7 +712,9 @@ export interface RagDocument {
   chunks_count: number
   passported_chunks: number
   file_size: number
+  embedding_cost: number
   context_cost: number
+  total_cost: number
   context_tokens: number
   created_at: string | null
 }

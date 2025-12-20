@@ -94,15 +94,21 @@ export function ChunkPassportEditor() {
     }))
   }
 
+  // Только сохранение (без перехода)
+  const handleSave = useCallback(async () => {
+    if (!currentChunk) return
+    await updateChunkPassport(currentChunk.id, passport)
+  }, [currentChunk, passport, updateChunkPassport])
+
   // Сохранение и переход к следующему
   const handleSaveAndNext = useCallback(async () => {
     if (!currentChunk) return
 
     const success = await updateChunkPassport(currentChunk.id, passport)
-    if (success) {
+    if (success && currentChunkIndex < chunks.length - 1) {
       nextChunk()
     }
-  }, [currentChunk, passport, updateChunkPassport, nextChunk])
+  }, [currentChunk, passport, updateChunkPassport, nextChunk, currentChunkIndex, chunks.length])
 
   // Только переход к следующему (без сохранения)
   const handleSkip = () => {
@@ -267,14 +273,24 @@ export function ChunkPassportEditor() {
             <code>{generatePrefixPreview(passport)}</code>
           </div>
 
-          {/* Generate context button */}
-          <button
-            className={styles.btnGenerateContext}
-            onClick={handleGenerateContext}
-            disabled={isGeneratingContext}
-          >
-            {isGeneratingContext ? 'Генерация...' : '✨ Сгенерировать контекст'}
-          </button>
+          {/* Action buttons */}
+          <div className={styles.passportActions}>
+            <button
+              className={styles.btnSave}
+              onClick={handleSave}
+              disabled={isUpdating}
+            >
+              {isUpdating ? 'Сохранение...' : '💾 Сохранить паспорт'}
+            </button>
+
+            <button
+              className={styles.btnGenerateContext}
+              onClick={handleGenerateContext}
+              disabled={isGeneratingContext}
+            >
+              {isGeneratingContext ? 'Генерация...' : '✨ Сгенерировать контекст'}
+            </button>
+          </div>
         </div>
       </div>
 

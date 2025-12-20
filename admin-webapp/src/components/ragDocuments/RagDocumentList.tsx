@@ -1,5 +1,7 @@
 // RAG Document List — Таблица документов
+import { useState, useEffect } from 'react'
 import { useRagDocumentStore } from '@/store/ragDocumentStore'
+import { useCurrencyStore } from '@/store'
 import type { RagDocument } from '@/types'
 import styles from './RagDocumentList.module.css'
 
@@ -54,6 +56,61 @@ function ProgressBar({ current, total }: { current: number; total: number }) {
   )
 }
 
+function CostCell({ doc }: { doc: RagDocument }) {
+  const { usdRate } = useCurrencyStore()
+  const [showTooltip, setShowTooltip] = useState(false)
+
+  const embeddingCost = doc.embedding_cost || 0
+  const contextCost = doc.context_cost || 0
+  const totalCost = doc.total_cost || (embeddingCost + contextCost)
+
+  if (!totalCost || totalCost <= 0 || isNaN(totalCost)) {
+    return <span className={styles.noCost}>—</span>
+  }
+
+  const totalRub = totalCost * usdRate
+  const embeddingRub = embeddingCost * usdRate
+  const contextRub = contextCost * usdRate
+
+  // Форматирование цены в рублях
+  const formatRub = (rub: number) => {
+    if (rub < 1) {
+      return `${(rub * 100).toFixed(1)} коп.`
+    }
+    return `${rub.toFixed(2)} ₽`
+  }
+
+  return (
+    <div
+      className={styles.costWrapper}
+      onMouseEnter={() => setShowTooltip(true)}
+      onMouseLeave={() => setShowTooltip(false)}
+    >
+      <span className={styles.costValue}>{formatRub(totalRub)}</span>
+      {showTooltip && (
+        <div className={styles.costTooltip}>
+          <div className={styles.costTooltipRow}>
+            <span>Векторизация:</span>
+            <span>{formatRub(embeddingRub)}</span>
+          </div>
+          <div className={styles.costTooltipRow}>
+            <span>Контекст (LLM):</span>
+            <span>{formatRub(contextRub)}</span>
+          </div>
+          <div className={styles.costTooltipDivider} />
+          <div className={styles.costTooltipRow}>
+            <span>Итого:</span>
+            <strong>{formatRub(totalRub)}</strong>
+          </div>
+          <div className={styles.costTooltipUsd}>
+            ${totalCost.toFixed(4)} × {usdRate.toFixed(0)} ₽/$
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
 function DocumentRow({ doc }: { doc: RagDocument }) {
   const { openEditor, deleteDocument } = useRagDocumentStore()
 
@@ -91,7 +148,7 @@ function DocumentRow({ doc }: { doc: RagDocument }) {
         {formatBytes(doc.file_size)}
       </td>
       <td className={styles.cellCost}>
-        {doc.context_cost > 0 ? `$${doc.context_cost.toFixed(4)}` : '—'}
+        <CostCell doc={doc} />
       </td>
       <td className={styles.cellDate}>
         {formatDate(doc.created_at)}
@@ -120,6 +177,12 @@ function DocumentRow({ doc }: { doc: RagDocument }) {
 
 export function RagDocumentList() {
   const { documents, isLoading, error, fetchDocuments, clearAllDocuments } = useRagDocumentStore()
+  const { fetchRate } = useCurrencyStore()
+
+  // Загрузка курса валют
+  useEffect(() => {
+    fetchRate()
+  }, [fetchRate])
 
   const handleClearAll = async () => {
     if (confirm('Удалить ВСЕ RAG документы? Это действие нельзя отменить.')) {
@@ -172,7 +235,7 @@ export function RagDocumentList() {
               <th>Статус</th>
               <th>Паспортизация</th>
               <th>Размер</th>
-              <th>Контекст $</th>
+              <th>Стоимость</th>
               <th>Дата</th>
               <th>Действия</th>
             </tr>

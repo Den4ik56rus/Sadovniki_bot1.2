@@ -1,8 +1,8 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2025-12-19
+**Last Updated:** 2025-12-20
 **Project:** Sadovniki-bot v1.2.2
-**Status:** Production-ready with advanced prompt management
+**Status:** Production-ready with payments display system
 
 ## Quick Navigation
 
@@ -84,6 +84,7 @@
 │  • consultation_logs (monitoring)                           │
 │  • CRM: client_funnel_status, client_funnel_columns        │
 │  • Buyers: buyer_status, buyer_funnel_columns              │
+│  • Payments: payments, subscription_plans, token_packages  │
 └─────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────┐
@@ -93,6 +94,7 @@
 │  • Cost Tracking — tokens, pricing, latency                 │
 │  • CRM — Client Kanban (Deals funnel)                       │
 │  • Buyers — Subscription lifecycle management               │
+│  • Payments — Transaction history and statistics            │
 │  • SSE Manager — server-sent events for real-time updates   │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -186,21 +188,22 @@ User Question
 
 ## Active Context
 
-### Current Phase: Prompt System Enhancement
+### Current Phase: Payment System Display
 
 **Focus Areas:**
-1. Unified prompt management (consolidate prompt_documents into prompts system)
-2. Version control improvements (visual diff between versions)
-3. Proper handling of disabled prompts (no fallback to Python when intentionally disabled)
+1. Payment data visualization in admin panel
+2. CRM integration with billing information
+3. Payment activity tracking and statistics
 
-**Last Session Changes (2025-12-19):**
-- Migrated prompt_documents to unified prompts system (8 documents → prompt_docs group)
-- Implemented version diff functionality with visual comparison
-- Fixed disabled prompt logic (distinguish DB unavailable vs intentionally disabled)
-- Backend: Added diff generation endpoint, enhanced prompt_repo.py
-- Frontend: Completely rewrote PromptHistory component (two-column layout with diff viewer)
-- Migration: Created migrate_prompt_docs_to_prompts.py script
-- No schema changes, no version bump (internal improvements only)
+**Last Session Changes (2025-12-20):**
+- Implemented complete payment display system in Admin Panel
+- Backend: 4 JOIN functions in payment_repo, 3 new API endpoints
+- Frontend: BillingTab rewrite, PaymentsList component, activity events
+- CRM Integration: Payments visible in client card billing tab
+- Activity Feed: Payment events with icons and status badges
+- Statistics: Total received, pending, payment counts
+- Schema: Using existing schema_30_payments.sql (no changes)
+- No version bump (internal feature addition)
 
 ### Constraints & Invariants
 

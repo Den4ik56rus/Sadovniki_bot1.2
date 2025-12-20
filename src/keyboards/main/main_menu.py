@@ -14,7 +14,6 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="📅 План сезона"),
             ],
             [
-                KeyboardButton(text="💎 Премиум"),
                 KeyboardButton(text="👤 Мой профиль"),
             ],
         ],

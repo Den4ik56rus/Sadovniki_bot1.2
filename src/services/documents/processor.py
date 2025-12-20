@@ -32,7 +32,7 @@ except ImportError:
 import subprocess
 
 # Поддерживаемые форматы файлов
-SUPPORTED_EXTENSIONS = {'.pdf', '.txt', '.md', '.docx', '.doc'}
+SUPPORTED_EXTENSIONS = {'.pdf', '.txt', '.md', '.docx', '.doc', '.pages'}
 
 # Legacy chunker (fixed-size)
 from src.services.documents.chunker import chunk_text
@@ -274,10 +274,155 @@ def extract_text_from_doc(file_path: str) -> Dict[str, any]:
         }
 
 
+def extract_text_from_pages(file_path: str) -> Dict[str, any]:
+    """
+    Извлекает текст из .pages файла (Apple Pages).
+
+    Методы извлечения (в порядке приоритета):
+    1. AppleScript — открывает Pages.app и извлекает body text (самый надёжный)
+    2. textutil (macOS) — конвертация в txt
+    3. QuickLook/Preview.pdf — fallback из архива .pages
+    """
+    import tempfile
+    import zipfile
+    import io
+    import platform
+
+    abs_path = os.path.abspath(file_path)
+
+    # Метод 1: AppleScript через Pages.app (самый надёжный на macOS)
+    if platform.system() == 'Darwin':
+        try:
+            # AppleScript для открытия документа, извлечения текста и закрытия
+            script = f'''
+            tell application "Pages"
+                set theDoc to open POSIX file "{abs_path}"
+                delay 1
+                set bodyText to body text of theDoc
+                close theDoc saving no
+                return bodyText
+            end tell
+            '''
+
+            result = subprocess.run(
+                ['osascript', '-e', script],
+                capture_output=True,
+                text=True,
+                timeout=120
+            )
+
+            if result.returncode == 0 and result.stdout.strip():
+                full_text = result.stdout.strip()
+                return {
+                    "full_text": full_text,
+                    "pages": [{"page_number": 1, "text": full_text}],
+                    "error": None
+                }
+            else:
+                print(f"[extract_pages] AppleScript failed: {result.stderr}")
+        except Exception as e:
+            print(f"[extract_pages] AppleScript error: {e}")
+
+    # Метод 2: textutil (только на macOS)
+    if platform.system() == 'Darwin':
+        try:
+            with tempfile.NamedTemporaryFile(suffix='.txt', delete=False) as tmp:
+                tmp_path = tmp.name
+
+            result = subprocess.run(
+                ['textutil', '-convert', 'txt', '-output', tmp_path, abs_path],
+                capture_output=True,
+                text=True,
+                timeout=60
+            )
+
+            if result.returncode == 0:
+                with open(tmp_path, 'r', encoding='utf-8') as f:
+                    full_text = f.read()
+                os.unlink(tmp_path)
+
+                if full_text.strip():
+                    return {
+                        "full_text": full_text,
+                        "pages": [{"page_number": 1, "text": full_text}],
+                        "error": None
+                    }
+            else:
+                if os.path.exists(tmp_path):
+                    os.unlink(tmp_path)
+                print(f"[extract_pages] textutil failed: {result.stderr}")
+        except Exception as e:
+            print(f"[extract_pages] textutil error: {e}")
+
+    # Метод 3: QuickLook/Preview.pdf из .pages архива
+    try:
+        if PdfReader is None:
+            return {
+                "full_text": "",
+                "pages": [],
+                "error": "pypdf library not installed for .pages fallback"
+            }
+
+        with zipfile.ZipFile(abs_path, 'r') as zf:
+            namelist = zf.namelist()
+
+            # Ищем Preview.pdf
+            pdf_path = None
+            for name in namelist:
+                if name.endswith('Preview.pdf') or name == 'QuickLook/Preview.pdf':
+                    pdf_path = name
+                    break
+
+            if not pdf_path:
+                for name in namelist:
+                    if name.lower().endswith('.pdf'):
+                        pdf_path = name
+                        break
+
+            if not pdf_path:
+                return {
+                    "full_text": "",
+                    "pages": [],
+                    "error": "Could not extract text from .pages file. Please open it in Apple Pages and export as .docx"
+                }
+
+            pdf_data = zf.read(pdf_path)
+            reader = PdfReader(io.BytesIO(pdf_data))
+
+            text_parts = []
+            pages_list = []
+            for page_num, page in enumerate(reader.pages, start=1):
+                page_text = page.extract_text() or ""
+                if page_text.strip():
+                    text_parts.append(page_text)
+                    pages_list.append({"page_number": page_num, "text": page_text})
+
+            full_text = '\n\n'.join(text_parts)
+
+            return {
+                "full_text": full_text,
+                "pages": pages_list if pages_list else [{"page_number": 1, "text": full_text}],
+                "error": None
+            }
+
+    except zipfile.BadZipFile:
+        return {
+            "full_text": "",
+            "pages": [],
+            "error": "Could not extract text from .pages file. Please open it in Apple Pages and export as .docx"
+        }
+    except Exception as e:
+        return {
+            "full_text": "",
+            "pages": [],
+            "error": f"Failed to extract from .pages: {str(e)}. Please export as .docx in Apple Pages"
+        }
+
+
 def extract_text_from_file(file_path: str) -> Dict[str, any]:
     """
     Извлекает текст из файла в зависимости от его расширения.
-    Поддерживаемые форматы: PDF, TXT, MD, DOCX, DOC
+    Поддерживаемые форматы: PDF, TXT, MD, DOCX, DOC, PAGES
     """
     ext = Path(file_path).suffix.lower()
 
@@ -289,11 +434,13 @@ def extract_text_from_file(file_path: str) -> Dict[str, any]:
         return extract_text_from_docx(file_path)
     elif ext == ".doc":
         return extract_text_from_doc(file_path)
+    elif ext == ".pages":
+        return extract_text_from_pages(file_path)
     else:
         return {
             "full_text": "",
             "pages": [],
-            "error": f"Unsupported file format: {ext}. Supported: PDF, TXT, MD, DOCX, DOC"
+            "error": f"Unsupported file format: {ext}. Supported: PDF, TXT, MD, DOCX, DOC, PAGES"
         }
 
 

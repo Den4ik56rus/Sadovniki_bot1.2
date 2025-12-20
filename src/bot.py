@@ -16,6 +16,17 @@ from aiogram.client.default import DefaultBotProperties     # Чтобы зад�
 from src.config import settings                             # Глобальные настройки проекта
 from src.handlers import setup_routers                      # Функция, которая ПОДКЛЮЧАЕТ роутеры к dp
 
+# Глобальный экземпляр бота (используется для отправки уведомлений)
+_bot_instance: Bot | None = None
+
+
+def get_bot() -> Bot:
+    """Получить глобальный экземпляр бота."""
+    global _bot_instance
+    if _bot_instance is None:
+        raise RuntimeError("Bot instance not created yet. Call create_bot_and_dispatcher() first.")
+    return _bot_instance
+
 
 def create_bot_and_dispatcher() -> tuple[Bot, Dispatcher]:
     """
@@ -24,6 +35,7 @@ def create_bot_and_dispatcher() -> tuple[Bot, Dispatcher]:
         - Dispatcher
     и возвращает их.
     """
+    global _bot_instance
 
     # 1. Создаём Bot с токеном и HTML-разметкой по умолчанию
     bot = Bot(
@@ -32,6 +44,9 @@ def create_bot_and_dispatcher() -> tuple[Bot, Dispatcher]:
             parse_mode=ParseMode.HTML              # Будем использовать HTML в сообщениях
         ),
     )
+
+    # Сохранить глобальный экземпляр
+    _bot_instance = bot
 
     # 2. Создаём Dispatcher
     dp = Dispatcher()

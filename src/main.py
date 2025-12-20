@@ -23,6 +23,35 @@ from src.api import create_api_app
 from src.config import settings
 
 
+async def _subscription_renewal_task() -> None:
+    """
+    Фоновая задача для автоматического продления подписок.
+    Проверяет каждый час, нужно ли создать платеж для продления.
+    """
+    from src.services.payments.subscription_service import process_auto_renewals, expire_old_subscriptions
+    import logging
+
+    logger = logging.getLogger(__name__)
+
+    while True:
+        try:
+            # Обрабатываем автопродления
+            renewals_count = await process_auto_renewals()
+            if renewals_count > 0:
+                logger.info(f"Processed {renewals_count} auto-renewals")
+
+            # Истекаем старые подписки
+            expired_count = await expire_old_subscriptions()
+            if expired_count > 0:
+                logger.info(f"Expired {expired_count} old subscriptions")
+
+        except Exception as e:
+            logger.error(f"Error in subscription renewal task: {e}", exc_info=True)
+
+        # Проверяем каждый час
+        await asyncio.sleep(3600)
+
+
 async def main() -> None:
     """
     Основная асинхронная функция:
@@ -56,6 +85,10 @@ async def main() -> None:
     await set_main_menu_commands(bot)
     print("Команды зарегистрированы.")
 
+    # Запускаем фоновую задачу для автопродления подписок
+    background_task = asyncio.create_task(_subscription_renewal_task())
+    print("Фоновая задача автопродления подписок запущена.")
+
     print("Бот запущен. Нажмите Ctrl+C, чтобы остановить его.")
 
     try:
@@ -64,6 +97,13 @@ async def main() -> None:
     finally:
         # Корректное закрытие
         print("Останавливаю бота...")
+
+        # Останавливаем фоновую задачу
+        background_task.cancel()
+        try:
+            await background_task
+        except asyncio.CancelledError:
+            print("Фоновая задача автопродления остановлена.")
 
         # Закрываем API сервер
         print("Останавливаю API сервер...")

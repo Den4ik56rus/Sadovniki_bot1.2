@@ -1,50 +1,36 @@
-// Billing Tab - Client consultations & costs
+// Billing Tab - Client payments & subscriptions
 import { useState, useEffect } from 'react'
-import type { Topic } from '@/types'
+import type { Payment, PaymentsResponse } from '@/types'
 import { api } from '@/services/api'
-import { useCurrencyStore } from '@/store'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import styles from './BillingTab.module.css'
 
 interface BillingTabProps {
   clientId: number
-  totalCostUsd: number
   totalConsultations: number
-  onTopicClick?: (topicId: number) => void
 }
 
 export function BillingTab({
   clientId,
-  totalCostUsd,
   totalConsultations,
-  onTopicClick,
 }: BillingTabProps) {
-  const { usdRate } = useCurrencyStore()
-  const [topics, setTopics] = useState<Topic[]>([])
+  const [paymentsData, setPaymentsData] = useState<PaymentsResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    const fetchTopics = async () => {
+    const fetchPayments = async () => {
       try {
-        const data = await api.getClientTopics(clientId, { limit: 50 })
-        setTopics(data)
+        const data = await api.getUserPayments(clientId, { limit: 50 })
+        setPaymentsData(data)
       } catch (e) {
-        console.error('Failed to fetch topics:', e)
+        console.error('Failed to fetch payments:', e)
       } finally {
         setIsLoading(false)
       }
     }
-    fetchTopics()
+    fetchPayments()
   }, [clientId])
-
-  const formatCost = (costUsd: number) => {
-    const costRub = costUsd * usdRate
-    if (costRub < 1) {
-      return `${Math.round(costRub * 100)} коп.`
-    }
-    return `${costRub.toFixed(0)} ₽`
-  }
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-'
@@ -55,7 +41,30 @@ export function BillingTab({
     }
   }
 
-  const totalCostRub = totalCostUsd * usdRate
+  const getProductName = (payment: Payment): string => {
+    if (payment.payment_type === 'subscription') {
+      return payment.subscription_plan_name || 'Подписка'
+    }
+    return payment.token_package_name || 'Токены'
+  }
+
+  const getStatusLabel = (payment: Payment): string => {
+    if (payment.paid) return 'Оплачено'
+    if (payment.status === 'pending') return 'Ожидание'
+    if (payment.status === 'canceled') return 'Отменено'
+    return payment.status
+  }
+
+  const getStatusClass = (payment: Payment): string => {
+    if (payment.paid) return 'paid'
+    if (payment.status === 'pending') return 'pending'
+    return 'canceled'
+  }
+
+  const totalPaid = paymentsData?.total_paid || 0
+  const pendingAmount = paymentsData?.payments
+    ?.filter(p => p.status === 'pending')
+    .reduce((sum, p) => sum + p.amount_rub, 0) || 0
 
   return (
     <div className={styles.content}>
@@ -66,55 +75,45 @@ export function BillingTab({
           <span className={styles.summaryLabel}>Всего консультаций</span>
         </div>
         <div className={styles.summaryItem}>
-          <span className={styles.summaryValue}>{totalCostRub.toFixed(0)} ₽</span>
-          <span className={styles.summaryLabel}>Общие расходы</span>
+          <span className={styles.summaryValue}>{totalPaid.toFixed(0)} ₽</span>
+          <span className={styles.summaryLabel}>Оплачено клиентом</span>
         </div>
         <div className={styles.summaryItem}>
-          <span className={styles.summaryValue}>0 ₽</span>
-          <span className={styles.summaryLabel}>Оплачено клиентом</span>
+          <span className={styles.summaryValue}>{pendingAmount.toFixed(0)} ₽</span>
+          <span className={styles.summaryLabel}>Ожидает оплаты</span>
         </div>
       </div>
 
-      {/* Consultations list */}
+      {/* Payments list */}
       <div className={styles.section}>
-        <h4 className={styles.sectionTitle}>История консультаций</h4>
+        <h4 className={styles.sectionTitle}>История платежей</h4>
 
         {isLoading ? (
           <div className={styles.loading}>Загрузка...</div>
-        ) : topics.length === 0 ? (
-          <p className={styles.empty}>Нет консультаций</p>
+        ) : !paymentsData || paymentsData.payments.length === 0 ? (
+          <p className={styles.empty}>Нет платежей</p>
         ) : (
-          <div className={styles.topicsList}>
-            {topics.map((topic) => (
-              <div
-                key={topic.id}
-                className={styles.topicItem}
-                onClick={() => onTopicClick?.(topic.id)}
-                role="button"
-                tabIndex={0}
-                onKeyDown={(e) => e.key === 'Enter' && onTopicClick?.(topic.id)}
-              >
-                <div className={styles.topicHeader}>
-                  <span className={styles.topicCategory}>
-                    {topic.category || 'Консультация'}
+          <div className={styles.paymentsList}>
+            {paymentsData.payments.map((payment) => (
+              <div key={payment.id} className={styles.paymentItem}>
+                <div className={styles.paymentHeader}>
+                  <span className={styles.paymentIcon}>
+                    {payment.payment_type === 'subscription' ? '💳' : '🪙'}
                   </span>
-                  {topic.culture && (
-                    <span className={styles.topicCulture}>{topic.culture}</span>
-                  )}
-                  <span className={`${styles.topicStatus} ${styles[topic.status]}`}>
-                    {topic.status === 'open' ? 'Активен' : 'Закрыт'}
+                  <span className={styles.paymentProduct}>
+                    {getProductName(payment)}
+                  </span>
+                  <span className={`${styles.paymentStatus} ${styles[getStatusClass(payment)]}`}>
+                    {getStatusLabel(payment)}
                   </span>
                 </div>
 
-                <div className={styles.topicMeta}>
-                  <span className={styles.topicDate}>
-                    {formatDate(topic.created_at)}
+                <div className={styles.paymentMeta}>
+                  <span className={styles.paymentAmount}>
+                    {payment.amount_rub.toFixed(0)} ₽
                   </span>
-                  <span className={styles.topicMessages}>
-                    {topic.message_count} сообщ.
-                  </span>
-                  <span className={styles.topicCost}>
-                    {formatCost(topic.total_cost_usd)}
+                  <span className={styles.paymentDate}>
+                    {formatDate(payment.paid_at || payment.created_at)}
                   </span>
                 </div>
               </div>

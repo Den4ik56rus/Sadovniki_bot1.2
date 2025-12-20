@@ -405,10 +405,18 @@ async def handle_profile(message: Message) -> None:
         f"<b>Стоимость операций:</b>\n"
         f"• Новая консультация: 1 токен\n"
         f"• 3 дополнительных вопроса: 1 токен\n\n"
-        f"Для пополнения баланса обратитесь к администратору."
+        f"Пополнить баланс можно ниже 👇"
     )
 
-    await message.answer(profile_text, parse_mode="HTML")
+    # Добавляем inline кнопку для покупки
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="💳 Купить токены",
+            callback_data="show_payment_menu"
+        )]
+    ])
+
+    await message.answer(profile_text, parse_mode="HTML", reply_markup=keyboard)
 
 
 @router.message(F.text == "📅 План сезона")

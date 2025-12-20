@@ -23,6 +23,9 @@ from src.handlers.admin import moderation as moderation_handlers
 from src.handlers.admin import terminology as terminology_handlers
 from src.handlers.admin import article_writing as article_handlers
 
+# Платежи (покупка токенов и подписок)
+from src.handlers.payments import payments_router
+
 
 def setup_routers(dp: Dispatcher) -> None:
     """
@@ -36,11 +39,14 @@ def setup_routers(dp: Dispatcher) -> None:
     # 1. Главное меню
     dp.include_router(menu_handlers.router)
 
-    # 2. Админка (модерация /kb_pending и пр.) — ПЕРЕД консультациями!
+    # 2. Платежи (покупка токенов и подписок)
+    dp.include_router(payments_router)
+
+    # 3. Админка (модерация /kb_pending и пр.) — ПЕРЕД консультациями!
     dp.include_router(moderation_handlers.router)
     dp.include_router(terminology_handlers.router)
     dp.include_router(article_handlers.router)  # Режим написания статей
 
-    # 3. Консультации (общий роутер, внутри — entry + питание и т.д.)
+    # 4. Консультации (общий роутер, внутри — entry + питание и т.д.)
     consultation_router = get_consultation_router()
     dp.include_router(consultation_router)

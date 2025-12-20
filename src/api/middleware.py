@@ -137,6 +137,10 @@ async def telegram_auth_middleware(request: web.Request, handler):
     if request.method == "OPTIONS":
         return await handler(request)
 
+    # Пропускаем webhooks от внешних сервисов (без авторизации)
+    if request.path.startswith("/api/webhooks"):
+        return await handler(request)
+
     # Пропускаем admin API (без авторизации)
     if request.path.startswith("/api/admin"):
         return await handler(request)

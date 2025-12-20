@@ -228,15 +228,46 @@
   word-break: break-word;
 }
 
+/* Passport action buttons */
+.passportActions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.btnSave {
+  width: 100%;
+  padding: 12px 16px;
+  background: var(--accent-primary);
+  border: none;
+  border-radius: 8px;
+  color: var(--text-inverse);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btnSave:hover:not(:disabled) {
+  background: var(--accent-primary-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(74, 124, 89, 0.3);
+}
+
+.btnSave:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
 /* Generate context button */
 .btnGenerateContext {
   width: 100%;
-  margin-top: 16px;
   padding: 12px 16px;
-  background: linear-gradient(135deg, var(--color-info), var(--color-primary));
+  background: linear-gradient(135deg, var(--accent-blue), var(--accent-primary));
   border: none;
   border-radius: 8px;
-  color: white;
+  color: var(--text-inverse);
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;

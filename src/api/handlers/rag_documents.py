@@ -54,6 +54,7 @@ async def get_rag_documents(request: web.Request) -> web.Response:
                     d.processing_error,
                     d.total_chunks,
                     d.file_size_bytes,
+                    d.embedding_cost_usd,
                     d.context_generation_cost,
                     d.context_generation_tokens,
                     d.created_at,
@@ -69,6 +70,8 @@ async def get_rag_documents(request: web.Request) -> web.Response:
 
         documents = []
         for row in rows:
+            embedding_cost = float(row["embedding_cost_usd"]) if row["embedding_cost_usd"] else 0
+            context_cost = float(row["context_generation_cost"]) if row["context_generation_cost"] else 0
             documents.append({
                 "id": row["id"],
                 "filename": row["filename"],
@@ -78,7 +81,9 @@ async def get_rag_documents(request: web.Request) -> web.Response:
                 "chunks_count": row["total_chunks"] or 0,
                 "passported_chunks": row["passported_chunks"] or 0,
                 "file_size": row["file_size_bytes"],
-                "context_cost": float(row["context_generation_cost"]) if row["context_generation_cost"] else 0,
+                "embedding_cost": embedding_cost,
+                "context_cost": context_cost,
+                "total_cost": embedding_cost + context_cost,
                 "context_tokens": row["context_generation_tokens"] or 0,
                 "created_at": row["created_at"].isoformat() if row["created_at"] else None,
             })

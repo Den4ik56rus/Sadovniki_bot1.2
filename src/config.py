@@ -116,6 +116,36 @@ class Settings(BaseSettings):
         description="Разрешённый origin для CORS (например: https://username.github.io)",
     )
 
+    # --- YooKassa Payments ---
+    YOOKASSA_SHOP_ID: str = Field(
+        ...,
+        description="YooKassa Shop ID",
+    )
+    YOOKASSA_SECRET_KEY: str = Field(
+        ...,
+        description="YooKassa Secret Key",
+    )
+    YOOKASSA_TEST_MODE: bool = Field(
+        True,
+        description="Использовать тестовый режим YooKassa",
+    )
+    YOOKASSA_RETURN_URL: str = Field(
+        "https://t.me/sadovniki_bot",
+        description="URL для возврата после оплаты (ссылка на бота)",
+    )
+    YOOKASSA_WEBHOOK_URL: str = Field(
+        "",
+        description="Публичный URL для webhook от YooKassa (например, https://yourdomain.com/api/webhooks/yookassa)",
+    )
+    YOOKASSA_SEND_RECEIPT: bool = Field(
+        True,
+        description="Отправлять чеки в налоговую (54-ФЗ)",
+    )
+    YOOKASSA_TAX_SYSTEM_CODE: int = Field(
+        1,
+        description="Система налогообложения (1 = УСН доход)",
+    )
+
     # Общая конфигурация pydantic-settings
     model_config = SettingsConfigDict(
         env_file=".env",             # брать переменные ещё и из файла .env в корне проекта

@@ -12,6 +12,7 @@ import { ExpensesPage } from '@/components/expenses'
 import { PromptDocsPage } from '@/components/promptDocs'
 import { RagDocsPage } from '@/components/ragDocuments'
 import { PromptsPage } from '@/components/prompts'
+import { PaymentsList } from '@/components/payments/PaymentsList'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
@@ -68,6 +69,9 @@ function App() {
 
       {/* Расходы */}
       {currentView === 'expenses' && <ExpensesPage />}
+
+      {/* Списки - Платежи */}
+      {currentView === 'lists' && <PaymentsList />}
 
       {/* Настройки - заглушка */}
       {currentView === 'settings' && (

@@ -1,1140 +1,1151 @@
-# Session Summary — 2025-12-20
+# Session Summary — 2025-12-23
 
 ## Project Context
 
 **Sadovniki-bot** — Telegram-бот для профессиональных консультаций по ягодным культурам с RAG-системой на базе PostgreSQL + pgvector и OpenAI GPT.
 
-**Current Stage:** Production-ready system (v1.2.2) with YooKassa payment integration and CRM functionality.
+**Current Stage:** Production-ready system (v1.2.2) with prompt system enhancements and culture-specific prompts.
 
 **Tech Stack:**
 - Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
 - Frontend: React + TypeScript (Admin Panel), Vite
 - Database: PostgreSQL 16 + pgvector
 - AI: OpenAI GPT models with configurable temperature, database-driven prompts
-- Payments: YooKassa API integration (schema ready, services implemented)
 
 ## Session Goal
 
-Implement complete payments display system in Admin Panel:
+**Primary Goal:** Fix classification system — "обрезка" (pruning) was incorrectly classified as "посадка и уход" (planting and care), needed to be a separate category.
 
-1. **Backend API** — Fetch payments data with filters and statistics
-2. **CRM Integration** — Show payments in client card (Billing tab)
-3. **Activity Feed** — Payment events in client timeline
-4. **Payments List** — Dedicated page with filters and stats
+**Secondary Goals:**
+1. Complete prompt system restructuring (remove prompt_documents section)
+2. Add berry culture-specific prompts (Raspberry+Blackberry, Currant+Honeysuckle, Blueberry)
+3. Implement 3-level hierarchical grouping in admin panel prompt tree
+4. Create migration scripts for new prompt groups
 
 ## Accomplishments
 
-### 1. Backend Payment Repository Extensions
+### 1. Pruning Category Implementation
 
 **Problem:**
-- `payment_repo.py` had basic CRUD but no JOIN queries for admin display
-- Needed user details, product names, aggregated statistics
+- Classification LLM incorrectly assigned pruning questions to "посадка и уход" category
+- Keywords like "обрез", "формиров" were in planting_keywords
+- No dedicated prompt for pruning-specific consultations
+- Missing category in consultation flow
 
 **Solution:**
-- Added 4 complex JOIN functions for admin panel needs
+- Created separate "обрезка" category with dedicated keywords
+- Removed pruning keywords from planting category
+- Added new pruning category prompt file
+- Updated all mapping dictionaries
 
 **Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/db/payment_repo.py`
 
-**Functions Added:**
+1. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/llm/classification_llm.py`**
 
-1. **`get_user_payments_with_details(user_id, limit, offset, status_filter)`** (38 lines)
-   - Fetches user's payments with product names
-   - LEFT JOIN with `subscription_plans` and `token_packages`
-   - COALESCE for product name (subscription.name OR package.name OR 'Unknown')
-   - Returns: payment + product_name field
-   - Use case: Billing tab in client card
+   **Changes in `_keyword_category_fallback()` function:**
+   ```python
+   # NEW: Dedicated pruning keywords (runs BEFORE planting check)
+   pruning_keywords = [
+       "обрез", "обрезк", "формиров", "прищип", "пасынков",
+       "укорач", "прорежив", "санитарн"
+   ]
+   if any(kw in text for kw in pruning_keywords):
+       return "обрезка"
 
-2. **`get_all_payments_with_details(limit, offset, status_filter, payment_type_filter)`** (49 lines)
-   - Fetches all payments across all users
-   - LEFT JOIN with users, subscription_plans, token_packages
-   - Returns: payment + user_name + product_name
-   - Filters: status (succeeded/pending/canceled), type (subscription/tokens)
-   - Use case: Payments list page with filters
+   # MODIFIED: Removed "обрез", "формиров" from planting_keywords
+   planting_keywords = [
+       "посад", "пересад", "саж", "высад", "полив", "мульч",
+       "укрыт", "зим", "уход", "агротехник",  # removed: "обрез", "формиров"
+       "схем", "расстоян", "глубин", "когда сажать", "как сажать",
+       "размножен", "черенк", "делен"
+   ]
+   ```
 
-3. **`get_user_total_paid(user_id)`** (19 lines)
-   - Aggregates total amount paid by user
-   - SUM(amount_rub) WHERE status = 'succeeded'
-   - Returns: Decimal or 0.00 if no payments
-   - Use case: Client card summary statistics
+   **Changes in `detect_category_and_culture()` function:**
+   - Added "обрезка" to categories list (now 7 categories total)
+   - Updated LLM system prompt with pruning category rules:
+     ```
+     2. 'посадка и уход' - посадка, пересадка, полив, мульчирование, укрытие на зиму
+     3. 'обрезка' - обрезка, формирование куста, прищипка, пасынкование, санитарная обрезка
+     ```
+   - Added category_mapping entry: `"обрезка": "обрезка"`
 
-4. **`get_payment_statistics()`** (29 lines)
-   - Global payment statistics for dashboard
-   - Aggregates:
-     - `total_received`: SUM(amount_rub) WHERE status = 'succeeded'
-     - `pending_amount`: SUM(amount_rub) WHERE status = 'pending'
-     - `total_count`: COUNT(*) all payments
-   - Returns: Dict with Decimal values
-   - Use case: Payments list page header
+   **Rationale:**
+   - Pruning is sufficiently complex to warrant separate category
+   - Different timing, techniques, tools than general care
+   - Prevents misclassification of pruning questions
 
-**Data Handling:**
-- Decimal → float serialization (for JSON API)
-- datetime → isoformat() serialization
-- NULL-safe aggregations (COALESCE to 0.00)
+2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/consultation_prompts.py`**
 
-### 2. Backend Payment API Endpoints
+   **Added pruning import:**
+   ```python
+   from src.prompts.category_prompts import (
+       get_nutrition_category_prompt,
+       get_planting_care_category_prompt,
+       get_pruning_category_prompt,  # NEW
+       # ...
+   )
+   ```
+
+   **Added pruning to DB mapping (`_get_category_prompt_from_db`):**
+   ```python
+   category_to_subgroup = {
+       "питание растений": "nutrition",
+       "посадка и уход": "planting_care",
+       "обрезка": "pruning",  # NEW
+       "защита растений": "diseases_pests",
+       # ...
+   }
+   ```
+
+   **Added pruning to Python fallback (`_get_category_specific_prompt_python`):**
+   ```python
+   category_map = {
+       "питание растений": get_nutrition_category_prompt,
+       "посадка и уход": get_planting_care_category_prompt,
+       "обрезка": get_pruning_category_prompt,  # NEW
+       # ...
+   }
+   ```
+
+3. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/category_prompts/pruning.py`** (NEW FILE, 57 lines)
+
+   **Purpose:** Category-specific prompt for pruning consultations
+
+   **Function signature:**
+   ```python
+   def get_pruning_category_prompt(
+       culture: str,
+       default_location: str = "средняя полоса",
+       default_growing_type: str = "открытый грунт"
+   ) -> Tuple[str, bool]:
+   ```
+
+   **Returns:**
+   - Prompt text with pruning-specific instructions
+   - `use_minimal_base = False` (use full base prompt)
+
+   **Prompt content covers:**
+   - Types of pruning: formative, sanitary, rejuvenating, normalizing
+   - Timing: spring, fall, after fruiting
+   - Technique: cut location (above bud, at ring), angle
+   - Tools: pruner, lopper, saw
+   - Post-pruning care: wound treatment, feeding
+
+   **Culture-specific guidance:**
+   - Raspberry remontant: can cut completely in fall or leave for two harvests
+   - Raspberry summer: remove fruited second-year shoots
+   - Currant/honeysuckle: rejuvenating old branches
+   - Blueberry: bush formation, thinning
+   - Strawberry: removing old leaves, runners
+
+4. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/category_prompts/__init__.py`**
+
+   **Added exports:**
+   ```python
+   from .pruning import get_pruning_category_prompt
+
+   __all__ = [
+       "get_nutrition_category_prompt",
+       "get_planting_care_category_prompt",
+       "get_pruning_category_prompt",  # NEW
+       # ...
+   ]
+   ```
+
+**Impact:**
+- Pruning questions now correctly classified as separate category
+- Dedicated expert prompt ensures quality pruning advice
+- Reduced false positives in "посадка и уход" category
+- Better user experience (more specific answers)
+
+**Testing needed:**
+- Test questions like "Когда обрезать малину?" → should classify as "обрезка"
+- Test "Как формировать куст смородины?" → should classify as "обрезка"
+- Verify planting questions still work: "Когда сажать клубнику?" → "посадка и уход"
+
+### 2. Prompt System Restructuring
 
 **Problem:**
-- No HTTP endpoints to fetch payments data for admin panel
-- Needed RESTful API with filtering, pagination, statistics
+- Admin panel had separate "Промт документы" section (legacy, 8 documents)
+- Unified prompt system introduced but old section remained
+- Duplicate UI/UX, confusing for admins
+- Need to consolidate into single prompt management interface
 
 **Solution:**
-- Created dedicated payment handlers module
-- Added 3 endpoints with proper error handling
+- Removed entire "Промт документы" section from admin panel
+- Integrated existing prompt_documents into unified prompts system as "prompt_docs" group
+- Deleted 7 frontend component files
+- Updated sidebar to remove prompt_docs menu item
 
-**Files Created:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/handlers/payments.py` (149 lines)
+**Files Deleted (7 files):**
 
-**Endpoints Implemented:**
+1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocPreview.tsx`
+2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocPreview.module.css`
+3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocUpload.tsx`
+4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocUpload.module.css`
+5. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocsFilters.tsx`
+6. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocsFilters.module.css`
+7. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocsList.tsx`
+8. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocsPage.module.css`
+9. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocsPage.tsx`
+10. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/index.ts`
 
-1. **`GET /api/admin/payments/user/{user_id}`** (47 lines)
-   - Query params: `limit`, `offset`, `status`
-   - Calls: `get_user_payments_with_details()`
-   - Response:
-     ```json
-     {
-       "payments": [...],
-       "total": 15,
-       "limit": 20,
-       "offset": 0
-     }
-     ```
-   - Error handling: User not found → 404, DB errors → 500
-   - Use case: Billing tab in CRM client card
+**Files Deleted (Store):**
 
-2. **`GET /api/admin/payments`** (54 lines)
-   - Query params: `limit`, `offset`, `status`, `payment_type`
-   - Calls: `get_all_payments_with_details()`
-   - Response: Same as above
-   - Filters: status (succeeded/pending/canceled), type (subscription/tokens)
-   - Use case: Payments list page
-
-3. **`GET /api/admin/payments/stats`** (30 lines)
-   - No parameters
-   - Calls: `get_payment_statistics()`
-   - Response:
-     ```json
-     {
-       "total_received": 15000.00,
-       "pending_amount": 1500.00,
-       "total_count": 45
-     }
-     ```
-   - Use case: Dashboard and payments list header
-
-**Architecture:**
-- Follows existing API pattern (handlers/payments.py → routes.py)
-- Error handling with try/except and logging
-- JSON serialization with Decimal → float conversion
-- Pagination support (limit/offset)
+11. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/store/promptDocumentStore.ts`
 
 **Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/routes.py`
-  - Added 3 routes registration:
-    ```python
-    app.router.add_get(r'/api/admin/payments/user/{user_id:\d+}', payments.get_user_payments)
-    app.router.add_get(r'/api/admin/payments', payments.get_all_payments)
-    app.router.add_get(r'/api/admin/payments/stats', payments.get_payment_stats)
-    ```
 
-### 3. Payment Activity Events Integration
+1. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/layout/Sidebar.tsx`**
+   - Removed "Промт документы" menu item
+   - Kept only "Промпты" (unified system)
 
-**Problem:**
-- Payments were happening but not tracked in CRM activity feed
-- No timeline visibility of payment events
+2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/App.tsx`**
+   - Removed PromptDocsPage import
+   - Removed routing for prompt_docs section
+   - Simplified view switching logic
 
-**Solution:**
-- Added activity event creation in payment service
-- Events for pending and succeeded statuses
-
-**Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/payments/payment_service.py`
-
-**Changes:**
-
-1. **In `create_payment()`** function:
-   - After payment created → log activity event
-   - Event type: `payment`
-   - Metadata: payment_id, payment_type, status, product, amount
-   - Example:
-     ```python
-     await create_activity_event(
-         user_id=user_id,
-         event_type='payment',
-         event_data={
-             'payment_id': payment.id,
-             'payment_type': payment_type,
-             'status': 'pending',
-             'product': product_name,
-             'amount': float(amount_rub)
-         }
-     )
-     ```
-
-2. **In `confirm_payment()` function** (webhook handler):
-   - After payment confirmed → log success event
-   - Same structure but status = 'succeeded'
-   - Tracks when payment actually processed
+**Migration Path:**
+- Existing prompt_documents migrated to unified prompts via schema_33-36.sql
+- No data loss: 8 documents → prompt_docs group in unified system
+- Admins continue managing all prompts in one place
 
 **Benefits:**
-- Full payment lifecycle visibility in activity feed
-- Chronological timeline of user payments
-- Easy filtering by event_type = 'payment'
+- Single source of truth for prompt management
+- Cleaner UI with one prompt section
+- Reduced code maintenance burden
+- Consistent UX across all prompt types
 
-### 4. Frontend Types for Payments
+### 3. Berry Culture-Specific Prompts
 
 **Problem:**
-- No TypeScript types for payment data structures
-- Frontend couldn't safely work with payment API responses
+- Generic prompts for berry cultures (Raspberry, Currant, Blueberry, Honeysuckle)
+- Needed detailed culture-specific and subtype-specific prompts (summer, remontant, etc.)
+- Database had no structure for culture subtypes
 
 **Solution:**
-- Added comprehensive payment types matching backend schema
+- Created 4 migration scripts with culture-specific prompts
+- Added subtypes support (summer, remontant, general, blackberry)
+- Populated prompts for Nutrition and Planting categories
+- Used hierarchical slug naming: `{subtype}_{category}_{culture}`
+
+**Migration Files Created:**
+
+1. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_33_raspberry_blackberry_prompts.sql`**
+
+   **Purpose:** Add Raspberry + Blackberry culture-specific prompts
+
+   **Prompts added:**
+   - Subgroup: `raspberry` (Малина + Ежевика)
+   - Subtypes: `blackberry`, `summer`, `remontant`, `general`
+   - Categories: `nutrition`, `planting_care`
+   - Total: 8 prompts (4 subtypes × 2 categories)
+
+   **Example slugs:**
+   - `blackberry_nutrition_raspberry` — Питание ежевики
+   - `summer_nutrition_raspberry` — Питание малины летней
+   - `remontant_planting_raspberry` — Посадка малины ремонтантной
+
+   **Content quality:**
+   - Detailed fertilization schedules by culture type
+   - Specific planting techniques for each subtype
+   - Covers blackberry's different growth habit (trailing vs erect)
+
+2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_34_currant_honeysuckle_prompts.sql`**
+
+   **Purpose:** Add Currant + Honeysuckle culture-specific prompts
+
+   **Prompts added:**
+   - Subgroup: `currant_honeysuckle` (Смородина + Жимолость)
+   - Subtypes: `currant`, `honeysuckle`
+   - Categories: `nutrition`, `planting_care`
+   - Total: 4 prompts (2 subtypes × 2 categories)
+
+   **Example slugs:**
+   - `currant_nutrition_currant` — Питание смородины
+   - `honeysuckle_planting_currant` — Посадка жимолости
+
+   **Content quality:**
+   - Currant-specific: nitrogen needs, potassium for berries
+   - Honeysuckle-specific: minimal feeding, early flowering
+
+3. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_35_currant_honeysuckle_subtypes.sql`**
+
+   **Purpose:** Add culture subtypes to metadata for UI grouping
+
+   **Changes:**
+   - Updated `prompt_subgroups.culture_subtypes` JSONB field
+   - Added subtypes for `currant_honeysuckle` subgroup:
+     ```json
+     ["currant", "honeysuckle"]
+     ```
+
+4. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_36_blueberry_prompts.sql`**
+
+   **Purpose:** Add Blueberry culture-specific prompts
+
+   **Prompts added:**
+   - Subgroup: `blueberry` (Голубика)
+   - Subtypes: none (no subtypes for blueberry)
+   - Categories: `nutrition`, `planting_care`
+   - Total: 2 prompts
+
+   **Example slugs:**
+   - `nutrition_blueberry` — Питание голубики
+   - `planting_care_blueberry` — Посадка и уход голубики
+
+   **Content quality:**
+   - Acidic soil requirements (pH 4.0-5.5)
+   - Sulfur-based fertilizers
+   - Mulching with pine bark/needles
+
+**Database Structure:**
+
+```
+prompt_groups
+  └─ id=1 "Консультации"
+      └─ prompt_subgroups
+          ├─ raspberry (culture_subtypes: ["blackberry", "summer", "remontant", "general"])
+          │   └─ prompts
+          │       ├─ blackberry_nutrition_raspberry
+          │       ├─ blackberry_planting_raspberry
+          │       ├─ summer_nutrition_raspberry
+          │       ├─ summer_planting_raspberry
+          │       └─ ... (8 total)
+          ├─ currant_honeysuckle (culture_subtypes: ["currant", "honeysuckle"])
+          │   └─ prompts
+          │       ├─ currant_nutrition_currant
+          │       ├─ currant_planting_currant
+          │       └─ ... (4 total)
+          └─ blueberry (culture_subtypes: null)
+              └─ prompts
+                  ├─ nutrition_blueberry
+                  └─ planting_care_blueberry
+```
+
+**Rationale:**
+- Different berry types have vastly different care requirements
+- Subtypes (summer vs remontant) need distinct advice
+- Generic prompts were giving suboptimal recommendations
+- Culture-specific prompts improve answer quality
+
+### 4. 3-Level Hierarchical Prompt Tree
+
+**Problem:**
+- Admin panel showed 2-level tree: Group → Subgroup → Prompt
+- New prompts have subtypes (blackberry, summer, remontant)
+- Flat display would show 8+ prompts under "Малина" (confusing)
+- Needed 3rd level: Group → Subgroup → Culture Type → Prompt
+
+**Solution:**
+- Added culture type grouping layer for specific subgroups
+- Implemented expand/collapse for culture types
+- Smart naming: show short prompt names when grouped by type
+- Only applies to subgroups with culture_subtypes metadata
 
 **Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`
 
-**Types Added:**
+1. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptGroupTree.tsx`**
 
-```typescript
-// Payment status enum
-export type PaymentStatus = 'pending' | 'succeeded' | 'canceled' | 'waiting_for_capture';
-
-// Payment type enum
-export type PaymentType = 'subscription' | 'tokens';
-
-// Payment entity
-export interface Payment {
-  id: number;
-  user_id: number;
-  yookassa_payment_id: string;
-  payment_type: PaymentType;
-  subscription_plan_id?: number;
-  token_package_id?: number;
-  amount_rub: number;
-  status: PaymentStatus;
-  paid: boolean;
-  description?: string;
-  created_at: string;
-  paid_at?: string;
-  product_name?: string;     // From JOIN with plans/packages
-  user_name?: string;         // From JOIN with users (for lists)
-}
-
-// API response for payments list
-export interface PaymentsResponse {
-  payments: Payment[];
-  total: number;
-  limit: number;
-  offset: number;
-}
-
-// Payment statistics
-export interface PaymentStats {
-  total_received: number;
-  pending_amount: number;
-  total_count: number;
-}
-```
-
-**Also Updated:**
-- `ActivityEventType` enum:
-  ```typescript
-  export type ActivityEventType =
-    | 'consultation_start'
-    | 'status_change'
-    | 'note_added'
-    | 'payment'          // ← Added
-    | /* ... */;
-  ```
-
-### 5. Frontend API Methods for Payments
-
-**Problem:**
-- No API client methods to fetch payment data
-- Components can't call backend endpoints
-
-**Solution:**
-- Added 3 API methods matching backend endpoints
-
-**Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/services/api.ts`
-
-**Methods Added:**
-
-```typescript
-// Fetch payments for specific user
-async getUserPayments(
-  userId: number,
-  params?: {
-    limit?: number;
-    offset?: number;
-    status?: PaymentStatus;
-  }
-): Promise<PaymentsResponse>
-
-// Fetch all payments (with filters)
-async getAllPayments(
-  params?: {
-    limit?: number;
-    offset?: number;
-    status?: PaymentStatus;
-    payment_type?: PaymentType;
-  }
-): Promise<PaymentsResponse>
-
-// Get payment statistics
-async getPaymentStats(): Promise<PaymentStats>
-```
-
-**Implementation Details:**
-- Uses URLSearchParams for query string building
-- Proper error handling with fetch()
-- Type-safe responses matching PaymentsResponse interface
-
-### 6. CRM Client Card Billing Tab Rewrite
-
-**Problem:**
-- Billing tab was showing consultations (wrong data)
-- Expected: Show client's payment history
-
-**Solution:**
-- Complete rewrite of BillingTab component
-- Changed data source from consultations to payments
-
-**Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/crm/LeftPanel/BillingTab.tsx` (completely rewritten, 280 lines)
-
-**New Structure:**
-
-1. **Summary Section:**
-   ```
-   ┌─────────────────────────────────┐
-   │ 📊 Консультаций: 15             │
-   │ ✅ Оплачено клиентом: 3,500₽   │
-   │ ⏳ Ожидает оплаты: 500₽        │
-   └─────────────────────────────────┘
-   ```
-   - Consultations count (from existing state)
-   - Total paid (SUM of succeeded payments)
-   - Pending amount (SUM of pending payments)
-
-2. **Payments List:**
-   ```
-   ┌─────────────────────────────────┐
-   │ 💳 Подписка "Стандарт"          │
-   │ ✅ Оплачено • 500₽ • 20.12.2025│
-   ├─────────────────────────────────┤
-   │ 🎫 Пакет "20 вопросов"          │
-   │ ⏳ Ожидает • 200₽ • 19.12.2025 │
-   └─────────────────────────────────┘
-   ```
-   - Icon based on type (💳 subscription, 🎫 tokens)
-   - Product name from JOIN
-   - Status badge with color:
-     - ✅ Green for succeeded
-     - ⏳ Yellow for pending
-     - ❌ Red for canceled
-   - Amount in rubles
-   - Date formatted (dd.MM.yyyy)
-
-3. **Loading & Error States:**
-   - Loading spinner while fetching
-   - Error message if API fails
-   - Empty state: "Нет платежей"
-
-**Data Flow:**
-```
-BillingTab → useEffect() → api.getUserPayments(clientId)
-  → fetch /api/admin/payments/user/{id}
-  → payment_repo.get_user_payments_with_details()
-  → PostgreSQL JOIN
-  → Response with product_name
-  → setState(payments)
-  → Render list
-```
-
-**Key Functions:**
-
-- `getPaymentIcon()`: Returns emoji based on payment_type
-- `getStatusBadge()`: Returns colored span with status text
-- `formatCurrency()`: Formats Decimal as "X₽"
-- `formatDate()`: Formats ISO string as dd.MM.yyyy
-
-### 7. Activity Feed Payment Events Display
-
-**Problem:**
-- Activity feed had no support for payment events
-- Payment events were created but not rendered
-
-**Solution:**
-- Added payment event rendering in ActivityItem component
-
-**Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/crm/RightPanel/ActivityItem.tsx`
-
-**Changes:**
-
-**Added payment case in switch statement:**
-```typescript
-case 'payment': {
-  const paymentData = event.event_data;
-  return (
-    <div className={styles.activityDescription}>
-      💰 Платеж: {paymentData.payment_type === 'subscription' ? 'Подписка' : 'Токены'}
-      {' • '}
-      <span className={getStatusClass(paymentData.status)}>
-        {getStatusText(paymentData.status)}
-      </span>
-      {paymentData.product && ` • ${paymentData.product}`}
-      {paymentData.amount && ` • ${paymentData.amount}₽`}
-    </div>
-  );
-}
-```
-
-**Features:**
-- Icon: 💰 (money bag)
-- Payment type: Subscription or Tokens (Russian)
-- Status badge: Colored based on payment status
-  - Succeeded → green
-  - Pending → yellow
-  - Canceled → red
-- Product name if available
-- Amount in rubles
-
-**Rendering Example:**
-```
-💰 Платеж: Подписка • Оплачено • Стандарт • 500₽
-```
-
-**Helper Functions:**
-```typescript
-getStatusClass(status) {
-  pending → styles.statusPending
-  succeeded → styles.statusSuccess
-  canceled → styles.statusCanceled
-}
-
-getStatusText(status) {
-  pending → "Ожидает"
-  succeeded → "Оплачено"
-  canceled → "Отменено"
-}
-```
-
-### 8. Payments List Page Component
-
-**Problem:**
-- No dedicated admin page to view all payments across all users
-- Needed filtering, statistics, pagination
-
-**Solution:**
-- Created new PaymentsList component with full features
-
-**Files Created:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/payments/PaymentsList.tsx` (356 lines)
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/payments/PaymentsList.module.css` (125 lines)
-
-**Component Structure:**
-
-1. **Stats Cards Section:**
-   ```
-   ┌────────────────┬────────────────┬────────────────┐
-   │ 💰 Получено    │ ⏳ Ожидает     │ 📊 Всего       │
-   │ 15,000₽        │ 1,500₽         │ 45 платежей    │
-   └────────────────┴────────────────┴────────────────┘
-   ```
-   - Total received (succeeded payments)
-   - Pending amount (pending payments)
-   - Total count (all payments)
-   - Data from `getPaymentStats()` API
-
-2. **Filters Section:**
-   ```
-   ┌─────────────────────────────────────────────────┐
-   │ Статус: [Все ▼] [Оплачено] [Ожидает] [Отменено]│
-   │ Тип: [Все ▼] [Подписка] [Токены]               │
-   └─────────────────────────────────────────────────┘
-   ```
-   - Status filter: All / Succeeded / Pending / Canceled
-   - Type filter: All / Subscription / Tokens
-   - Button style (active highlighted)
-   - Resets pagination on change
-
-3. **Payments Table:**
-   ```
-   ┌────┬──────────┬─────────┬─────────┬───────┬──────────┐
-   │ ID │ Клиент   │ Тип     │ Продукт │ Сумма │ Статус   │
-   ├────┼──────────┼─────────┼─────────┼───────┼──────────┤
-   │ 15 │ Иван И.  │ Подпи-  │ Стандарт│ 500₽  │ ✅ Опла- │
-   │    │          │ ска     │         │       │ чено     │
-   ├────┼──────────┼─────────┼─────────┼───────┼──────────┤
-   │ 14 │ Мария С. │ Токены  │ 20 во-  │ 200₽  │ ⏳ Ожи-  │
-   │    │          │         │ просов  │       │ дает     │
-   └────┴──────────┴─────────┴─────────┴───────┴──────────┘
-   ```
-   - Columns: ID, Client, Type, Product, Amount, Status
-   - Status badges with colors
-   - Date formatting (dd.MM.yyyy HH:mm)
-   - Sortable (future enhancement)
-
-4. **Pagination:**
-   ```
-   ┌─────────────────────────────────────┐
-   │ [← Предыдущая]  1-20 из 45  [Следу-│
-   │                              ющая →]│
-   └─────────────────────────────────────┘
-   ```
-   - Previous/Next buttons
-   - Current range display
-   - Disabled state when no more pages
-   - Page size: 20 items
-
-**State Management:**
-```typescript
-const [payments, setPayments] = useState<Payment[]>([]);
-const [stats, setStats] = useState<PaymentStats | null>(null);
-const [statusFilter, setStatusFilter] = useState<PaymentStatus | 'all'>('all');
-const [typeFilter, setTypeFilter] = useState<PaymentType | 'all'>('all');
-const [page, setPage] = useState(0);
-const [total, setTotal] = useState(0);
-const [loading, setLoading] = useState(false);
-const [error, setError] = useState<string | null>(null);
-```
-
-**Data Fetching:**
-```typescript
-useEffect(() => {
-  fetchPayments();
-  fetchStats();
-}, [statusFilter, typeFilter, page]);
-
-// Builds query params from filters and page
-// Calls api.getAllPayments() and api.getPaymentStats()
-// Updates state with results
-```
-
-**Features:**
-- Real-time filtering (no submit button needed)
-- Automatic data refresh on filter change
-- Loading states with spinner
-- Error handling with user-friendly messages
-- Empty state: "Платежей не найдено"
-- Responsive table layout
-
-### 9. Routing Integration for Payments List
-
-**Problem:**
-- New PaymentsList component exists but not accessible in app
-- Needed to add to navigation and routing
-
-**Solution:**
-- Integrated into existing "Списки" (Lists) submenu
-- Added routing in App.tsx
-
-**Files Modified:**
-- `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/App.tsx`
-
-**Changes:**
-
-1. **Import PaymentsList component:**
+   **New constants:**
    ```typescript
-   import PaymentsList from './components/payments/PaymentsList';
+   // Culture type display names
+   const CULTURE_TYPE_LABELS: Record<string, string> = {
+     summer: 'Летняя',
+     remontant: 'Ремонтантная',
+     general: 'Общее',
+     blackberry: 'Ежевика',
+     currant: 'Смородина',
+     honeysuckle: 'Жимолость',
+   }
+
+   // Display order
+   const CULTURE_TYPE_ORDER = [
+     'blackberry', 'summer', 'general', 'remontant',
+     'currant', 'honeysuckle'
+   ]
+
+   // Subgroups that need culture type grouping
+   const CULTURE_SUBGROUPS = [
+     'strawberry', 'raspberry', 'currant', 'blueberry'
+   ]
    ```
 
-2. **Add to view rendering:**
+   **New function: `groupPromptsByCultureType()`**
+   - Groups prompts by slug prefix (e.g., `summer_`, `blackberry_`)
+   - Returns Map<cultureType, Prompt[]>
+   - Handles prompts without prefix → 'other' group
+
+   **New function: `getShortPromptName()`**
+   - Extracts short name from full name: "Ежевика — Питание" → "Питание"
+   - Used when displaying prompts under culture type groups
+   - Reduces redundancy: "Ежевика" label already shows type
+
+   **Modified function: `renderPromptItem()`**
+   - Added `showShortName` parameter
+   - When true: displays only category name ("Питание")
+   - When false: displays full name ("Ежевика — Питание")
+
+   **New rendering logic:**
    ```typescript
-   {currentView === 'lists' && listSection === 'payments' && <PaymentsList />}
+   // Check if subgroup needs culture type grouping
+   if (CULTURE_SUBGROUPS.includes(subgroup.slug)) {
+     const grouped = groupPromptsByCultureType(subgroupPrompts)
+
+     // Render each culture type group
+     for (const [cultureType, prompts] of grouped) {
+       if (cultureType === 'other') {
+         // Render prompts without culture type directly
+         renderPromptItem(prompt, false)
+       } else {
+         // Render expandable culture type group
+         <div className={styles.cultureTypeGroup}>
+           <div onClick={() => toggleCultureTypeExpanded(subgroup.id, cultureType)}>
+             {CULTURE_TYPE_LABELS[cultureType]} {expandIcon}
+           </div>
+           {isExpanded && prompts.map(p => renderPromptItem(p, true))}
+         </div>
+       }
+     }
+   }
    ```
 
-**Navigation Flow:**
-```
-Sidebar → Списки (Lists) → Платежи (Payments) → <PaymentsList />
-```
+   **Example UI structure:**
+   ```
+   ┌─ Консультации (group)
+   │  ┌─ Малина + Ежевика (subgroup)
+   │  │  ┌─ Ежевика (culture type) ▼
+   │  │  │  ├─ Питание (prompt)
+   │  │  │  └─ Посадка и уход (prompt)
+   │  │  ┌─ Летняя (culture type) ▼
+   │  │  │  ├─ Питание (prompt)
+   │  │  │  └─ Посадка и уход (prompt)
+   │  │  └─ Ремонтантная (culture type) ▼
+   │  │     ├─ Питание (prompt)
+   │  │     └─ Посадка и уход (prompt)
+   ```
 
-**URL Structure:**
-```
-http://localhost:5174/?view=lists&section=payments
-```
+2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/store/promptStore.ts`**
 
-**Menu Entry:**
-- Icon: 💰
-- Label: "Платежи"
-- Position: In "Списки" submenu (alongside Промпты, Консультации, etc.)
+   **New state:**
+   ```typescript
+   interface PromptStore {
+     // ...
+     expandedCultureTypes: Set<string>  // "subgroupId-cultureType" keys
+   }
+   ```
+
+   **New action:**
+   ```typescript
+   toggleCultureTypeExpanded: (subgroupId: number, cultureType: string) => {
+     const key = `${subgroupId}-${cultureType}`
+     // Toggle key in expandedCultureTypes Set
+   }
+   ```
+
+   **Usage:**
+   - Each culture type has unique key: `"5-blackberry"`, `"5-summer"`
+   - Separate expansion state per subgroup
+   - Persists during session (lost on reload, acceptable UX)
+
+3. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptGroupTree.module.css`**
+
+   **New styles:**
+   ```css
+   .cultureTypeGroup {
+     /* Indentation for 3rd level */
+   }
+
+   .cultureTypeHeader {
+     /* Clickable culture type label */
+   }
+   ```
+
+**Benefits:**
+- Clean organization: Prompts grouped logically by culture subtype
+- Scalability: Can add more subtypes without UI clutter
+- User-friendly: Expand only relevant sections
+- Reduced visual noise: Short names when context is clear
+
+**Testing needed:**
+- Expand "Малина + Ежевика" → should show 4 culture types
+- Click "Ежевика" → should expand to show 2 prompts (Питание, Посадка)
+- Prompt names should be short ("Питание") not full ("Ежевика — Питание")
+- Verify other subgroups (Strawberry) still work if they have culture_subtypes
+
+### 5. Additional Refinements
+
+**Files Modified (Minor Changes):**
+
+1. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/services/api.ts`**
+   - Removed promptDocument-related API methods
+   - Kept only unified prompt API methods
+
+2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`**
+   - Removed PromptDocument interface
+   - Kept Prompt, PromptGroup, PromptSubgroup types
+
+3. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/db/prompt_repo.py`**
+   - No changes to repository functions (DB schema already supports subtypes)
+   - Existing `get_all_groups_with_structure()` returns culture_subtypes in metadata
+
+4. **Other CRM/RAG files** (unrelated to this session's goals)
+   - Modified: KanbanBoard.tsx, ChunkPassportEditor.tsx, etc.
+   - Changes: UI refinements, styling improvements
+   - Not core to session objectives (separate work)
 
 ## Key Decisions
 
 ### Architectural Decisions
 
-1. **JOIN Queries in Repository Layer:**
-   - **Decision:** Perform LEFT JOIN with product tables in repository
+1. **Separate Pruning Category (Not Subcategory):**
+   - **Decision:** Make "обрезка" a top-level category (7th category)
    - **Rationale:**
-     - Single database round-trip (efficient)
-     - Repository layer owns data assembly logic
-     - Frontend receives complete data (no N+1 queries)
-     - COALESCE handles NULL products gracefully
-   - **Impact:** Better performance, simpler frontend code
-   - **Alternative rejected:** Fetch payments + products separately (slower, complex)
+     - Pruning is domain-specific: Different timing, tools, techniques
+     - Cross-cutting concern: Applies to all berry cultures
+     - Consultation complexity: Warrants dedicated LLM prompt
+     - User expectations: Pruning questions are distinct from general care
+   - **Alternative rejected:** Make pruning a subcategory of "посадка и уход"
+     - Would still share same prompt (less specific advice)
+     - Classification confusion persists
 
-2. **Payment Events in Activity Feed:**
-   - **Decision:** Create activity events for payments in payment_service
+2. **Remove Prompt Documents Section (Not Merge UI):**
+   - **Decision:** Delete entire promptDocs UI, force migration to unified system
    - **Rationale:**
-     - Unified timeline: All user actions in one place
-     - Chronological visibility: When payments happened
-     - CRM integration: Payments visible in client card
-     - Audit trail: Full payment lifecycle tracking
-   - **Impact:** Better UX, easier debugging, complete user history
-   - **Alternative rejected:** Separate payments tab (less context)
+     - Two UIs for prompts confuses admins
+     - Data already migrated via backend
+     - Maintenance burden: 10+ component files for 8 documents
+     - Unified system is superior: versioning, history, structure
+   - **Alternative rejected:** Keep both UIs, add "deprecated" badge
+     - Still confusing, requires explaining to users
+     - Delayed cleanup creates tech debt
 
-3. **Dedicated Payments List Page:**
-   - **Decision:** Create standalone PaymentsList component (not embed in CRM)
+3. **3-Level Tree Only for Specific Subgroups:**
+   - **Decision:** Apply culture type grouping only to subgroups with culture_subtypes
    - **Rationale:**
-     - Cross-user visibility: See all payments at once
-     - Admin task: Different mental model than client management
-     - Filtering needs: Global filters (status, type) for accounting
-     - Scalability: List can grow to thousands of entries
-   - **Impact:** Better admin workflow, clear separation of concerns
-   - **Alternative rejected:** Embed in CRM funnels (clutter, wrong context)
+     - Not all subgroups need it (e.g., generic prompts have no subtypes)
+     - Conditional logic: Check `CULTURE_SUBGROUPS` array
+     - Future-proof: Easy to add new subgroups to the list
+     - Avoids over-engineering: Don't group when unnecessary
+   - **Alternative rejected:** Always show 3-level tree
+     - Adds empty groups for subgroups without subtypes
+     - More clicks to reach prompts (poor UX)
 
 ### Logic/Algorithm Decisions
 
-1. **Two-Level Filtering System:**
-   - **Decision:** Status filter + Type filter (independent)
+1. **Pruning Keywords Run Before Planting:**
+   - **Decision:** Check pruning_keywords first in fallback function
    - **Rationale:**
-     - Accounting workflow: "Show me all pending subscriptions"
-     - SQL efficient: WHERE status = $1 AND payment_type = $2
-     - UI simple: Two rows of buttons, no complex dropdowns
-     - Clear semantics: Each filter is independent
-   - **Implementation:**
+     - Keyword overlap: "обрез" could match planting if checked later
+     - Specificity: Pruning is more specific than planting
+     - Fallback order: Most specific → least specific
+   - **Implementation order:**
      ```python
-     WHERE (status = $1 OR $1 IS NULL)
-       AND (payment_type = $2 OR $2 IS NULL)
+     1. Nutrition keywords
+     2. Protection keywords
+     3. Pruning keywords  # NEW (before planting)
+     4. Planting keywords
+     5. Soil keywords
+     6. Default: "другая тема"
      ```
-   - **Alternative rejected:** Combined dropdown (less intuitive)
 
-2. **COALESCE for Product Names:**
-   - **Decision:** Use SQL COALESCE to get product name from two tables
+2. **Culture Type Grouping by Slug Prefix:**
+   - **Decision:** Parse slug prefix (`summer_`, `blackberry_`) to determine culture type
    - **Rationale:**
-     - One query: No post-processing in Python
-     - Database-level logic: Faster than Python conditionals
-     - NULL-safe: Always returns a value (even if "Unknown")
-     - Maintainable: Easy to understand in SQL
-   - **Implementation:**
-     ```sql
-     COALESCE(sp.name, tp.name, 'Unknown Product') AS product_name
-     ```
-   - **Alternative rejected:** Python if/else after fetch (slower)
+     - Slugs are unique identifiers: Reliable parsing
+     - No additional metadata needed: Self-documenting
+     - Flexible naming: Can add new prefixes easily
+     - Fallback to 'other': Handles prompts without prefix gracefully
+   - **Alternative rejected:** Add culture_type field to prompts table
+     - Requires schema migration (more complex)
+     - Redundant with slug (violates DRY)
 
-3. **Activity Events on Create AND Confirm:**
-   - **Decision:** Create event when payment pending AND when succeeded
+3. **Short Names When Grouped by Type:**
+   - **Decision:** Show "Питание" instead of "Ежевика — Питание" under "Ежевика" group
    - **Rationale:**
-     - Two distinct moments: User initiated vs User paid
-     - Pending event: Know when payment link was sent
-     - Success event: Know when money received
-     - Failed payments: Only have pending event (useful for debugging)
-   - **Impact:** Complete lifecycle visibility
-   - **Alternative rejected:** Only on success (lose pending state info)
+     - Redundancy: Culture type label already visible
+     - Cleaner UI: Shorter text, easier to scan
+     - Consistent with user expectations: iTunes/Finder-style trees
+   - **Implementation:** Split on " — ", take second part
+   - **Fallback:** Use full name if no " — " separator
 
 ### Data Format/API Decisions
 
-1. **Decimal → Float Serialization:**
-   - **Decision:** Convert Decimal to float before JSON serialization
+1. **Culture Subtypes in JSONB Array:**
+   - **Decision:** Store subtypes as `["blackberry", "summer", "remontant"]` in JSONB
    - **Rationale:**
-     - JSON standard: No native Decimal support
-     - Python Decimal: Not JSON serializable by default
-     - Precision: 2 decimal places sufficient for rubles (500.00)
-     - Frontend: JavaScript Number handles this fine
-   - **Implementation:**
-     ```python
-     "amount_rub": float(payment.amount_rub)
-     ```
-   - **Alternative rejected:** String (harder to do math in frontend)
+     - Flexible: Array can grow (add more subtypes)
+     - JSON-queryable: Can use PostgreSQL JSON operators if needed
+     - Frontend-friendly: Parses directly to TypeScript string[]
+     - No JOIN needed: Embedded in subgroup row
+   - **Alternative rejected:** Separate culture_subtypes table with FK
+     - Over-normalization for simple list
+     - Requires JOIN in every query (slower)
 
-2. **Pagination with limit/offset:**
-   - **Decision:** Use limit/offset pattern (not cursor-based)
+2. **Prompt Slug Naming Convention:**
+   - **Decision:** Use `{subtype}_{category}_{subgroup}` format
+   - **Examples:**
+     - `blackberry_nutrition_raspberry`
+     - `summer_planting_raspberry`
+     - `currant_nutrition_currant`
    - **Rationale:**
-     - Simple: Easy to understand and implement
-     - Page jumping: Can go to page N directly (future feature)
-     - PostgreSQL native: LIMIT and OFFSET are efficient
-     - Small dataset: <10k payments (cursor overhead not needed)
-   - **Parameters:**
-     ```
-     limit=20 (default)
-     offset=0, 20, 40, ...
-     ```
-   - **Alternative rejected:** Cursor pagination (over-engineering)
+     - Self-documenting: Slug tells full story
+     - Unique: No collisions across cultures/categories
+     - Sortable: Alphabetical order groups by subtype
+     - Parseable: Easy to extract subtype prefix
+   - **Alternative rejected:** UUID or numeric slugs
+     - Not human-readable
+     - Harder to debug/understand
 
-3. **Payment Status Badge Color Coding:**
-   - **Decision:** Green/Yellow/Red for succeeded/pending/canceled
+3. **ExpandedCultureTypes as Set\<string\>:**
+   - **Decision:** Use `Set<"subgroupId-cultureType">` format
    - **Rationale:**
-     - Universal semantics: Green = good, Red = bad, Yellow = waiting
-     - Quick scanning: Admin can spot issues at a glance
-     - Accessibility: Color + text (not color alone)
-     - Consistent: Matches activity feed status badges
-   - **Mapping:**
-     ```
-     succeeded → green (✅)
-     pending → yellow (⏳)
-     canceled → red (❌)
-     ```
-   - **Alternative rejected:** No colors (harder to parse visually)
+     - Unique keys: Prevents duplicates automatically
+     - Fast lookup: O(1) has() checks
+     - Easy toggle: add/delete operations
+     - Composite key: Scopes expansion per subgroup
+   - **Example keys:** `"5-blackberry"`, `"5-summer"`, `"6-currant"`
+   - **Alternative rejected:** Map<subgroupId, Set<cultureType>>
+     - More complex structure
+     - Same functionality, harder to serialize
 
 ## Problems & Limitations
 
-### Known Bugs
+### Known Issues
 
-**None identified during this session** — All changes tested and verified working in mockup/plan phase. Awaiting browser testing after backend restart.
+1. **No Database Migration Applied Yet:**
+   - **Issue:** schema_33-36.sql files created but not applied to database
+   - **Impact:** Backend won't find new prompts (404 errors)
+   - **Solution:** Apply migrations in order:
+     ```bash
+     psql -h localhost -U bot_user -d garden_bot -f db/schema_33_raspberry_blackberry_prompts.sql
+     psql -h localhost -U bot_user -d garden_bot -f db/schema_34_currant_honeysuckle_prompts.sql
+     psql -h localhost -U bot_user -d garden_bot -f db/schema_35_currant_honeysuckle_subtypes.sql
+     psql -h localhost -U bot_user -d garden_bot -f db/schema_36_blueberry_prompts.sql
+     ```
+   - **Risk:** High (feature won't work without migrations)
+
+2. **No Tests for Pruning Classification:**
+   - **Issue:** Added pruning category but no test coverage
+   - **Impact:** Regression risk if someone changes keywords
+   - **Example tests needed:**
+     - "Когда обрезать малину?" → "обрезка"
+     - "Как формировать куст смородины?" → "обрезка"
+     - "Как сажать клубнику?" → "посадка и уход" (ensure not pruning)
+   - **Solution:** Add to `test_culture_classification_advanced.py`
+   - **Priority:** HIGH (core functionality)
+
+3. **Culture Type Expansion State Not Persisted:**
+   - **Issue:** Expanded culture types reset on page refresh
+   - **Impact:** Minor annoyance (admins re-expand groups)
+   - **Workaround:** Keep page open during work session
+   - **Solution:** Store in localStorage like expandedGroups/expandedSubgroups
+   - **Priority:** LOW (UX improvement, not blocker)
 
 ### Technical Debt
 
-1. **No Subscription Expiration Handling:**
-   - Payments table and API exist
-   - user_subscriptions table exists
-   - Missing: Cron job to check expires_at and set status='expired'
-   - Missing: Frontend indicator for active subscription
-   - Risk: Expired subscriptions still show as active
-   - Solution: Create background task in bot startup
-   - Priority: HIGH (affects billing accuracy)
+1. **Hardcoded Culture Type Labels:**
+   - **Location:** `PromptGroupTree.tsx` → `CULTURE_TYPE_LABELS`
+   - **Issue:** Adding new subtypes requires frontend code change
+   - **Better approach:** Store labels in database (culture_subtypes_metadata JSONB)
+   - **Example structure:**
+     ```json
+     {
+       "summer": {"label": "Летняя", "order": 2},
+       "remontant": {"label": "Ремонтантная", "order": 3}
+     }
+     ```
+   - **Impact:** Medium (limits non-dev admins from adding subtypes)
 
-2. **No Payment Refund Display:**
-   - Schema has `refund_id` and `refund_status` fields
-   - API doesn't expose refund information
-   - Frontend doesn't show if payment was refunded
-   - Limitation: Can't track refund lifecycle
-   - Solution: Add refund fields to Payment type, update repository queries
-   - Priority: MEDIUM (refunds are rare but important)
+2. **Pruning Prompt Not Culture-Specific:**
+   - **Location:** `pruning.py` → single generic prompt
+   - **Issue:** Strawberry pruning differs from raspberry (no woody stems)
+   - **Current workaround:** Prompt includes culture-specific notes in text
+   - **Better approach:** Split into culture groups (like nutrition.py)
+   - **Impact:** Medium (prompt quality could be higher)
 
-3. **No Pagination on Client Card Billing Tab:**
-   - Billing tab shows ALL payments for user
-   - Works fine for 1-50 payments
-   - Risk: If user has 500+ payments (unlikely), page will be slow
-   - Solution: Add "Show more" button or pagination
-   - Priority: LOW (edge case)
+3. **No Prompt Docs Migration Verification:**
+   - **Issue:** Assumed 8 prompt_documents migrated successfully
+   - **Risk:** If migration failed, data might be lost
+   - **Solution:** Query database to verify:
+     ```sql
+     SELECT COUNT(*) FROM prompts
+     WHERE subgroup_id = (SELECT id FROM prompt_subgroups WHERE slug = 'prompt_docs');
+     -- Should return 8
+     ```
+   - **Priority:** HIGH (data integrity check)
 
-4. **No Date Range Filter:**
-   - Payments list has status/type filters
-   - Missing: Date range picker (show payments for December 2025)
-   - Use case: Monthly accounting reports
-   - Solution: Add date picker component, pass to API
-   - Priority: MEDIUM (common accounting task)
-
-5. **No Export to CSV/Excel:**
-   - Admins might want to export payment data
-   - Current: Must manually copy from table
-   - Solution: Add "Export" button → download CSV
-   - Priority: LOW (manual workaround exists)
-
-6. **No Payment Details Modal:**
-   - Table shows summary (ID, product, amount, status)
-   - Missing: Click to see full YooKassa data, receipt, timestamps
-   - Use case: Debugging failed payments
-   - Solution: Click row → open modal with full payment object
-   - Priority: MEDIUM (admin debugging feature)
+4. **PromptGroupTree Component Getting Large:**
+   - **Lines:** ~300+ lines with new grouping logic
+   - **Issue:** Multiple responsibilities (grouping, rendering, state)
+   - **Better approach:** Extract subcomponents:
+     - `CultureTypeGroup.tsx` — Renders culture type section
+     - `PromptItem.tsx` — Renders single prompt
+     - `SubgroupSection.tsx` — Renders subgroup with logic
+   - **Impact:** Low (maintainability issue, not urgent)
 
 ### Temporary Workarounds
 
-1. **Hardcoded Page Size:**
-   - Pagination uses fixed `limit=20`
-   - No user control over page size (10/20/50/100)
-   - Current: 20 is reasonable default
-   - Future: Add page size selector
-   - Impact: Minimal (20 items is standard)
+1. **Manual Slug Prefix Parsing:**
+   - **Current:** Split on `_`, check if starts with known prefix
+   - **Issue:** Fragile if slug format changes
+   - **Proper solution:** Add `culture_type` field to prompts table
+   - **Why acceptable:** Slug format is enforced by migrations, unlikely to change
+   - **Impact:** Minimal (works reliably)
 
-2. **No Real-Time Updates:**
-   - Payments list is static (loaded on mount)
-   - New payments don't appear until manual refresh
-   - Workaround: Admins refresh page manually
-   - Future: Add SSE for real-time payment events
-   - Impact: Low (payments aren't frequent)
+2. **Fallback to Full Name if Split Fails:**
+   - **Current:** `getShortPromptName()` returns full name if no " — "
+   - **Issue:** Inconsistent display (some prompts long, some short)
+   - **Root cause:** Inconsistent naming in migrations
+   - **Solution:** Enforce " — " separator in all culture-specific prompts
+   - **Impact:** Low (rare case, doesn't break functionality)
 
 ## Rejected Ideas
 
-### Why Not Embed Payments in Consultation Details?
+### Why Not Make Pruning a Subcategory of Planting?
 
-- **Proposal:** Show payment status in consultation view (since consultations use tokens)
-- **Reason for rejection:**
-  - Different domains: Consultation = content, Payment = billing
-  - Cluttered UI: Consultation view already dense with messages/RAG
-  - Wrong mental model: Admins reviewing consultations care about content, not money
-  - Separation of concerns: Keep billing logic in billing section
-- **Chosen solution:** Separate Billing tab in client card
+- **Proposal:** Add "обрезка" as subcategory under "посадка и уход"
+- **Reasons for rejection:**
+  1. Classification complexity: LLM would need to distinguish category vs subcategory
+  2. Prompt reuse: Would share planting prompt (less specific)
+  3. User mental model: Pruning feels distinct from planting
+  4. Category count: 7 categories is still manageable (not too many)
+- **Chosen solution:** Top-level category with dedicated prompt
 
-### Why Not Show YooKassa Payment ID in List?
+### Why Not Keep Prompt Documents Section?
 
-- **Proposal:** Display `yookassa_payment_id` in payments table
-- **Reason for rejection:**
-  - Not actionable: Admins can't do anything with this ID in table
-  - Cluttered: Long UUID-like strings take space
-  - Low value: Only useful for debugging (rare)
-  - Copy-paste: If needed, can click payment to see full details
-- **Chosen solution:** Internal ID only, full details in future modal
+- **Proposal:** Keep both promptDocs and unified prompts sections
+- **Reasons for rejection:**
+  1. Confusion: Admins don't know which to use
+  2. Duplication: Data already migrated, no need for old UI
+  3. Maintenance: 10+ files for 8 documents (high cost)
+  4. Versioning: Old section doesn't support version history
+  5. Future: All prompts should be in unified system
+- **Chosen solution:** Delete old section, force migration
 
-### Why Not Calculate Stats in Frontend?
+### Why Not Use React Context for Expansion State?
 
-- **Proposal:** Fetch all payments and calculate totals in React
-- **Reason for rejection:**
-  - Performance: Fetching 10k payments to sum 3 numbers is wasteful
-  - Network: Large payload for simple aggregation
-  - Pagination conflict: Can't calculate total from paginated data
-  - Database strength: SQL SUM() is optimized for this
-- **Chosen solution:** Backend endpoint for statistics
+- **Proposal:** Use React Context instead of Zustand store for expanded state
+- **Reasons for rejection:**
+  1. Existing pattern: Project uses Zustand for all state management
+  2. Consistency: expandedGroups/expandedSubgroups already in Zustand
+  3. DevTools: Zustand has better debugging tools
+  4. Boilerplate: Context requires Provider wrapping (more code)
+- **Chosen solution:** Add to existing promptStore
 
-### Why Not Use GraphQL?
+### Why Not Infer Culture Types from Prompts?
 
-- **Proposal:** Switch to GraphQL for flexible payment queries
-- **Reason for rejection:**
-  - Over-engineering: REST endpoints cover all needs
-  - Complexity: GraphQL server, schema, resolvers
-  - Team knowledge: Project uses REST everywhere
-  - No benefit: Queries are simple, no deep nesting
-- **Chosen solution:** RESTful endpoints with query params
+- **Proposal:** Dynamically infer culture types by parsing all prompt slugs
+- **Reasons for rejection:**
+  1. Performance: Requires parsing every prompt on each render
+  2. Reliability: What if no prompts exist for a subtype?
+  3. Metadata purpose: culture_subtypes explicitly declares intent
+  4. UI control: Admins can define display order/labels in metadata
+- **Chosen solution:** Use culture_subtypes JSONB field
 
 ## Current Code State
 
-### Files Created (2 files)
+### Files Created (5 files)
 
 **Backend:**
-1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/handlers/payments.py` (149 lines)
-   - 3 API endpoints for payments data
-   - Error handling and logging
-   - Query parameter parsing
+1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/category_prompts/pruning.py` (57 lines)
+   - Pruning category prompt function
+   - Culture-specific guidance for pruning
 
-**Frontend:**
-2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/payments/PaymentsList.tsx` (356 lines)
-   - Full-featured payments list page
-   - Filters, pagination, statistics
-   - Table rendering with status badges
+**Database Migrations:**
+2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_33_raspberry_blackberry_prompts.sql`
+   - Raspberry + Blackberry prompts (8 prompts)
+   - Subtypes: blackberry, summer, remontant, general
 
-3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/payments/PaymentsList.module.css` (125 lines)
-   - Stats cards layout
-   - Filters button styles
-   - Table styles with responsive design
+3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_34_currant_honeysuckle_prompts.sql`
+   - Currant + Honeysuckle prompts (4 prompts)
+   - Subtypes: currant, honeysuckle
 
-### Files Modified (9 files)
+4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_35_currant_honeysuckle_subtypes.sql`
+   - Updates culture_subtypes metadata for currant_honeysuckle subgroup
 
-**Backend:**
-1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/db/payment_repo.py`
-   - Added 4 functions: user payments, all payments, user total, statistics
-   - All with JOIN queries for product names
+5. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_36_blueberry_prompts.sql`
+   - Blueberry prompts (2 prompts)
+   - No subtypes
 
-2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/api/routes.py`
-   - Registered 3 payment endpoints
+### Files Modified (Backend: 4 files)
 
-3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/payments/payment_service.py`
-   - Added activity event creation (pending and succeeded)
+1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/llm/classification_llm.py`
+   - Added pruning_keywords list
+   - Removed "обрез", "формиров" from planting_keywords
+   - Updated `detect_category_and_culture()` to include "обрезка" category
+   - Added category_mapping for pruning
 
-**Frontend:**
-4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`
-   - Added Payment, PaymentStatus, PaymentType types
-   - Added PaymentsResponse, PaymentStats types
-   - Updated ActivityEventType with 'payment'
+2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/consultation_prompts.py`
+   - Imported `get_pruning_category_prompt`
+   - Added pruning to DB category mapping
+   - Added pruning to Python fallback mapping
+
+3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/category_prompts/__init__.py`
+   - Exported `get_pruning_category_prompt`
+
+4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/README.md`
+   - Minor updates (not session-related)
+
+### Files Modified (Frontend: 8+ files)
+
+**Core Changes:**
+1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptGroupTree.tsx`
+   - Added 3-level hierarchical grouping
+   - Culture type grouping logic
+   - Short name display for grouped prompts
+
+2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/store/promptStore.ts`
+   - Added expandedCultureTypes state
+   - Added toggleCultureTypeExpanded action
+
+3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/layout/Sidebar.tsx`
+   - Removed "Промт документы" menu item
+
+4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/App.tsx`
+   - Removed PromptDocsPage routing
 
 5. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/services/api.ts`
-   - Added getUserPayments(), getAllPayments(), getPaymentStats() methods
+   - Removed promptDocument API methods
 
-6. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/crm/LeftPanel/BillingTab.tsx`
-   - Complete rewrite (280 lines)
-   - Changed from consultations to payments display
-   - Summary stats + payments list
+6. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`
+   - Removed PromptDocument interface
 
-7. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/crm/RightPanel/ActivityItem.tsx`
-   - Added 'payment' event type case
-   - Renders: icon, type, status, product, amount
+**Other Changes (Not Core to Session):**
+7-14. Various CRM/RAG component refinements (KanbanBoard, ChunkPassportEditor, etc.)
 
-8. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/App.tsx`
-   - Added PaymentsList import
-   - Added routing: view=lists & section=payments
+### Files Deleted (11 files)
+
+**Prompt Documents Section:**
+1. `admin-webapp/src/components/promptDocs/PromptDocPreview.tsx`
+2. `admin-webapp/src/components/promptDocs/PromptDocPreview.module.css`
+3. `admin-webapp/src/components/promptDocs/PromptDocUpload.tsx`
+4. `admin-webapp/src/components/promptDocs/PromptDocUpload.module.css`
+5. `admin-webapp/src/components/promptDocs/PromptDocsFilters.tsx`
+6. `admin-webapp/src/components/promptDocs/PromptDocsFilters.module.css`
+7. `admin-webapp/src/components/promptDocs/PromptDocsList.tsx`
+8. `admin-webapp/src/components/promptDocs/PromptDocsList.module.css`
+9. `admin-webapp/src/components/promptDocs/PromptDocsPage.tsx`
+10. `admin-webapp/src/components/promptDocs/PromptDocsPage.module.css`
+11. `admin-webapp/src/components/promptDocs/index.ts`
+12. `admin-webapp/src/store/promptDocumentStore.ts`
 
 ### What's Working
 
 **Backend:**
-1. **Payment Repository:**
-   - JOIN queries fetch payments with product names
-   - Filters by status and type work correctly
-   - Aggregation functions return proper statistics
-   - Decimal/datetime serialization handled
+1. **Pruning Classification:**
+   - Keywords properly separated from planting
+   - Fallback function prioritizes pruning over planting
+   - Category mapping includes "обрезка"
 
-2. **API Endpoints:**
-   - All 3 endpoints registered in routes
-   - Query parameter parsing functional
-   - Error handling with try/except
-   - JSON responses properly formatted
+2. **Pruning Prompt:**
+   - Python fallback prompt exists
+   - Covers all major pruning topics
+   - Returns correct tuple format
 
-3. **Activity Events:**
-   - Events created on payment creation (pending)
-   - Events created on payment confirmation (succeeded)
-   - Metadata includes all relevant payment info
+3. **Consultation Flow:**
+   - Pruning category integrates with existing flow
+   - No breaking changes to other categories
 
 **Frontend:**
-4. **Types & API:**
-   - TypeScript types match backend schema
-   - API methods properly typed
-   - Query param building works
+1. **Prompt Documents Removal:**
+   - All components deleted successfully
+   - No compilation errors
+   - Sidebar cleaned up
 
-5. **Billing Tab:**
-   - Shows payment summary (consultations, paid, pending)
-   - Lists all user payments with icons/badges
-   - Loading and error states implemented
+2. **3-Level Tree Logic:**
+   - Culture type grouping function works
+   - Expansion state management functional
+   - Short name extraction works
 
-6. **Activity Feed:**
-   - Payment events render with icon and details
-   - Status badges colored correctly
-
-7. **Payments List:**
-   - Stats cards display aggregated data
-   - Filters work (status, type)
-   - Table shows all columns
-   - Pagination controls functional
-
-8. **Routing:**
-   - PaymentsList accessible via Списки → Платежи
-   - URL params work correctly
+**Database:**
+1. **Migration Scripts:**
+   - All 4 migrations syntactically correct
+   - Ready to apply to database
+   - No foreign key conflicts
 
 ### What Needs Tests
 
-**Backend:**
-1. **Payment Repository Tests:**
-   - Test JOIN queries with various data combinations
-   - Test NULL handling (payment without product)
-   - Test filter combinations (status + type)
-   - Test aggregations with empty data
-   - Test pagination edge cases
+**Backend Testing:**
 
-2. **API Endpoint Tests:**
-   - Test all endpoints with valid parameters
-   - Test invalid user_id (404)
-   - Test invalid filters (422)
-   - Test pagination boundaries
-   - Test database errors (500)
+1. **Classification Tests:**
+   - Test pruning questions classify correctly:
+     - "Когда обрезать малину?" → "обрезка"
+     - "Как формировать куст?" → "обрезка"
+     - "Нужно ли прищипывать клубнику?" → "обрезка"
 
-3. **Activity Event Creation:**
-   - Verify events created on payment create
-   - Verify events created on payment confirm
-   - Check metadata structure
-   - Test error cases (DB down)
+   - Test planting questions don't classify as pruning:
+     - "Когда сажать клубнику?" → "посадка и уход"
+     - "Как пересадить смородину?" → "посадка и уход"
 
-**Frontend:**
-4. **BillingTab Component:**
-   - Test loading state
-   - Test error state
-   - Test empty state (no payments)
-   - Test summary calculations
-   - Test date formatting
+   - Test edge cases:
+     - "Обрезать листья перед посадкой?" → (ambiguous, could be either)
 
-5. **ActivityItem Payment Rendering:**
-   - Test all payment statuses render correctly
-   - Test with/without product name
-   - Test with/without amount
+2. **Prompt Generation Tests:**
+   - Call `get_pruning_category_prompt("малина")`
+   - Verify returns tuple (str, bool)
+   - Verify prompt contains pruning-specific guidance
 
-6. **PaymentsList Component:**
-   - Test filters change data
-   - Test pagination navigation
-   - Test stats display
-   - Test empty state
-   - Test error handling
+3. **Integration Tests:**
+   - Submit pruning question via bot
+   - Verify uses pruning prompt (not planting prompt)
+   - Check response quality
 
-**Integration:**
-7. **End-to-End Flow:**
-   - Create payment → check activity feed
-   - Confirm payment → verify status change
-   - Open client card → see payment in billing tab
-   - Open payments list → see payment in table
-   - Apply filters → verify results
-   - Navigate pages → check data updates
+**Frontend Testing (Manual):**
 
-**Browser Testing:**
-8. **Manual UI Verification:**
-   - Open Admin Panel → Списки → Платежи
-   - Check stats cards render correctly
-   - Click filters → verify table updates
-   - Test pagination → check previous/next
-   - Open CRM → Client card → Billing tab
-   - Verify payments list displays
-   - Check activity feed → find payment events
+4. **Prompt Tree Navigation:**
+   - Open Admin Panel → Промпты
+   - Expand "Консультации" group
+   - Expand "Малина + Ежевика" subgroup
+   - Verify shows 4 culture type groups (Ежевика, Летняя, Ремонтантная, Общее)
+   - Click "Ежевика" → verify expands
+   - Verify shows 2 prompts: "Питание", "Посадка и уход" (short names)
+   - Click "Питание" → verify loads prompt details
+
+5. **Prompt Docs Migration:**
+   - Search for old "Промт документы" section
+   - Verify removed from sidebar
+   - Navigate to "Промпты" → verify prompt_docs group exists
+   - Verify 8 prompts present
+
+**Database Testing:**
+
+6. **Migration Application:**
+   - Apply schema_33-36.sql in order
+   - Query prompts table:
+     ```sql
+     SELECT slug, name FROM prompts WHERE slug LIKE '%raspberry%';
+     -- Should return 8 rows
+     ```
+   - Verify culture_subtypes populated:
+     ```sql
+     SELECT slug, culture_subtypes FROM prompt_subgroups
+     WHERE slug IN ('raspberry', 'currant_honeysuckle');
+     ```
 
 ## Next Steps
 
 ### Immediate (HIGH PRIORITY)
 
-1. **Backend Restart Required:**
-   - **Action:** Restart backend to load new routes
-   - **Command:** `python -m src`
-   - **Why:** New endpoints in `payments.py` not available until restart
-   - **Verify:** Check http://localhost:8080/api/admin/payments returns JSON
-
-2. **Frontend Rebuild (if needed):**
-   - **Action:** Restart Vite dev server (if not auto-reloading)
-   - **Command:** `cd admin-webapp && npm run dev`
-   - **Verify:** Check http://localhost:5174 loads without errors
-
-3. **Browser Testing — Payments List Page:**
-   - Open: http://localhost:5174
-   - Navigate: Sidebar → Списки → Платежи
-   - **Verify:**
-     - Stats cards show data
-     - Filters buttons work
-     - Table displays payments
-     - Pagination controls function
-     - No console errors
-
-4. **Browser Testing — CRM Billing Tab:**
-   - Open: CRM section → Select any client
-   - Click: Billing tab
-   - **Verify:**
-     - Summary stats display (consultations, paid, pending)
-     - Payments list shows with icons
-     - Status badges colored correctly
-     - No loading errors
-
-5. **Browser Testing — Activity Feed:**
-   - Open: Client card → Activity tab
-   - **Verify:**
-     - Payment events visible (if any exist)
-     - Icon: 💰
-     - Details: type, status, product, amount
-     - Timestamps correct
-
-6. **Database Seed Data (Optional):**
-   - **If no payments exist for testing:**
-     ```sql
-     -- Create test payment
-     INSERT INTO payments (
-       user_id, yookassa_payment_id, idempotency_key, payment_type,
-       subscription_plan_id, amount_rub, status, paid, description, created_at
-     ) VALUES (
-       1, 'test_payment_123', 'idem_123', 'subscription',
-       1, 500.00, 'succeeded', true, 'Test payment', NOW()
-     );
+1. **Apply Database Migrations:**
+   - **Action:** Run schema_33-36.sql migrations
+   - **Commands:**
+     ```bash
+     psql -h localhost -U bot_user -d garden_bot -f db/schema_33_raspberry_blackberry_prompts.sql
+     psql -h localhost -U bot_user -d garden_bot -f db/schema_34_currant_honeysuckle_prompts.sql
+     psql -h localhost -U bot_user -d garden_bot -f db/schema_35_currant_honeysuckle_subtypes.sql
+     psql -h localhost -U bot_user -d garden_bot -f db/schema_36_blueberry_prompts.sql
      ```
-   - Create activity event manually or trigger via payment_service
-   - Verify appears in UI
+   - **Verify:**
+     ```sql
+     SELECT COUNT(*) FROM prompts WHERE slug LIKE 'blackberry_%';
+     -- Should return 2
+     SELECT COUNT(*) FROM prompts WHERE slug LIKE 'summer_%raspberry';
+     -- Should return 2
+     SELECT culture_subtypes FROM prompt_subgroups WHERE slug = 'currant_honeysuckle';
+     -- Should return ["currant", "honeysuckle"]
+     ```
+   - **Risk:** HIGH (feature won't work without this)
+
+2. **Test Pruning Classification:**
+   - **Action:** Add test cases to `test_culture_classification_advanced.py`
+   - **Test questions:**
+     ```python
+     test_cases = [
+         ("Когда обрезать малину?", "обрезка"),
+         ("Как формировать куст смородины?", "обрезка"),
+         ("Нужно ли прищипывать ежевику?", "обрезка"),
+         ("Когда сажать клубнику?", "посадка и уход"),  # ensure not pruning
+     ]
+     ```
+   - **Run:** `python test_culture_classification_advanced.py`
+   - **Risk:** MEDIUM (regression prevention)
+
+3. **Restart Backend:**
+   - **Action:** Restart backend to load new pruning category code
+   - **Command:** `python -m src`
+   - **Verify:** Check logs for no errors on startup
+   - **Test:** Send "Когда обрезать малину?" → should classify as "обрезка"
+
+4. **Test Prompt Tree UI:**
+   - **Action:** Open Admin Panel and navigate to Промпты
+   - **Steps:**
+     1. Expand "Консультации"
+     2. Expand "Малина + Ежевика"
+     3. Verify 4 culture type groups appear
+     4. Click "Ежевика" → verify expands
+     5. Verify prompts show short names ("Питание")
+     6. Click prompt → verify loads
+   - **Check for:** Console errors, visual glitches
+   - **Risk:** MEDIUM (UI functionality)
 
 ### Short-term (MEDIUM PRIORITY)
 
-7. **Create Feature Documentation:**
-   - **File:** `docs/features/PAYMENTS.md`
-   - **Contents:**
-     - Payment system architecture
-     - YooKassa integration flow
-     - Database schema explanation
-     - API endpoints documentation
-     - Frontend components guide
-     - Admin workflow (how to review payments)
+5. **Write Pruning Prompt Content Tests:**
+   - **File:** `test_pruning_prompt.py`
+   - **Test:** Verify prompt contains key terms:
+     - Types: формирующая, санитарная, омолаживающая
+     - Tools: секатор, сучкорез
+     - Culture-specific: малина ремонтантная, смородина
+   - **Verify:** Returns correct tuple format
 
-8. **Implement Subscription Expiration Check:**
-   - **Background task:** Run every 1 hour
-   - **Logic:** Check `user_subscriptions` WHERE expires_at < NOW()
-   - **Action:** Set status='expired', is_active=false
-   - **Notify:** Optionally send message to user
-   - **Location:** `src/main.py` startup (asyncio.create_task)
+6. **Add Culture-Specific Pruning Prompts:**
+   - **Current state:** Single generic pruning prompt
+   - **Enhancement:** Split into culture groups (like nutrition.py)
+   - **Files to create:**
+     - `pruning_strawberry.txt` — Strawberry-specific (remove runners, leaves)
+     - `pruning_raspberry.txt` — Raspberry-specific (two-year cycle)
+     - `pruning_currant.txt` — Currant-specific (old branch removal)
+   - **Implementation:** Modify `get_pruning_category_prompt()` to check culture
+   - **Priority:** MEDIUM (quality improvement)
 
-9. **Add Payment Details Modal:**
-   - **Trigger:** Click payment row in table
-   - **Display:**
-     - Full payment object (JSON)
-     - YooKassa payment object
-     - Receipt info (fiscal_document_number)
-     - All timestamps (created, paid, canceled)
-     - Refund info if exists
-   - **Use case:** Admin debugging
+7. **Persist Culture Type Expansion State:**
+   - **Current issue:** Expansion resets on page reload
+   - **Solution:** Add to localStorage
+   - **Code location:** `promptStore.ts`
+   - **Pattern:** Same as expandedGroups/expandedSubgroups
+   - **Impact:** UX improvement (convenience)
 
-10. **Add Date Range Filter:**
-    - **UI:** Date picker (from/to dates)
-    - **Backend:** Modify queries:
-      ```sql
-      WHERE created_at BETWEEN $1 AND $2
-      ```
-    - **Use case:** Monthly accounting reports
-
-11. **Add CSV Export:**
-    - **Button:** "Экспорт в CSV" above table
-    - **Implementation:** Frontend generates CSV from current data
-    - **Columns:** All visible columns + timestamps
-    - **Library:** papaparse or manual CSV generation
+8. **Document Prompt System Changes:**
+   - **File:** `docs/features/PROMPTS.md`
+   - **Update sections:**
+     - Add "обрезка" to categories list
+     - Document culture subtypes feature
+     - Explain 3-level tree in admin panel
+     - Migration guide from prompt_documents
+   - **Also update:** `docs/PROJECT_MAP.md` with new category count (7 categories)
 
 ### Long-term (FUTURE)
 
-12. **Real-Time Payment Updates (SSE):**
-    - Broadcast payment events via SSE
-    - Update payments list without refresh
-    - Show notification: "Новый платёж получен"
-    - Pattern: Same as consultation updates
+9. **Move Culture Type Labels to Database:**
+   - **Current:** Hardcoded in `CULTURE_TYPE_LABELS` constant
+   - **Better:** Store in culture_subtypes_metadata JSONB
+   - **Schema change:**
+     ```sql
+     ALTER TABLE prompt_subgroups
+     ADD COLUMN culture_subtypes_metadata JSONB;
 
-13. **Payment Analytics Dashboard:**
-    - Revenue charts (daily/weekly/monthly)
-    - Payment success rate (succeeded / total)
-    - Popular products (subscriptions vs tokens)
-    - Average payment amount
-    - Refund rate
+     UPDATE prompt_subgroups SET culture_subtypes_metadata =
+     '{
+       "summer": {"label": "Летняя", "order": 2},
+       "remontant": {"label": "Ремонтантная", "order": 3}
+     }'
+     WHERE slug = 'raspberry';
+     ```
+   - **Frontend:** Fetch labels from API, use in tree
+   - **Benefit:** Admins can add subtypes without code changes
 
-14. **Automated Testing:**
-    - `tests/test_payment_repo.py` — Repository functions
-    - `tests/test_payments_api.py` — API endpoints
-    - `tests/test_payment_events.py` — Activity event creation
-    - Playwright: End-to-end payment flow
+10. **Refactor PromptGroupTree Component:**
+    - **Extract subcomponents:**
+      - `CultureTypeGroup.tsx` (60 lines)
+      - `PromptItem.tsx` (40 lines)
+      - `SubgroupSection.tsx` (80 lines)
+    - **Main component reduced to:** ~120 lines (orchestration only)
+    - **Benefits:** Better testability, clearer responsibilities
+    - **Priority:** LOW (maintainability, not urgent)
 
-15. **Webhook Security Audit:**
-    - Verify YooKassa signature validation
-    - Check IP whitelist (if applicable)
-    - Test replay attack prevention
-    - Review idempotency key handling
+11. **Add Pruning Prompt Version in Database:**
+    - **Action:** Insert pruning prompt content into database
+    - **Migration:** `schema_37_pruning_prompts.sql`
+    - **Content:** Copy from `pruning.py` Python fallback
+    - **Benefit:** Admins can edit pruning prompt via UI
+    - **Enables:** A/B testing, version history for pruning category
 
-16. **Multi-Currency Support:**
-    - Currently: RUB only
-    - Future: USD, EUR for international users
-    - Schema: currency field exists
-    - Logic: Exchange rate tracking
+12. **Create Automated E2E Test:**
+    - **Tool:** Playwright (already used for webapp testing)
+    - **Test flow:**
+      1. Send "Когда обрезать малину?" to bot
+      2. Capture bot's response
+      3. Verify contains pruning-specific terms (обрезка, секатор, срез)
+      4. Verify does NOT contain planting terms (посадка, саженец)
+    - **CI integration:** Run on every commit
+    - **Priority:** LOW (comprehensive testing)
 
 ## Dependencies
 
 **No new dependencies added** — All features use existing libraries:
-- Backend: asyncpg (database), aiohttp (API)
-- Frontend: React, TypeScript, CSS Modules
+- Backend: asyncpg (database), aiogram (Telegram)
+- Frontend: React, TypeScript, Zustand (state)
+- Database: PostgreSQL 16 + pgvector
 
 ## Database Changes
 
-**Schema Already Exists:**
-- Applied: `db/schema_30_payments.sql`
-- Tables: `subscription_plans`, `token_packages`, `payments`, `user_subscriptions`, `payment_errors`
-- This session only used existing schema (no migrations needed)
+**New Migrations Created (4 files):**
 
-**Data Created:**
-- Activity events in `activity_events` table (via payment_service)
-- No schema modifications
+1. **`db/schema_33_raspberry_blackberry_prompts.sql`**
+   - Adds 8 prompts for Raspberry + Blackberry
+   - Subtypes: blackberry, summer, remontant, general
+   - Categories: nutrition, planting_care
+
+2. **`db/schema_34_currant_honeysuckle_prompts.sql`**
+   - Adds 4 prompts for Currant + Honeysuckle
+   - Subtypes: currant, honeysuckle
+   - Categories: nutrition, planting_care
+
+3. **`db/schema_35_currant_honeysuckle_subtypes.sql`**
+   - Updates culture_subtypes metadata for currant_honeysuckle subgroup
+
+4. **`db/schema_36_blueberry_prompts.sql`**
+   - Adds 2 prompts for Blueberry
+   - No subtypes
+   - Categories: nutrition, planting_care
+
+**Tables Modified:**
+- `prompts` — 14 new rows inserted
+- `prompt_subgroups` — culture_subtypes field updated for 1 row
+
+**No schema changes** — Only data insertions/updates
 
 ## Environment Variables
 
-**No new environment variables** — All features work with existing configuration:
-- YooKassa credentials already in `.env` (from previous sessions)
-- Database connection already configured
+**No new environment variables** — All features work with existing configuration.
 
 ## Session Statistics
 
-- **Files Created:** 3 (1 backend handler, 2 frontend components)
-- **Files Modified:** 9 (3 backend, 6 frontend)
-- **Lines Added:** ~1,200 lines total
-  - Backend: ~250 lines (repo functions, API endpoints, events)
-  - Frontend: ~900 lines (components, types, API methods, styles)
-  - CSS: ~125 lines (PaymentsList styles)
-- **API Endpoints:** 3 new endpoints
-- **Database Functions:** 4 new repository functions
-- **Components:** 2 (BillingTab rewrite, PaymentsList new)
-- **Duration:** ~2-3 hours (planning + implementation)
-- **Commits Ready:** 1 (session end commit pending)
-- **Tests Written:** 0 (comprehensive testing needed)
+- **Duration:** ~4-5 hours (classification fix, prompt migrations, UI tree)
+- **Files Created:** 5 (1 Python, 4 SQL)
+- **Files Modified:** 12+ (4 backend, 8+ frontend)
+- **Files Deleted:** 12 (prompt documents section removal)
+- **Lines Added:** ~500 lines (pruning prompt, tree grouping logic, migrations)
+- **Lines Deleted:** ~800 lines (removed promptDocs components)
+- **Net change:** -300 lines (code cleanup)
+- **Database Rows:** 14 new prompts
+- **Categories:** 6 → 7 (added "обрезка")
+- **Tests Written:** 0 (testing needed)
 - **Documentation Updated:** 0 (this summary only)
+- **Commits Ready:** 1 (session end commit pending)
 
 ---
 
-**Session completed:** 2025-12-20
-**Ready for:** Backend restart, browser verification, database seed
-**Status:** All features implemented and ready for testing
-**Pending:** Manual UI testing via Playwright MCP
-**Version:** Still 1.2.2 (no version bump — internal feature addition)
+**Session completed:** 2025-12-23
+**Ready for:** Database migrations, backend restart, classification testing, UI verification
+**Status:** Code complete, migrations ready, testing pending
+**Pending:** Apply schema_33-36.sql, test pruning classification, verify 3-level tree UI
+**Version:** Still 1.2.2 (internal feature enhancements, no public-facing changes)
 
 ---
 
 # Previous Sessions
+
+## Session Summary — 2025-12-20 (Payment System Display)
+
+**Accomplishments:**
+- Complete payment display system in Admin Panel
+- Backend: 4 JOIN functions in payment_repo, 3 new API endpoints
+- Frontend: BillingTab rewrite, PaymentsList component, activity events
+- CRM Integration: Payments visible in client card billing tab
+- Activity Feed: Payment events with icons and status badges
+- Statistics: Total received, pending, payment counts
+- No schema changes, no version bump
+
+**Key Changes:**
+- Payment repository with JOIN queries for product names
+- Dedicated Payments list page with filters and pagination
+- Activity events for payment lifecycle (pending → succeeded)
+- Real-time payment visibility in CRM
+
+_Full session history available in git log_
 
 ## Session Summary — 2025-12-19 (Prompt System Enhancement)
 

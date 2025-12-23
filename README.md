@@ -84,6 +84,41 @@ cd webapp && npm run dev
 cd admin-webapp && npm run dev
 ```
 
+### Запуск через ngrok (доступ из интернета)
+
+Для доступа к админ-панели из интернета (например, с телефона или другого устройства):
+
+1. **Установить ngrok:**
+   ```bash
+   brew install ngrok  # macOS
+   # или скачать с https://ngrok.com/download
+   ```
+
+2. **Авторизоваться в ngrok:**
+   ```bash
+   ngrok config add-authtoken YOUR_TOKEN
+   # Получить токен: https://dashboard.ngrok.com/get-started/your-authtoken
+   ```
+
+3. **Запустить все сервисы (3 терминала):**
+   ```bash
+   # Терминал 1: Backend API
+   python -m src
+
+   # Терминал 2: Admin webapp
+   cd admin-webapp && npm run dev
+
+   # Терминал 3: ngrok туннель для webapp
+   ngrok http 5174
+   ```
+
+4. **Использовать ngrok URL:**
+   - Скопировать URL вида `https://xxxx.ngrok-free.app`
+   - Открыть его в браузере на любом устройстве
+
+**Важно:** API запросы проксируются через Vite (localhost:5174 → localhost:8080),
+поэтому нужен туннель только для webapp. Backend должен работать локально.
+
 ### Переменные окружения (.env)
 
 ```bash

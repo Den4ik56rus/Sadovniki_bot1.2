@@ -25,9 +25,11 @@ function formatDate(dateStr: string | null): string {
   })
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, isEmbedded }: { status: string; isEmbedded: boolean }) {
+  // Двухэтапная обработка: chunked (паспортизация) → completed (в библиотеке)
   const statusMap: Record<string, { label: string; className: string }> = {
-    completed: { label: 'Готов', className: styles.statusCompleted },
+    completed: { label: isEmbedded ? 'В библиотеке' : 'Готов', className: isEmbedded ? styles.statusCompleted : styles.statusChunked },
+    chunked: { label: 'Ожидает загрузки', className: styles.statusChunked },
     processing: { label: 'Обработка...', className: styles.statusProcessing },
     pending: { label: 'Ожидание', className: styles.statusPending },
     failed: { label: 'Ошибка', className: styles.statusFailed },
@@ -60,15 +62,17 @@ function CostCell({ doc }: { doc: RagDocument }) {
   const { usdRate } = useCurrencyStore()
   const [showTooltip, setShowTooltip] = useState(false)
 
+  const chunkingCost = doc.chunking_cost || 0
   const embeddingCost = doc.embedding_cost || 0
   const contextCost = doc.context_cost || 0
-  const totalCost = doc.total_cost || (embeddingCost + contextCost)
+  const totalCost = doc.total_cost || (chunkingCost + embeddingCost + contextCost)
 
   if (!totalCost || totalCost <= 0 || isNaN(totalCost)) {
     return <span className={styles.noCost}>—</span>
   }
 
   const totalRub = totalCost * usdRate
+  const chunkingRub = chunkingCost * usdRate
   const embeddingRub = embeddingCost * usdRate
   const contextRub = contextCost * usdRate
 
@@ -89,10 +93,18 @@ function CostCell({ doc }: { doc: RagDocument }) {
       <span className={styles.costValue}>{formatRub(totalRub)}</span>
       {showTooltip && (
         <div className={styles.costTooltip}>
-          <div className={styles.costTooltipRow}>
-            <span>Векторизация:</span>
-            <span>{formatRub(embeddingRub)}</span>
-          </div>
+          {chunkingCost > 0 && (
+            <div className={styles.costTooltipRow}>
+              <span>Разбивка (768d):</span>
+              <span>{formatRub(chunkingRub)}</span>
+            </div>
+          )}
+          {embeddingCost > 0 && (
+            <div className={styles.costTooltipRow}>
+              <span>Embeddings (3072d):</span>
+              <span>{formatRub(embeddingRub)}</span>
+            </div>
+          )}
           <div className={styles.costTooltipRow}>
             <span>Контекст (LLM):</span>
             <span>{formatRub(contextRub)}</span>
@@ -112,10 +124,11 @@ function CostCell({ doc }: { doc: RagDocument }) {
 }
 
 function DocumentRow({ doc }: { doc: RagDocument }) {
-  const { openEditor, deleteDocument } = useRagDocumentStore()
+  const { openEditor, deleteDocument, embedDocument, isEmbedding } = useRagDocumentStore()
 
   const handleEdit = () => {
-    if (doc.status === 'completed' && doc.chunks_count > 0) {
+    // Разрешаем редактирование для chunked и completed
+    if ((doc.status === 'completed' || doc.status === 'chunked') && doc.chunks_count > 0) {
       openEditor(doc.id)
     }
   }
@@ -126,6 +139,21 @@ function DocumentRow({ doc }: { doc: RagDocument }) {
     }
   }
 
+  const handleEmbed = async () => {
+    if (confirm(`Загрузить документ "${doc.filename}" в библиотеку?\n\nЭто сгенерирует embeddings для всех чанков.`)) {
+      await embedDocument(doc.id)
+    }
+  }
+
+  // Условия для кнопки "Загрузить в библиотеку"
+  const canEmbed = !doc.is_embedded &&
+    (doc.status === 'chunked' || doc.status === 'completed') &&
+    doc.chunks_count > 0 &&
+    doc.passported_chunks === doc.chunks_count
+
+  // Условия для кнопки "Паспорта"
+  const canEdit = (doc.status === 'completed' || doc.status === 'chunked') && doc.chunks_count > 0
+
   return (
     <tr className={styles.row}>
       <td className={styles.cellName}>
@@ -135,10 +163,10 @@ function DocumentRow({ doc }: { doc: RagDocument }) {
         )}
       </td>
       <td className={styles.cellStatus}>
-        <StatusBadge status={doc.status} />
+        <StatusBadge status={doc.status} isEmbedded={doc.is_embedded} />
       </td>
       <td className={styles.cellProgress}>
-        {doc.status === 'completed' && doc.chunks_count > 0 ? (
+        {canEdit ? (
           <ProgressBar current={doc.passported_chunks} total={doc.chunks_count} />
         ) : (
           <span className={styles.noChunks}>—</span>
@@ -154,7 +182,17 @@ function DocumentRow({ doc }: { doc: RagDocument }) {
         {formatDate(doc.created_at)}
       </td>
       <td className={styles.cellActions}>
-        {doc.status === 'completed' && doc.chunks_count > 0 && (
+        {canEmbed && (
+          <button
+            className={styles.btnEmbed}
+            onClick={handleEmbed}
+            disabled={isEmbedding}
+            title="Загрузить в библиотеку"
+          >
+            {isEmbedding ? 'Загрузка...' : 'В библиотеку'}
+          </button>
+        )}
+        {canEdit && (
           <button
             className={styles.btnEdit}
             onClick={handleEdit}

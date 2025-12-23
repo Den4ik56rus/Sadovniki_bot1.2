@@ -20,6 +20,7 @@ interface PromptStore {
   // Expanded groups state
   expandedGroups: Set<number>
   expandedSubgroups: Set<string>
+  expandedCultureTypes: Set<string>  // Для вложенных групп внутри Клубника/Малина+Ежевика
 
   // Actions
   fetchGroups: () => Promise<void>
@@ -32,6 +33,7 @@ interface PromptStore {
   clearSelection: () => void
   toggleGroupExpanded: (groupId: number) => void
   toggleSubgroupExpanded: (groupId: number, subgroupId: number) => void
+  toggleCultureTypeExpanded: (subgroupId: number, cultureType: string) => void
   setError: (error: string | null) => void
 }
 
@@ -47,6 +49,7 @@ export const usePromptStore = create<PromptStore>((set, get) => ({
   error: null,
   expandedGroups: new Set<number>(),
   expandedSubgroups: new Set<string>(),
+  expandedCultureTypes: new Set<string>(),
 
   // Fetch all groups with subgroups
   fetchGroups: async () => {
@@ -200,6 +203,20 @@ export const usePromptStore = create<PromptStore>((set, get) => ({
         newExpanded.add(key)
       }
       return { expandedSubgroups: newExpanded }
+    })
+  },
+
+  // Toggle culture type expanded state (для вложенных групп в Клубника/Малина+Ежевика)
+  toggleCultureTypeExpanded: (subgroupId: number, cultureType: string) => {
+    const key = `${subgroupId}-${cultureType}`
+    set((state) => {
+      const newExpanded = new Set(state.expandedCultureTypes)
+      if (newExpanded.has(key)) {
+        newExpanded.delete(key)
+      } else {
+        newExpanded.add(key)
+      }
+      return { expandedCultureTypes: newExpanded }
     })
   },
 

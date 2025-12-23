@@ -19,12 +19,14 @@ Semantic Chunker для разбиения текста на смысловые 
 
 import re
 import numpy as np
-from typing import List, Dict, Optional, Any
+from typing import List, Dict, Optional, Any, Tuple
 
-from src.services.llm.gemini_embeddings import get_embeddings_for_similarity
+from src.services.llm.gemini_embeddings import get_embeddings_for_similarity_with_usage
 from src.services.documents.boundary_detector import (
     adjust_sentence_breakpoints_for_lists,
     detect_list_boundaries,
+    detect_headings,
+    get_heading_sentence_indices,
 )
 
 
@@ -35,8 +37,8 @@ class SemanticChunker:
 
     def __init__(
         self,
-        threshold_percentile: int = 70,
-        min_chunk_size: int = 100,
+        threshold_percentile: int = 60,
+        min_chunk_size: int = 300,
         max_chunk_size: int = 2000,
         batch_size: int = 50,
     ):
@@ -44,8 +46,9 @@ class SemanticChunker:
         Параметры:
             threshold_percentile: Процентиль для определения порога разрыва.
                 Выше = меньше разрывов = более крупные чанки.
-                70 — хороший баланс.
+                60 — хороший баланс для сохранения контекста.
             min_chunk_size: Минимальный размер чанка в символах.
+                300 — предотвращает чанки из 1-2 предложений.
             max_chunk_size: Максимальный размер чанка в символах.
             batch_size: Размер батча для Gemini API.
         """
@@ -58,7 +61,7 @@ class SemanticChunker:
         self,
         text: str,
         list_boundaries: Optional[List[Dict]] = None,
-    ) -> List[Dict[str, Any]]:
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
         """
         Разбивает текст на семантические чанки.
 
@@ -67,20 +70,19 @@ class SemanticChunker:
             list_boundaries: Границы списков (из docx_parser или boundary_detector)
 
         Возвращает:
-            Список чанков:
-            [
-                {
-                    "chunk_index": 0,
-                    "chunk_text": "...",
-                    "chunk_size": 500,
-                    "start_pos": 0,
-                    "end_pos": 500,
-                    "sentences_count": 5,
-                }
-            ]
+            Tuple[chunks, stats]:
+            - chunks: Список чанков
+            - stats: Статистика chunking (sentences_count, tokens, cost_usd)
         """
+        # Статистика по умолчанию (для коротких текстов без API вызовов)
+        empty_stats = {
+            "sentences_count": 0,
+            "chunking_tokens": 0,
+            "chunking_cost_usd": 0.0,
+        }
+
         if not text or len(text.strip()) < self.min_chunk_size:
-            return [{
+            chunks = [{
                 "chunk_index": 0,
                 "chunk_text": text.strip(),
                 "chunk_size": len(text.strip()),
@@ -88,12 +90,13 @@ class SemanticChunker:
                 "end_pos": len(text),
                 "sentences_count": 1,
             }] if text.strip() else []
+            return chunks, {**empty_stats, "sentences_count": 1 if text.strip() else 0}
 
         # 1. Разбиваем на предложения
         sentences = self._split_sentences(text)
 
         if len(sentences) <= 1:
-            return [{
+            chunks = [{
                 "chunk_index": 0,
                 "chunk_text": text.strip(),
                 "chunk_size": len(text.strip()),
@@ -101,13 +104,14 @@ class SemanticChunker:
                 "end_pos": len(text),
                 "sentences_count": len(sentences),
             }]
+            return chunks, {**empty_stats, "sentences_count": len(sentences)}
 
         # 2. Если списки не переданы, детектируем их
         if list_boundaries is None:
             list_boundaries = detect_list_boundaries(text)
 
-        # 3. Получаем embeddings для всех предложений
-        embeddings = await self._get_sentence_embeddings(sentences)
+        # 3. Получаем embeddings для всех предложений (с подсчётом стоимости)
+        embeddings, chunking_tokens, chunking_cost = await self._get_sentence_embeddings(sentences)
 
         # 4. Вычисляем similarity между соседними предложениями
         similarities = self._compute_similarities(embeddings)
@@ -115,21 +119,36 @@ class SemanticChunker:
         # 5. Находим точки разрыва
         breakpoints = self._find_breakpoints(similarities)
 
-        # 6. Корректируем breakpoints с учётом списков
+        # 6. Детектируем заголовки и защищаем их от отрыва от контента
+        headings = detect_headings(text)
+        heading_indices = get_heading_sentence_indices(headings, sentences)
+
+        # Убираем breakpoints сразу после заголовков (чтобы заголовок не отрывался)
+        protected_breakpoints = set(heading_indices)
+        breakpoints = [bp for bp in breakpoints if bp not in protected_breakpoints]
+
+        # 7. Корректируем breakpoints с учётом списков
         breakpoints = adjust_sentence_breakpoints_for_lists(
             breakpoints, sentences, list_boundaries
         )
 
-        # 7. Формируем чанки
+        # 8. Формируем чанки
         chunks = self._create_chunks(sentences, breakpoints, text)
 
-        # 8. Пост-обработка: объединяем слишком мелкие чанки
+        # 9. Пост-обработка: объединяем слишком мелкие чанки
         chunks = self._merge_small_chunks(chunks)
 
-        # 9. Пост-обработка: разбиваем слишком большие чанки
+        # 10. Пост-обработка: разбиваем слишком большие чанки
         chunks = self._split_large_chunks(chunks)
 
-        return chunks
+        # Статистика chunking
+        stats = {
+            "sentences_count": len(sentences),
+            "chunking_tokens": chunking_tokens,
+            "chunking_cost_usd": chunking_cost,
+        }
+
+        return chunks, stats
 
     def _split_sentences(self, text: str) -> List[str]:
         """
@@ -183,23 +202,30 @@ class SemanticChunker:
     async def _get_sentence_embeddings(
         self,
         sentences: List[str],
-    ) -> List[List[float]]:
+    ) -> Tuple[List[List[float]], int, float]:
         """
         Получает embeddings для предложений через Gemini API.
 
         Обрабатывает батчами для оптимизации.
+
+        Возвращает:
+            Tuple[embeddings, total_tokens, total_cost_usd]
         """
         all_embeddings = []
+        total_tokens = 0
+        total_cost = 0.0
 
         for i in range(0, len(sentences), self.batch_size):
             batch = sentences[i:i + self.batch_size]
-            batch_embeddings = await get_embeddings_for_similarity(
+            batch_embeddings, tokens, cost = await get_embeddings_for_similarity_with_usage(
                 texts=batch,
                 output_dimensionality=768,  # Меньше для скорости
             )
             all_embeddings.extend(batch_embeddings)
+            total_tokens += tokens
+            total_cost += cost
 
-        return all_embeddings
+        return all_embeddings, total_tokens, total_cost
 
     def _compute_similarities(
         self,
@@ -390,8 +416,8 @@ _chunker_instance: Optional[SemanticChunker] = None
 
 
 def get_semantic_chunker(
-    threshold_percentile: int = 70,
-    min_chunk_size: int = 100,
+    threshold_percentile: int = 60,
+    min_chunk_size: int = 300,
     max_chunk_size: int = 2000,
 ) -> SemanticChunker:
     """
@@ -412,14 +438,19 @@ def get_semantic_chunker(
 async def chunk_text_semantic(
     text: str,
     list_boundaries: Optional[List[Dict]] = None,
-    threshold_percentile: int = 70,
-    min_chunk_size: int = 100,
+    threshold_percentile: int = 60,
+    min_chunk_size: int = 300,
     max_chunk_size: int = 2000,
-) -> List[Dict[str, Any]]:
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """
     Функция-обёртка для semantic chunking.
 
     Для совместимости с текущим интерфейсом chunker.py.
+
+    Возвращает:
+        Tuple[chunks, stats]:
+        - chunks: Список чанков
+        - stats: Статистика (sentences_count, chunking_tokens, chunking_cost_usd)
     """
     chunker = get_semantic_chunker(
         threshold_percentile=threshold_percentile,

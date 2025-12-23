@@ -53,6 +53,8 @@ from src.services.db.documents_repo import (
 )
 from src.services.db.document_chunks_repo import (
     chunks_bulk_insert,
+    chunks_bulk_insert_without_embedding,
+    bulk_update_chunk_embeddings,
     bulk_update_chunk_contexts,
     get_chunks_by_document,
 )
@@ -599,16 +601,23 @@ async def process_document(
         return result
 
     # 8. Разбивка на чанки
+    chunking_stats = {"sentences_count": 0, "chunking_tokens": 0, "chunking_cost_usd": 0.0}
     try:
         if chunking_mode == "semantic":
             # RAG v2.0: Semantic chunking с Gemini
+            # threshold_percentile=60 — меньше точек разрыва, более крупные чанки
+            # min_chunk_size=300 — предотвращает чанки из 1-2 предложений
             print(f"[process_document] Using semantic chunking (lists detected: {len(list_boundaries)})")
-            chunks = await chunk_text_semantic(
+            chunks, chunking_stats = await chunk_text_semantic(
                 text=full_text,
                 list_boundaries=list_boundaries,
-                threshold_percentile=70,
-                min_chunk_size=100,
+                threshold_percentile=60,
+                min_chunk_size=300,
                 max_chunk_size=2000,
+            )
+            print(
+                f"[process_document] Semantic chunking: {chunking_stats['sentences_count']} sentences, "
+                f"{chunking_stats['chunking_tokens']} tokens, ${chunking_stats['chunking_cost_usd']:.6f}"
             )
         else:
             # Legacy: Fixed-size chunking
@@ -658,91 +667,23 @@ async def process_document(
     # Убедимся что category не None
     category = category or "общая_информация"
 
-    # 10. Генерация embeddings батчами с подсчётом токенов
-    try:
-        print(f"[process_document] Generating embeddings for {len(chunk_data_list)} chunks...")
-        all_embeddings = []
-        total_tokens = 0
-        embedding_model = None
-
-        batch_texts = [c["chunk_text"] for c in chunk_data_list]
-
-        if use_gemini_embeddings and settings.queryrouter_api_key:
-            # RAG v2.0: Gemini Embeddings
-            print(f"[process_document] Using Gemini embeddings (gemini-embedding-001)")
-            embedding_model = "gemini-embedding-001"
-
-            for i in range(0, len(batch_texts), EMBEDDING_BATCH_SIZE):
-                batch = batch_texts[i:i + EMBEDDING_BATCH_SIZE]
-                print(f"[process_document] Processing batch {i // EMBEDDING_BATCH_SIZE + 1}/{(len(batch_texts) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE}")
-
-                batch_embeddings = await get_batch_embeddings_for_documents(
-                    texts=batch,
-                    output_dimensionality=3072,  # Полная размерность для качества
-                )
-                all_embeddings.extend(batch_embeddings)
-
-                # Оцениваем токены (~4 символа = 1 токен для русского)
-                total_tokens += sum(len(t) // 4 for t in batch)
-
-                # Небольшая задержка между батчами
-                if i + EMBEDDING_BATCH_SIZE < len(batch_texts):
-                    await asyncio.sleep(0.3)
-
-            # Стоимость Gemini: $0.15 / 1M tokens
-            embedding_cost = total_tokens * 0.00000015
-
-        else:
-            # Legacy: OpenAI Embeddings
-            print(f"[process_document] Using OpenAI embeddings")
-
-            for i in range(0, len(chunk_data_list), EMBEDDING_BATCH_SIZE):
-                batch = chunk_data_list[i:i + EMBEDDING_BATCH_SIZE]
-                batch_chunk_texts = [c["chunk_text"] for c in batch]
-
-                print(f"[process_document] Processing batch {i // EMBEDDING_BATCH_SIZE + 1}/{(len(chunk_data_list) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE}")
-
-                batch_embeddings, batch_tokens, batch_model = await generate_embeddings_batch_with_tokens(batch_chunk_texts)
-                all_embeddings.extend(batch_embeddings)
-                total_tokens += batch_tokens
-                embedding_model = batch_model
-
-                # Небольшая задержка между батчами для избежания rate limits
-                if i + EMBEDDING_BATCH_SIZE < len(chunk_data_list):
-                    await asyncio.sleep(0.5)
-
-            # Расчёт стоимости по реальной модели из API
-            embedding_cost = calculate_embedding_cost(embedding_model, total_tokens)
-
-        print(f"[process_document] Generated {len(all_embeddings)} embeddings, {total_tokens} tokens, model: {embedding_model}, cost: ${embedding_cost:.6f}")
-
-    except Exception as e:
-        await document_update_status(
-            document_id,
-            status="failed",
-            error=f"Embedding generation failed: {e}"
-        )
-        result["error"] = f"Embedding generation failed: {e}"
-        return result
-
-    # 11. Подготовка данных для bulk insert
+    # 10. Подготовка данных для bulk insert БЕЗ embeddings (двухэтапная обработка)
     chunks_for_db = []
-    for chunk_data, embedding in zip(chunk_data_list, all_embeddings):
+    for chunk_data in chunk_data_list:
         chunks_for_db.append({
             "document_id": document_id,
             "chunk_index": chunk_data["chunk_index"],
             "chunk_text": chunk_data["chunk_text"],
             "chunk_size": chunk_data["chunk_size"],
             "page_number": chunk_data["page_number"],
-            "embedding": embedding,
             "category": category,
             "subcategory": subcategory,
         })
 
-    # 12. Массовая вставка чанков в БД
+    # 11. Массовая вставка чанков в БД БЕЗ embeddings
     try:
-        await chunks_bulk_insert(chunks_for_db)
-        print(f"[process_document] Inserted {len(chunks_for_db)} chunks into DB")
+        await chunks_bulk_insert_without_embedding(chunks_for_db)
+        print(f"[process_document] Inserted {len(chunks_for_db)} chunks into DB (without embeddings)")
     except Exception as e:
         await document_update_status(
             document_id,
@@ -752,7 +693,7 @@ async def process_document(
         result["error"] = f"Chunk insertion failed: {e}"
         return result
 
-    # 13. RAG v2.0: Генерация контекста для чанков через LLM
+    # 12. RAG v2.0: Генерация контекста для чанков через LLM
     context_cost = 0.0
     context_tokens = 0
     try:
@@ -788,29 +729,182 @@ async def process_document(
         # Ошибка генерации контекста не критична — документ всё равно загружен
         print(f"[process_document] Context generation failed (non-critical): {e}")
 
-    # 14. Обновление статуса документа на 'completed' с токенами, стоимостью и моделью
+    # 13. Обновление статуса документа на 'chunked' (is_embedded=False)
+    # Документ готов для паспортизации, embeddings будут сгенерированы позже
     try:
         await document_update_status(
             document_id,
-            status="completed",
+            status="chunked",
             total_chunks=len(chunks_for_db),
-            embedding_tokens=total_tokens,
-            embedding_cost_usd=embedding_cost,
-            embedding_model=embedding_model,
+            chunking_tokens=chunking_stats.get("chunking_tokens", 0),
+            chunking_cost_usd=chunking_stats.get("chunking_cost_usd", 0.0),
             context_generation_cost=context_cost,
             context_generation_tokens=context_tokens,
+            is_embedded=False,
         )
-        print(f"[process_document] Document {document_id} processing completed")
+        print(f"[process_document] Document {document_id} chunking completed (awaiting passportization)")
     except Exception as e:
         result["error"] = f"Failed to update document status: {e}"
         return result
 
-    # 15. Успех
+    # 14. Успех
     result["success"] = True
     result["document_id"] = document_id
     result["chunks_count"] = len(chunks_for_db)
     result["context_cost"] = context_cost
     result["context_tokens"] = context_tokens
+    result["chunking_tokens"] = chunking_stats.get("chunking_tokens", 0)
+    result["chunking_cost_usd"] = chunking_stats.get("chunking_cost_usd", 0.0)
+
+    return result
+
+
+async def embed_document(
+    document_id: int,
+    use_gemini_embeddings: bool = True,
+) -> Dict[str, any]:
+    """
+    Этап 2: Генерация embeddings для документа после паспортизации.
+
+    Вызывается кнопкой "Загрузить в библиотеку" когда все чанки паспортизированы.
+
+    Параметры:
+        document_id: ID документа
+        use_gemini_embeddings: True = Gemini API, False = OpenAI API
+
+    Возвращает:
+        {
+            "success": bool,
+            "document_id": int,
+            "chunks_count": int,
+            "embedding_tokens": int,
+            "embedding_cost_usd": float,
+            "error": Optional[str]
+        }
+    """
+    result = {
+        "success": False,
+        "document_id": document_id,
+        "chunks_count": 0,
+        "embedding_tokens": 0,
+        "embedding_cost_usd": 0.0,
+        "error": None,
+    }
+
+    # 1. Получаем чанки документа
+    try:
+        chunks = await get_chunks_by_document(document_id)
+        if not chunks:
+            result["error"] = f"No chunks found for document {document_id}"
+            return result
+        print(f"[embed_document] Found {len(chunks)} chunks for document {document_id}")
+    except Exception as e:
+        result["error"] = f"Failed to get chunks: {e}"
+        return result
+
+    # 2. Генерация embeddings батчами
+    try:
+        print(f"[embed_document] Generating embeddings for {len(chunks)} chunks...")
+        all_embeddings = []
+        total_tokens = 0
+        embedding_model = None
+
+        chunk_texts = [c["chunk_text"] for c in chunks]
+
+        if use_gemini_embeddings and settings.queryrouter_api_key:
+            # RAG v2.0: Gemini Embeddings
+            print(f"[embed_document] Using Gemini embeddings (gemini-embedding-001)")
+            embedding_model = "gemini-embedding-001"
+
+            for i in range(0, len(chunk_texts), EMBEDDING_BATCH_SIZE):
+                batch = chunk_texts[i:i + EMBEDDING_BATCH_SIZE]
+                print(f"[embed_document] Processing batch {i // EMBEDDING_BATCH_SIZE + 1}/{(len(chunk_texts) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE}")
+
+                batch_embeddings = await get_batch_embeddings_for_documents(
+                    texts=batch,
+                    output_dimensionality=3072,  # Полная размерность для качества
+                )
+                all_embeddings.extend(batch_embeddings)
+
+                # Оцениваем токены (~4 символа = 1 токен для русского)
+                total_tokens += sum(len(t) // 4 for t in batch)
+
+                # Небольшая задержка между батчами
+                if i + EMBEDDING_BATCH_SIZE < len(chunk_texts):
+                    await asyncio.sleep(0.3)
+
+            # Стоимость Gemini: $0.15 / 1M tokens
+            embedding_cost = total_tokens * 0.00000015
+
+        else:
+            # Legacy: OpenAI Embeddings
+            print(f"[embed_document] Using OpenAI embeddings")
+
+            for i in range(0, len(chunk_texts), EMBEDDING_BATCH_SIZE):
+                batch = chunk_texts[i:i + EMBEDDING_BATCH_SIZE]
+
+                print(f"[embed_document] Processing batch {i // EMBEDDING_BATCH_SIZE + 1}/{(len(chunk_texts) + EMBEDDING_BATCH_SIZE - 1) // EMBEDDING_BATCH_SIZE}")
+
+                batch_embeddings, batch_tokens, batch_model = await generate_embeddings_batch_with_tokens(batch)
+                all_embeddings.extend(batch_embeddings)
+                total_tokens += batch_tokens
+                embedding_model = batch_model
+
+                # Небольшая задержка между батчами
+                if i + EMBEDDING_BATCH_SIZE < len(chunk_texts):
+                    await asyncio.sleep(0.5)
+
+            # Расчёт стоимости
+            embedding_cost = calculate_embedding_cost(embedding_model, total_tokens)
+
+        print(f"[embed_document] Generated {len(all_embeddings)} embeddings, {total_tokens} tokens, cost: ${embedding_cost:.6f}")
+
+    except Exception as e:
+        await document_update_status(
+            document_id,
+            status="failed",
+            error=f"Embedding generation failed: {e}"
+        )
+        result["error"] = f"Embedding generation failed: {e}"
+        return result
+
+    # 3. Обновляем embeddings в БД
+    try:
+        updates = [
+            {"chunk_id": chunk["id"], "embedding": emb}
+            for chunk, emb in zip(chunks, all_embeddings)
+        ]
+        updated_count = await bulk_update_chunk_embeddings(updates)
+        print(f"[embed_document] Updated embeddings for {updated_count} chunks")
+    except Exception as e:
+        await document_update_status(
+            document_id,
+            status="failed",
+            error=f"Embedding update failed: {e}"
+        )
+        result["error"] = f"Embedding update failed: {e}"
+        return result
+
+    # 4. Обновляем статус документа на 'completed' (is_embedded=True)
+    try:
+        await document_update_status(
+            document_id,
+            status="completed",
+            embedding_tokens=total_tokens,
+            embedding_cost_usd=embedding_cost,
+            embedding_model=embedding_model,
+            is_embedded=True,
+        )
+        print(f"[embed_document] Document {document_id} embedding completed")
+    except Exception as e:
+        result["error"] = f"Failed to update document status: {e}"
+        return result
+
+    # 5. Успех
+    result["success"] = True
+    result["chunks_count"] = len(chunks)
+    result["embedding_tokens"] = total_tokens
+    result["embedding_cost_usd"] = embedding_cost
 
     return result
 

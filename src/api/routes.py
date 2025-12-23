@@ -180,6 +180,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_delete(r"/api/admin/rag-documents/{id:\d+}", rag_documents.delete_rag_document)
     app.router.add_patch(r"/api/admin/rag-documents/chunks/{id:\d+}/passport", rag_documents.update_chunk_passport_handler)
     app.router.add_post(r"/api/admin/rag-documents/chunks/{id:\d+}/generate-context", rag_documents.generate_chunk_context_handler)
+    app.router.add_post(r"/api/admin/rag-documents/{id:\d+}/embed", rag_documents.embed_document_handler)
 
     # Prompts API (редактор промптов)
     app.router.add_get("/api/admin/prompts/groups", prompts.get_prompt_groups)

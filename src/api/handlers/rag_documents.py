@@ -9,6 +9,7 @@ Endpoints:
 - GET /api/admin/rag-documents/passport-options — справочники для dropdown
 - PATCH /api/admin/rag-documents/chunks/{id}/passport — обновить паспорт чанка
 - POST /api/admin/rag-documents/chunks/{id}/generate-context — сгенерировать контекст
+- POST /api/admin/rag-documents/{id}/embed — загрузить в библиотеку (генерация embeddings)
 - DELETE /api/admin/rag-documents/{id} — удалить документ
 - DELETE /api/admin/rag-documents/clear-all — очистить все документы
 """
@@ -28,6 +29,7 @@ from src.services.db.document_chunks_repo import (
     update_chunk_context,
 )
 from src.services.llm.context_generator import generate_chunk_context
+from src.services.documents.processor import embed_document
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +39,7 @@ async def get_rag_documents(request: web.Request) -> web.Response:
     GET /api/admin/rag-documents
 
     Получить список всех RAG документов с прогрессом паспортизации.
+    Включает информацию о двухэтапной обработке (chunking + embedding).
     """
     try:
         limit = int(request.query.get("limit", 100))
@@ -54,11 +57,15 @@ async def get_rag_documents(request: web.Request) -> web.Response:
                     d.processing_error,
                     d.total_chunks,
                     d.file_size_bytes,
+                    d.chunking_tokens,
+                    d.chunking_cost_usd,
+                    d.embedding_tokens,
                     d.embedding_cost_usd,
                     d.context_generation_cost,
                     d.context_generation_tokens,
+                    d.is_embedded,
                     d.created_at,
-                    COUNT(CASE WHEN c.culture IS NOT NULL OR c.goal IS NOT NULL THEN 1 END) as passported_chunks
+                    COUNT(CASE WHEN cardinality(c.cultures) > 0 OR cardinality(c.goals) > 0 OR cardinality(c.growth_phases) > 0 THEN 1 END) as passported_chunks
                 FROM documents d
                 LEFT JOIN document_chunks c ON d.id = c.document_id
                 GROUP BY d.id
@@ -70,6 +77,7 @@ async def get_rag_documents(request: web.Request) -> web.Response:
 
         documents = []
         for row in rows:
+            chunking_cost = float(row["chunking_cost_usd"]) if row["chunking_cost_usd"] else 0
             embedding_cost = float(row["embedding_cost_usd"]) if row["embedding_cost_usd"] else 0
             context_cost = float(row["context_generation_cost"]) if row["context_generation_cost"] else 0
             documents.append({
@@ -81,10 +89,14 @@ async def get_rag_documents(request: web.Request) -> web.Response:
                 "chunks_count": row["total_chunks"] or 0,
                 "passported_chunks": row["passported_chunks"] or 0,
                 "file_size": row["file_size_bytes"],
+                "chunking_tokens": row["chunking_tokens"] or 0,
+                "chunking_cost": chunking_cost,
+                "embedding_tokens": row["embedding_tokens"] or 0,
                 "embedding_cost": embedding_cost,
                 "context_cost": context_cost,
-                "total_cost": embedding_cost + context_cost,
+                "total_cost": chunking_cost + embedding_cost + context_cost,
                 "context_tokens": row["context_generation_tokens"] or 0,
+                "is_embedded": row["is_embedded"] if row["is_embedded"] is not None else False,
                 "created_at": row["created_at"].isoformat() if row["created_at"] else None,
             })
 
@@ -158,19 +170,24 @@ async def get_document_chunks(request: web.Request) -> web.Response:
         # Форматируем ответ
         formatted_chunks = []
         for chunk in chunks:
+            cultures = chunk.get("cultures") or []
+            goals = chunk.get("goals") or []
+            growth_phases = chunk.get("growth_phases") or []
+            culture_subtypes = chunk.get("culture_subtypes") or {}
+
             formatted_chunks.append({
                 "id": chunk["id"],
                 "chunk_index": chunk["chunk_index"],
                 "chunk_text": chunk["chunk_text"],
                 "chunk_size": chunk["chunk_size"],
                 "page_number": chunk["page_number"],
-                "culture": chunk["culture"],
-                "culture_subtype": chunk["culture_subtype"],
-                "goal": chunk["goal"],
-                "growth_phase": chunk["growth_phase"],
+                "cultures": cultures,
+                "culture_subtypes": culture_subtypes,
+                "goals": goals,
+                "growth_phases": growth_phases,
                 "prefix": chunk["prefix"],
                 "context": chunk["context"],
-                "is_passported": bool(chunk["culture"] or chunk["goal"] or chunk["growth_phase"]),
+                "is_passported": bool(cultures or goals or growth_phases),
                 "created_at": chunk["created_at"].isoformat() if chunk.get("created_at") else None,
             })
 
@@ -213,10 +230,12 @@ async def update_chunk_passport_handler(request: web.Request) -> web.Response:
     Обновить паспорт чанка.
 
     Body (JSON):
-        culture: string | null
-        culture_subtype: string | null
-        goal: string | null
-        growth_phase: string | null
+        cultures: string[] — массив культур
+        culture_subtypes: object — словарь подтипов { "малина": "ремонтантная", ... }
+        goals: string[] — массив целей
+        growth_phases: string[] — массив фаз роста
+        chunk_text: string | null — опционально, текст чанка
+        context: string | null — опционально, контекст чанка
     """
     try:
         chunk_id = int(request.match_info["id"])
@@ -229,18 +248,22 @@ async def update_chunk_passport_handler(request: web.Request) -> web.Response:
         # Парсим тело запроса
         data = await request.json()
 
-        culture = data.get("culture")
-        culture_subtype = data.get("culture_subtype")
-        goal = data.get("goal")
-        growth_phase = data.get("growth_phase")
+        cultures = data.get("cultures") or []
+        culture_subtypes = data.get("culture_subtypes") or {}
+        goals = data.get("goals") or []
+        growth_phases = data.get("growth_phases") or []
+        chunk_text = data.get("chunk_text")  # None если не передано
+        context = data.get("context")  # None если не передано
 
         # Обновляем паспорт
         updated_chunk = await update_chunk_passport(
             chunk_id=chunk_id,
-            culture=culture,
-            culture_subtype=culture_subtype,
-            goal=goal,
-            growth_phase=growth_phase,
+            cultures=cultures,
+            culture_subtypes=culture_subtypes,
+            goals=goals,
+            growth_phases=growth_phases,
+            chunk_text=chunk_text,
+            context=context,
         )
 
         if not updated_chunk:
@@ -251,12 +274,19 @@ async def update_chunk_passport_handler(request: web.Request) -> web.Response:
             "chunk": {
                 "id": updated_chunk["id"],
                 "chunk_index": updated_chunk["chunk_index"],
-                "culture": updated_chunk["culture"],
-                "culture_subtype": updated_chunk["culture_subtype"],
-                "goal": updated_chunk["goal"],
-                "growth_phase": updated_chunk["growth_phase"],
+                "chunk_text": updated_chunk["chunk_text"],
+                "chunk_size": updated_chunk["chunk_size"],
+                "cultures": updated_chunk["cultures"] or [],
+                "culture_subtypes": updated_chunk["culture_subtypes"] or {},
+                "goals": updated_chunk["goals"] or [],
+                "growth_phases": updated_chunk["growth_phases"] or [],
                 "prefix": updated_chunk["prefix"],
                 "context": updated_chunk["context"],
+                "is_passported": bool(
+                    updated_chunk["cultures"]
+                    or updated_chunk["goals"]
+                    or updated_chunk["growth_phases"]
+                ),
             },
         })
 
@@ -372,6 +402,77 @@ async def delete_rag_document(request: web.Request) -> web.Response:
     except Exception as e:
         logger.error(f"Error deleting RAG document: {e}")
         raise web.HTTPInternalServerError(text="Database error")
+
+
+async def embed_document_handler(request: web.Request) -> web.Response:
+    """
+    POST /api/admin/rag-documents/{id}/embed
+
+    Загрузить документ в библиотеку — генерация финальных embeddings.
+
+    Условия:
+    - Все чанки должны быть паспортизированы (passported_chunks == chunks_count)
+    - Документ ещё не загружен (is_embedded == False)
+    """
+    try:
+        document_id = int(request.match_info["id"])
+
+        # Получаем документ
+        doc = await documents_repo.document_get_by_id(document_id)
+        if not doc:
+            raise web.HTTPNotFound(text="Document not found")
+
+        # Проверяем что документ ещё не загружен
+        if doc.get("is_embedded"):
+            return web.json_response({
+                "success": False,
+                "error": "Документ уже загружен в библиотеку",
+            }, status=400)
+
+        # Проверяем что все чанки паспортизированы
+        chunks_count = doc.get("total_chunks") or 0
+        passported_count = await get_passported_chunks_count(document_id)
+
+        if passported_count < chunks_count:
+            return web.json_response({
+                "success": False,
+                "error": f"Не все чанки паспортизированы ({passported_count}/{chunks_count})",
+            }, status=400)
+
+        # Запускаем генерацию embeddings
+        logger.info(f"Starting embedding for document {document_id}: {doc['filename']}")
+
+        result = await embed_document(
+            document_id=document_id,
+            use_gemini_embeddings=True,
+        )
+
+        if not result["success"]:
+            return web.json_response({
+                "success": False,
+                "error": result.get("error", "Unknown error"),
+            }, status=500)
+
+        logger.info(
+            f"Embedded document {document_id}: {result['chunks_count']} chunks, "
+            f"{result['embedding_tokens']} tokens, ${result['embedding_cost_usd']:.6f}"
+        )
+
+        return web.json_response({
+            "success": True,
+            "document_id": document_id,
+            "chunks_count": result["chunks_count"],
+            "embedding_tokens": result["embedding_tokens"],
+            "embedding_cost": result["embedding_cost_usd"],
+        })
+
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid document ID")
+    except web.HTTPNotFound:
+        raise
+    except Exception as e:
+        logger.error(f"Error embedding document: {e}")
+        raise web.HTTPInternalServerError(text=f"Embedding failed: {str(e)}")
 
 
 async def clear_all_rag_documents(request: web.Request) -> web.Response:

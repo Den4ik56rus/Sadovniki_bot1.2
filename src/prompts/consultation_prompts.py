@@ -22,6 +22,7 @@ from src.prompts.base_prompt import (
 from src.prompts.category_prompts import (
     get_nutrition_category_prompt,
     get_planting_care_category_prompt,
+    get_pruning_category_prompt,
     get_diseases_pests_category_prompt,
     get_soil_improvement_category_prompt,
     get_variety_selection_category_prompt,
@@ -127,6 +128,7 @@ async def _get_category_prompt_from_db(
         category_to_subgroup = {
             "питание растений": "nutrition",
             "посадка и уход": "planting_care",
+            "обрезка": "pruning",
             "защита растений": "diseases_pests",
             "болезни и вредители": "diseases_pests",
             "улучшение почвы": "soil_improvement",
@@ -431,6 +433,7 @@ def _get_category_specific_prompt_python(
     category_map = {
         "питание растений": get_nutrition_category_prompt,
         "посадка и уход": get_planting_care_category_prompt,
+        "обрезка": get_pruning_category_prompt,
         "защита растений": get_diseases_pests_category_prompt,
         "болезни и вредители": get_diseases_pests_category_prompt,  # алиас
         "улучшение почвы": get_soil_improvement_category_prompt,

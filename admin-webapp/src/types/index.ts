@@ -192,7 +192,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'prompt-docs' | 'rag-docs' | 'prompts'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'payments'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -642,81 +642,41 @@ export interface TokenPackage {
   tokens_amount: number
 }
 
-// =============================================================================
-// Prompt Documents Types (Документы для промптов)
-// =============================================================================
-
-export interface PromptCulture {
-  id: number
-  name: string
-  sort_order: number
-  created_at?: string
-}
-
-export interface PromptSubculture {
-  id: number
-  culture_id: number
-  name: string
-  sort_order: number
-  created_at?: string
-}
-
-export interface PromptWorkType {
-  id: number
-  name: string
-  sort_order: number
-  created_at?: string
-}
-
-export type PromptDocumentExtractionStatus = 'pending' | 'completed' | 'failed'
-
-export interface PromptDocument {
-  id: number
-  culture_id: number
-  culture_name: string
-  subculture_id: number | null
-  subculture_name: string | null
-  work_type_id: number
-  work_type_name: string
-  filename: string
-  original_filename: string
-  file_size: number
-  file_type: string
-  extraction_status: PromptDocumentExtractionStatus
-  extraction_error: string | null
-  created_at: string
-  updated_at: string
-}
-
-export interface PromptDocumentsResponse {
-  documents: PromptDocument[]
-  total: number
-}
-
-export interface PromptDocumentFilters {
-  culture_id?: number
-  subculture_id?: number
-  work_type_id?: number
-}
-
 // ============================================
 // RAG Documents v2.0 — Паспортизация чанков
 // ============================================
+
+// Расширенный статус документа для двухэтапной обработки
+export type RagDocumentStatus = 'pending' | 'processing' | 'chunked' | 'completed' | 'failed'
 
 export interface RagDocument {
   id: number
   filename: string
   subcategory: string | null
-  status: DocumentStatus
+  status: RagDocumentStatus
   error: string | null
   chunks_count: number
   passported_chunks: number
   file_size: number
-  embedding_cost: number
-  context_cost: number
-  total_cost: number
+  // Двухэтапная обработка: chunking + embedding
+  chunking_tokens: number      // Токены для semantic chunking (768d)
+  chunking_cost: number        // Стоимость semantic chunking
+  embedding_tokens: number     // Токены для финальных embeddings (3072d)
+  embedding_cost: number       // Стоимость финальных embeddings
+  context_cost: number         // Стоимость генерации контекста
+  total_cost: number           // Общая стоимость
   context_tokens: number
+  is_embedded: boolean         // Загружен ли в библиотеку
   created_at: string | null
+}
+
+export interface EmbedDocumentResponse {
+  success: boolean
+  document_id?: number
+  chunks_count?: number
+  embedding_tokens?: number
+  embedding_cost?: number
+  error?: string
 }
 
 export interface RagDocumentsResponse {
@@ -730,10 +690,10 @@ export interface RagChunk {
   chunk_text: string
   chunk_size: number
   page_number: number | null
-  culture: string | null
-  culture_subtype: string | null
-  goal: string | null
-  growth_phase: string | null
+  cultures: string[]
+  culture_subtypes: Record<string, string> // { "малина": "ремонтантная", "клубника": "летняя" }
+  goals: string[]
+  growth_phases: string[]
   prefix: string | null
   context: string | null
   is_passported: boolean
@@ -760,10 +720,12 @@ export interface PassportOptions {
 }
 
 export interface UpdatePassportDto {
-  culture: string | null
-  culture_subtype: string | null
-  goal: string | null
-  growth_phase: string | null
+  cultures: string[]
+  culture_subtypes: Record<string, string> // { "малина": "ремонтантная" }
+  goals: string[]
+  growth_phases: string[]
+  chunk_text?: string
+  context?: string
 }
 
 export interface GenerateContextResponse {

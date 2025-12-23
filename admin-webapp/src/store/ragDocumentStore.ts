@@ -27,6 +27,7 @@ interface RagDocumentState {
   isLoading: boolean
   isUpdating: boolean
   isGeneratingContext: boolean
+  isEmbedding: boolean  // Загрузка в библиотеку
   error: string | null
 
   // Режим редактора
@@ -40,6 +41,7 @@ interface RagDocumentState {
 
   updateChunkPassport: (chunkId: number, passport: UpdatePassportDto) => Promise<boolean>
   generateContext: (chunkId: number) => Promise<void>
+  embedDocument: (id: number) => Promise<boolean>  // Загрузка в библиотеку
   deleteDocument: (id: number) => Promise<void>
   clearAllDocuments: () => Promise<void>
 
@@ -65,14 +67,15 @@ export const useRagDocumentStore = create<RagDocumentState>((set, get) => ({
   currentChunkIndex: 0,
   passportOptions: null,
   lastPassportSelection: {
-    culture: null,
-    culture_subtype: null,
-    goal: null,
-    growth_phase: null,
+    cultures: [],
+    culture_subtypes: {},
+    goals: [],
+    growth_phases: [],
   },
   isLoading: false,
   isUpdating: false,
   isGeneratingContext: false,
+  isEmbedding: false,
   error: null,
   isEditorOpen: false,
 
@@ -135,20 +138,28 @@ export const useRagDocumentStore = create<RagDocumentState>((set, get) => ({
           c.id === chunkId
             ? {
                 ...c,
-                culture: passport.culture,
-                culture_subtype: passport.culture_subtype,
-                goal: passport.goal,
-                growth_phase: passport.growth_phase,
+                cultures: response.chunk.cultures || [],
+                culture_subtypes: response.chunk.culture_subtypes || {},
+                goals: response.chunk.goals || [],
+                growth_phases: response.chunk.growth_phases || [],
+                chunk_text: response.chunk.chunk_text || c.chunk_text,
+                chunk_size: response.chunk.chunk_size || c.chunk_size,
                 prefix: response.chunk.prefix,
-                is_passported: true,
+                context: response.chunk.context ?? c.context,
+                is_passported: response.chunk.is_passported,
               }
             : c
         )
 
-        // Сохраняем выбор для следующих чанков
+        // Сохраняем выбор для следующих чанков (без chunk_text и context)
         set({
           chunks,
-          lastPassportSelection: passport,
+          lastPassportSelection: {
+            cultures: passport.cultures,
+            culture_subtypes: passport.culture_subtypes,
+            goals: passport.goals,
+            growth_phases: passport.growth_phases,
+          },
           isUpdating: false,
         })
 
@@ -182,6 +193,52 @@ export const useRagDocumentStore = create<RagDocumentState>((set, get) => ({
       }
     } catch (err) {
       set({ error: String(err), isGeneratingContext: false })
+    }
+  },
+
+  // Embed document (загрузка в библиотеку)
+  embedDocument: async (id: number) => {
+    set({ isEmbedding: true, error: null })
+    try {
+      const response = await api.embedRagDocument(id)
+
+      if (response.success) {
+        // Обновляем документ в списке
+        const documents = get().documents.map(d =>
+          d.id === id
+            ? {
+                ...d,
+                status: 'completed' as const,
+                is_embedded: true,
+                embedding_tokens: response.embedding_tokens || d.embedding_tokens,
+                embedding_cost: response.embedding_cost || d.embedding_cost,
+              }
+            : d
+        )
+
+        // Обновляем currentDocument если это текущий документ
+        const currentDocument = get().currentDocument
+        if (currentDocument?.id === id) {
+          set({
+            currentDocument: {
+              ...currentDocument,
+              status: 'completed',
+              is_embedded: true,
+              embedding_tokens: response.embedding_tokens || currentDocument.embedding_tokens,
+              embedding_cost: response.embedding_cost || currentDocument.embedding_cost,
+            },
+          })
+        }
+
+        set({ documents, isEmbedding: false })
+        return true
+      }
+
+      set({ error: response.error || 'Ошибка загрузки', isEmbedding: false })
+      return false
+    } catch (err) {
+      set({ error: String(err), isEmbedding: false })
+      return false
     }
   },
 

@@ -109,8 +109,8 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
     icon: Icons.lists,
     label: 'Списки',
     submenu: [
+      { id: 'payments', label: 'Платежи' },
       { id: 'prompts', label: 'Промпты' },
-      { id: 'prompt-docs', label: 'Промт-документы' },
       { id: 'rag-docs', label: 'RAG Документы' },
     ],
   },

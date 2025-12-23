@@ -51,13 +51,6 @@ import type {
   ExpenseStats,
   CreateExpenseDto,
   ExpenseFilters,
-  // Prompt Documents
-  PromptCulture,
-  PromptSubculture,
-  PromptWorkType,
-  PromptDocument,
-  PromptDocumentsResponse,
-  PromptDocumentFilters,
   // RAG Documents v2.0
   RagDocument,
   RagDocumentsResponse,
@@ -66,12 +59,18 @@ import type {
   PassportOptions,
   UpdatePassportDto,
   GenerateContextResponse,
+  EmbedDocumentResponse,
   // Prompts
   PromptGroupsResponse,
   Prompt,
   PromptsResponse,
   PromptHistoryResponse,
   VersionDiffResponse,
+  // Payments
+  PaymentStatus,
+  PaymentType,
+  PaymentsResponse,
+  PaymentStats,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -810,96 +809,6 @@ export const api = {
     },
   },
 
-  // =============================================================================
-  // Prompt Documents (Документы для промптов)
-  // =============================================================================
-
-  async getPromptCultures(): Promise<PromptCulture[]> {
-    return fetchApi<PromptCulture[]>('/prompt-documents/cultures')
-  },
-
-  async getPromptSubcultures(cultureId: number): Promise<PromptSubculture[]> {
-    return fetchApi<PromptSubculture[]>(`/prompt-documents/subcultures?culture_id=${cultureId}`)
-  },
-
-  async getPromptWorkTypes(): Promise<PromptWorkType[]> {
-    return fetchApi<PromptWorkType[]>('/prompt-documents/work-types')
-  },
-
-  async getPromptDocuments(filters?: PromptDocumentFilters): Promise<PromptDocumentsResponse> {
-    const params = new URLSearchParams()
-    if (filters?.culture_id) params.set('culture_id', String(filters.culture_id))
-    if (filters?.subculture_id) params.set('subculture_id', String(filters.subculture_id))
-    if (filters?.work_type_id) params.set('work_type_id', String(filters.work_type_id))
-
-    const query = params.toString()
-    return fetchApi<PromptDocumentsResponse>(`/prompt-documents${query ? `?${query}` : ''}`)
-  },
-
-  async getPromptDocument(id: number): Promise<PromptDocument> {
-    return fetchApi<PromptDocument>(`/prompt-documents/${id}`)
-  },
-
-  async getPromptDocumentContent(id: number): Promise<{ content: string | null; message?: string }> {
-    return fetchApi<{ content: string | null; message?: string }>(`/prompt-documents/${id}/content`)
-  },
-
-  async uploadPromptDocument(
-    file: File,
-    cultureId: number,
-    subcultureId: number | null,
-    workTypeId: number
-  ): Promise<PromptDocument> {
-    const formData = new FormData()
-    formData.append('file', file)
-    formData.append('culture_id', String(cultureId))
-    if (subcultureId !== null) {
-      formData.append('subculture_id', String(subcultureId))
-    }
-    formData.append('work_type_id', String(workTypeId))
-
-    const response = await fetch(`${API_BASE}/prompt-documents/upload`, {
-      method: 'POST',
-      headers: {
-        'ngrok-skip-browser-warning': 'true',
-      },
-      body: formData,
-    })
-
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(text || `Upload failed: ${response.status}`)
-    }
-
-    return response.json()
-  },
-
-  async deletePromptDocument(id: number): Promise<{ success: boolean }> {
-    return fetchApi(`/prompt-documents/${id}`, {
-      method: 'DELETE',
-    })
-  },
-
-  async replacePromptDocument(id: number, file: File): Promise<PromptDocument> {
-    const formData = new FormData()
-    formData.append('file', file)
-
-    const response = await fetch(`${API_BASE}/prompt-documents/${id}/replace`, {
-      method: 'PUT',
-      headers: {
-        'ngrok-skip-browser-warning': 'true',
-      },
-      body: formData,
-    })
-
-    if (!response.ok) {
-      const text = await response.text()
-      throw new Error(text || `Replace failed: ${response.status}`)
-    }
-
-    return response.json()
-  },
-
   // ============================================
   // RAG Documents API v2.0 — Паспортизация чанков
   // ============================================
@@ -959,6 +868,14 @@ export const api = {
       method: 'DELETE',
     })
     if (!response.ok) throw new Error('Failed to clear documents')
+    return response.json()
+  },
+
+  async embedRagDocument(id: number): Promise<EmbedDocumentResponse> {
+    const response = await fetch(`${API_BASE}/rag-documents/${id}/embed`, {
+      method: 'POST',
+    })
+    // Возвращаем JSON даже при ошибке, так как там может быть error message
     return response.json()
   },
 

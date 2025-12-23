@@ -290,3 +290,110 @@ def merge_adjacent_lists(
             merged.append(current.copy())
 
     return merged
+
+
+def detect_headings(text: str) -> List[Dict]:
+    """
+    Находит заголовки в тексте.
+
+    Признаки заголовка:
+    - Короткая строка (< 100 символов)
+    - Заканчивается без точки (или с двоеточием)
+    - CAPS или начинается с заглавной
+    - Нумерованный заголовок: "1. Название", "Глава 1."
+
+    Параметры:
+        text: Текст для анализа
+
+    Возвращает:
+        Список словарей:
+        [
+            {"text": "Заголовок", "start": 0, "end": 50, "type": "numbered"},
+        ]
+    """
+    lines = text.split("\n")
+    headings = []
+    current_position = 0
+
+    # Паттерны заголовков
+    heading_patterns = [
+        (r'^\d+\.\s+[А-ЯA-Z][^.!?]{0,80}$', 'numbered'),           # 1. Название раздела
+        (r'^\d+\.\d+\.?\s+[А-ЯA-Z][^.!?]{0,80}$', 'numbered'),     # 1.1 Подраздел
+        (r'^Глава\s+\d+[.:]\s*.{0,80}$', 'chapter'),               # Глава 1: Название
+        (r'^Раздел\s+\d+[.:]\s*.{0,80}$', 'section'),              # Раздел 2. Название
+        (r'^[А-ЯA-Z][А-ЯA-Z\s\-]{3,80}$', 'caps'),                 # ЗАГОЛОВОК В CAPS
+        (r'^[А-ЯA-Z][а-яёА-ЯЁ\s\-]{3,60}:?\s*$', 'title'),         # Заголовок без точки
+        (r'^[А-ЯA-Z][а-яё]+\s+[а-яё]+\s*$', 'short_title'),        # Короткий заголовок
+    ]
+
+    for i, line in enumerate(lines):
+        line_stripped = line.strip()
+        line_length = len(line) + 1  # +1 для \n
+
+        if not line_stripped:
+            current_position += line_length
+            continue
+
+        # Проверяем на совпадение с паттернами заголовков
+        for pattern, heading_type in heading_patterns:
+            if re.match(pattern, line_stripped, re.IGNORECASE):
+                # Дополнительные проверки
+                # 1. Не слишком длинная строка
+                if len(line_stripped) > 100:
+                    continue
+
+                # 2. Следующая строка должна быть непустой (это контент)
+                if i + 1 < len(lines):
+                    next_line = lines[i + 1].strip()
+                    # Если следующая строка пустая или тоже заголовок — пропускаем
+                    if not next_line:
+                        continue
+
+                headings.append({
+                    "text": line_stripped,
+                    "start": current_position,
+                    "end": current_position + len(line_stripped),
+                    "type": heading_type,
+                })
+                break
+
+        current_position += line_length
+
+    return headings
+
+
+def get_heading_sentence_indices(
+    headings: List[Dict],
+    sentences: List[str],
+) -> List[int]:
+    """
+    Находит индексы предложений, которые являются заголовками.
+
+    Используется для защиты границы между заголовком и следующим предложением.
+
+    Параметры:
+        headings: Список заголовков из detect_headings()
+        sentences: Список предложений
+
+    Возвращает:
+        Список индексов предложений-заголовков
+    """
+    heading_indices = []
+    heading_texts = {h["text"].strip().lower() for h in headings}
+
+    for i, sentence in enumerate(sentences):
+        # Проверяем совпадение текста предложения с заголовком
+        sentence_clean = sentence.strip().lower()
+
+        # Точное совпадение
+        if sentence_clean in heading_texts:
+            heading_indices.append(i)
+            continue
+
+        # Частичное совпадение (заголовок может быть частью предложения)
+        for heading_text in heading_texts:
+            if heading_text in sentence_clean and len(heading_text) > 10:
+                heading_indices.append(i)
+                break
+
+    return heading_indices

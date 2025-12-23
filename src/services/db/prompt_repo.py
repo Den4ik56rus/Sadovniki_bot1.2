@@ -480,22 +480,27 @@ async def get_article_prompt() -> Optional[Dict[str, Any]]:
 
 # Маппинг культур на subgroup slugs
 CULTURE_TO_SUBGROUP = {
+    # Клубника
     'клубника': 'strawberry',
     'клубника летняя': 'strawberry',
     'клубника ремонтантная': 'strawberry',
     'клубника общая': 'strawberry',
     'земляника': 'strawberry',
     'земляника садовая': 'strawberry',
+    # Малина + Ежевика
     'малина': 'raspberry',
     'малина летняя': 'raspberry',
     'малина ремонтантная': 'raspberry',
     'малина общая': 'raspberry',
+    'ежевика': 'raspberry',  # Ежевика теперь в raspberry, не bushes!
+    # Смородина + Жимолость
+    'смородина': 'currant',
+    'жимолость': 'currant',
+    # Голубика
+    'голубика': 'blueberry',
+    # Кустарники (крыжовник и другие)
     'кустарники': 'bushes',
-    'голубика': 'bushes',
-    'смородина': 'bushes',
     'крыжовник': 'bushes',
-    'жимолость': 'bushes',
-    'ежевика': 'bushes',
 }
 
 # Маппинг подкультур
@@ -503,6 +508,9 @@ SUBCULTURE_TO_SLUG = {
     'летняя': 'summer',
     'ремонтантная': 'remontant',
     'общая': 'general',
+    'ежевика': 'blackberry',  # Ежевика как подтип в raspberry
+    'смородина': 'currant',   # Смородина как подтип в currant subgroup
+    'жимолость': 'honeysuckle',  # Жимолость как подтип в currant subgroup
 }
 
 # Маппинг категорий консультаций на типы работ
@@ -514,6 +522,7 @@ CATEGORY_TO_WORK_SLUG = {
     'улучшение почвы': 'soil',
     'подбор сорта': 'variety',
     'подбор сортов': 'variety',
+    'обрезка': 'pruning',
 }
 
 

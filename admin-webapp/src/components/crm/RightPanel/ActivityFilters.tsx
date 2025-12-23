@@ -17,6 +17,7 @@ const _FILTER_LABELS: Record<ActivityEventType, { label: string; icon: string }>
   status_change: { label: 'Статус', icon: '🔄' },
   tag_change: { label: 'Теги', icon: '🏷️' },
   field_change: { label: 'Поля', icon: '✏️' },
+  payment: { label: 'Платежи', icon: '💳' },
 }
 void _FILTER_LABELS // Available for future use
 

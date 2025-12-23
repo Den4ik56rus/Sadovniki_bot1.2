@@ -232,7 +232,7 @@ export function KanbanBoard() {
   }
 
   // Handle delete client from CRM
-  const handleDeleteClient = async (clientId: number, fromStatus: FunnelStatus) => {
+  const handleDeleteClient = async (clientId: number, _fromStatus: FunnelStatus) => {
     try {
       await api.removeClientFromFunnel('crm', clientId)
       // Refetch clients to update UI
@@ -243,7 +243,7 @@ export function KanbanBoard() {
   }
 
   // Handle transfer client to Buyers funnel
-  const handleTransferToBuyers = async (clientId: number, fromStatus: FunnelStatus) => {
+  const handleTransferToBuyers = async (clientId: number, _fromStatus: FunnelStatus) => {
     try {
       await api.transferClient('crm', clientId, 'buyers', 'pending_payment')
       // Refetch clients to update UI

@@ -35,7 +35,7 @@ interface LeftPanelProps {
   onClose?: () => void
 }
 
-export function LeftPanel({ client, allTags, funnelId, onUpdate, onTopicClick, onClose }: LeftPanelProps) {
+export function LeftPanel({ client, allTags, funnelId, onUpdate, onTopicClick: _onTopicClick, onClose }: LeftPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('main')
   const [isUpdating, setIsUpdating] = useState(false)
   const [notes, setNotes] = useState<ClientNote[]>([])
@@ -208,9 +208,7 @@ export function LeftPanel({ client, allTags, funnelId, onUpdate, onTopicClick, o
         return (
           <BillingTab
             clientId={client.id}
-            totalCostUsd={client.total_cost_usd}
             totalConsultations={client.total_consultations}
-            onTopicClick={onTopicClick}
           />
         )
       default:

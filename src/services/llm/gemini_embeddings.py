@@ -191,6 +191,26 @@ async def get_embeddings_for_similarity(
     return await get_gemini_batch_embeddings(texts, output_dimensionality)
 
 
+async def get_embeddings_for_similarity_with_usage(
+    texts: List[str],
+    output_dimensionality: OutputDimensionality = 768,
+) -> Tuple[List[List[float]], int, float]:
+    """
+    Embeddings для semantic chunking с возвратом статистики.
+
+    Возвращает:
+        Tuple[embeddings, tokens, cost_usd]
+
+    Стоимость: $0.15 / 1M tokens (Gemini Embedding)
+    """
+    embeddings, tokens, _ = await get_gemini_batch_embeddings_with_usage(
+        texts, output_dimensionality
+    )
+    # Gemini Embedding: $0.15 per 1M tokens
+    cost_usd = tokens * 0.00000015
+    return embeddings, tokens, cost_usd
+
+
 async def get_batch_embeddings_for_documents(
     texts: List[str],
     output_dimensionality: OutputDimensionality = 3072,

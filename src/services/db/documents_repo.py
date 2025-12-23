@@ -56,49 +56,49 @@ async def document_update_status(
     embedding_model: Optional[str] = None,
     context_generation_cost: Optional[float] = None,
     context_generation_tokens: Optional[int] = None,
+    chunking_tokens: Optional[int] = None,
+    chunking_cost_usd: Optional[float] = None,
+    is_embedded: Optional[bool] = None,
 ) -> None:
     """
     Обновляет статус обработки документа.
+
+    Поддерживает двухэтапную обработку:
+    - Этап 1 (chunking): status='chunked', chunking_tokens/cost, is_embedded=False
+    - Этап 2 (embedding): status='completed', embedding_tokens/cost, is_embedded=True
     """
     pool = get_pool()
 
     async with pool.acquire() as conn:
-        if total_chunks is not None:
-            await conn.execute(
-                """
-                UPDATE documents
-                SET processing_status = $1,
-                    processing_error = $2,
-                    total_chunks = $3,
-                    embedding_tokens = COALESCE($5, embedding_tokens),
-                    embedding_cost_usd = COALESCE($6, embedding_cost_usd),
-                    embedding_model = COALESCE($7, embedding_model),
-                    context_generation_cost = COALESCE($8, context_generation_cost),
-                    context_generation_tokens = COALESCE($9, context_generation_tokens)
-                WHERE id = $4;
-                """,
-                status,
-                error,
-                total_chunks,
-                document_id,
-                embedding_tokens,
-                embedding_cost_usd,
-                embedding_model,
-                context_generation_cost,
-                context_generation_tokens,
-            )
-        else:
-            await conn.execute(
-                """
-                UPDATE documents
-                SET processing_status = $1,
-                    processing_error = $2
-                WHERE id = $3;
-                """,
-                status,
-                error,
-                document_id,
-            )
+        await conn.execute(
+            """
+            UPDATE documents
+            SET processing_status = $1,
+                processing_error = $2,
+                total_chunks = COALESCE($3, total_chunks),
+                embedding_tokens = COALESCE($4, embedding_tokens),
+                embedding_cost_usd = COALESCE($5, embedding_cost_usd),
+                embedding_model = COALESCE($6, embedding_model),
+                context_generation_cost = COALESCE($7, context_generation_cost),
+                context_generation_tokens = COALESCE($8, context_generation_tokens),
+                chunking_tokens = COALESCE($9, chunking_tokens),
+                chunking_cost_usd = COALESCE($10, chunking_cost_usd),
+                is_embedded = COALESCE($11, is_embedded)
+            WHERE id = $12;
+            """,
+            status,
+            error,
+            total_chunks,
+            embedding_tokens,
+            embedding_cost_usd,
+            embedding_model,
+            context_generation_cost,
+            context_generation_tokens,
+            chunking_tokens,
+            chunking_cost_usd,
+            is_embedded,
+            document_id,
+        )
 
 
 async def document_exists_by_hash(file_hash: str) -> Optional[Dict]:

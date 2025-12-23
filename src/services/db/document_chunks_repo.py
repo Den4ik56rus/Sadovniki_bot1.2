@@ -222,6 +222,97 @@ async def chunks_search_priority_all(
     )
 
 
+async def chunks_bulk_insert_without_embedding(chunks: List[Dict]) -> None:
+    """
+    Массовая вставка чанков БЕЗ embeddings (для двухэтапной обработки).
+
+    Чанки вставляются с NULL embedding — embeddings добавляются позже
+    через bulk_update_chunk_embeddings().
+
+    Параметры:
+        chunks: Список словарей с полями:
+            - document_id: int
+            - chunk_index: int
+            - chunk_text: str
+            - chunk_size: int
+            - page_number: Optional[int]
+            - category: str
+            - subcategory: Optional[str]
+    """
+    if not chunks:
+        return
+
+    pool = get_pool()
+
+    records = []
+    for chunk in chunks:
+        records.append((
+            chunk["document_id"],
+            chunk["chunk_index"],
+            chunk["chunk_text"],
+            chunk["chunk_size"],
+            chunk.get("page_number"),
+            chunk["category"],
+            chunk.get("subcategory"),
+        ))
+
+    async with pool.acquire() as conn:
+        await conn.executemany(
+            """
+            INSERT INTO document_chunks (
+                document_id,
+                chunk_index,
+                chunk_text,
+                chunk_size,
+                page_number,
+                category,
+                subcategory
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7);
+            """,
+            records
+        )
+
+
+async def bulk_update_chunk_embeddings(updates: List[Dict]) -> int:
+    """
+    Массовое обновление embeddings для чанков.
+
+    Используется на втором этапе обработки после паспортизации.
+
+    Параметры:
+        updates: Список словарей с полями:
+            - chunk_id: int
+            - embedding: List[float]
+
+    Возвращает количество обновлённых записей.
+    """
+    if not updates:
+        return 0
+
+    pool = get_pool()
+    count = 0
+
+    async with pool.acquire() as conn:
+        for update in updates:
+            norm_embedding = _normalize_embedding(update["embedding"])
+            vector_str = "[" + ",".join(f"{x:.6f}" for x in norm_embedding) + "]"
+
+            result = await conn.execute(
+                """
+                UPDATE document_chunks
+                SET embedding = $2::vector
+                WHERE id = $1;
+                """,
+                update["chunk_id"],
+                vector_str,
+            )
+            if result == "UPDATE 1":
+                count += 1
+
+    return count
+
+
 async def chunks_count_by_document(document_id: int) -> int:
     """
     Возвращает количество чанков для документа.
@@ -261,10 +352,10 @@ async def get_chunks_by_document(document_id: int) -> List[Dict]:
                 chunk_text,
                 chunk_size,
                 page_number,
-                culture,
-                culture_subtype,
-                goal,
-                growth_phase,
+                cultures,
+                culture_subtypes,
+                goals,
+                growth_phases,
                 prefix,
                 context,
                 is_active,
@@ -295,10 +386,10 @@ async def get_chunk_by_id(chunk_id: int) -> Optional[Dict]:
                 chunk_text,
                 chunk_size,
                 page_number,
-                culture,
-                culture_subtype,
-                goal,
-                growth_phase,
+                cultures,
+                culture_subtypes,
+                goals,
+                growth_phases,
                 prefix,
                 context,
                 is_active,
@@ -313,59 +404,105 @@ async def get_chunk_by_id(chunk_id: int) -> Optional[Dict]:
 
 
 def generate_prefix(
-    culture: Optional[str],
-    culture_subtype: Optional[str],
-    goal: Optional[str],
-    growth_phase: Optional[str],
+    cultures: Optional[List[str]],
+    culture_subtypes: Optional[Dict],
+    goals: Optional[List[str]],
+    growth_phases: Optional[List[str]],
 ) -> str:
     """
     Генерирует prefix (служебную шапку) для чанка на основе паспорта.
 
-    Пример: [Культура: малина, ремонтантная] [Цель: питание] [Фаза: весна]
+    Пример: [Культуры: малина (ремонтантная), клубника (летняя)][Цели: питание, защита][Фазы: весна]
+
+    Поддерживает массивы значений и подтипы для каждой культуры.
     """
     parts = []
+    subtypes = culture_subtypes or {}
 
-    if culture and culture != 'общая':
-        culture_part = f"[Культура: {culture}"
-        if culture_subtype and culture_subtype != 'общая':
-            culture_part += f", {culture_subtype}"
-        culture_part += "]"
-        parts.append(culture_part)
+    # Фильтруем "общая" из массивов
+    filtered_cultures = [c for c in (cultures or []) if c and c != 'общая']
+    filtered_goals = [g for g in (goals or []) if g and g != 'общая']
+    filtered_phases = [p for p in (growth_phases or []) if p and p != 'общая']
 
-    if goal and goal != 'общая':
-        parts.append(f"[Цель: {goal}]")
+    if filtered_cultures:
+        # Формируем строку с подтипами для каждой культуры
+        culture_parts = []
+        for culture in filtered_cultures:
+            subtype = subtypes.get(culture)
+            if subtype and subtype != 'общая':
+                culture_parts.append(f"{culture} ({subtype})")
+            else:
+                culture_parts.append(culture)
 
-    if growth_phase and growth_phase != 'общая':
-        parts.append(f"[Фаза: {growth_phase}]")
+        label = "Культура" if len(filtered_cultures) == 1 else "Культуры"
+        parts.append(f"[{label}: {', '.join(culture_parts)}]")
+
+    if filtered_goals:
+        label = "Цель" if len(filtered_goals) == 1 else "Цели"
+        parts.append(f"[{label}: {', '.join(filtered_goals)}]")
+
+    if filtered_phases:
+        label = "Фаза" if len(filtered_phases) == 1 else "Фазы"
+        parts.append(f"[{label}: {', '.join(filtered_phases)}]")
 
     return " ".join(parts) if parts else ""
 
 
 async def update_chunk_passport(
     chunk_id: int,
-    culture: Optional[str],
-    culture_subtype: Optional[str],
-    goal: Optional[str],
-    growth_phase: Optional[str],
+    cultures: Optional[List[str]],
+    culture_subtypes: Optional[Dict],
+    goals: Optional[List[str]],
+    growth_phases: Optional[List[str]],
+    chunk_text: Optional[str] = None,
+    context: Optional[str] = None,
 ) -> Optional[Dict]:
     """
     Обновить паспорт чанка и сгенерировать prefix.
+
+    Поддерживает:
+    - Массивы культур, целей, фаз роста
+    - Словарь подтипов для каждой культуры
+    - Опциональное обновление текста чанка и контекста
     """
     pool = get_pool()
+    import json
 
     # Генерируем prefix
-    prefix = generate_prefix(culture, culture_subtype, goal, growth_phase)
+    prefix = generate_prefix(cultures, culture_subtypes, goals, growth_phases)
+
+    # Преобразуем dict в JSON строку для PostgreSQL
+    subtypes_json = json.dumps(culture_subtypes or {})
 
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            """
+        # Строим динамический запрос
+        set_parts = [
+            "cultures = $2",
+            "culture_subtypes = $3::jsonb",
+            "goals = $4",
+            "growth_phases = $5",
+            "prefix = $6",
+        ]
+        params = [chunk_id, cultures or [], subtypes_json, goals or [], growth_phases or [], prefix]
+        param_idx = 7
+
+        if chunk_text is not None:
+            set_parts.append(f"chunk_text = ${param_idx}")
+            params.append(chunk_text)
+            param_idx += 1
+            # Обновляем chunk_size при изменении текста
+            set_parts.append(f"chunk_size = ${param_idx}")
+            params.append(len(chunk_text))
+            param_idx += 1
+
+        if context is not None:
+            set_parts.append(f"context = ${param_idx}")
+            params.append(context)
+            param_idx += 1
+
+        query = f"""
             UPDATE document_chunks
-            SET
-                culture = $2,
-                culture_subtype = $3,
-                goal = $4,
-                growth_phase = $5,
-                prefix = $6
+            SET {', '.join(set_parts)}
             WHERE id = $1
             RETURNING
                 id,
@@ -374,22 +511,17 @@ async def update_chunk_passport(
                 chunk_text,
                 chunk_size,
                 page_number,
-                culture,
-                culture_subtype,
-                goal,
-                growth_phase,
+                cultures,
+                culture_subtypes,
+                goals,
+                growth_phases,
                 prefix,
                 context,
                 is_active,
                 created_at;
-            """,
-            chunk_id,
-            culture,
-            culture_subtype,
-            goal,
-            growth_phase,
-            prefix,
-        )
+        """
+
+        row = await conn.fetchrow(query, *params)
 
     return dict(row) if row else None
 
@@ -548,7 +680,11 @@ async def get_passported_chunks_count(document_id: int) -> int:
             SELECT COUNT(*) as count
             FROM document_chunks
             WHERE document_id = $1
-              AND (culture IS NOT NULL OR goal IS NOT NULL OR growth_phase IS NOT NULL);
+              AND (
+                  cardinality(cultures) > 0
+                  OR cardinality(goals) > 0
+                  OR cardinality(growth_phases) > 0
+              );
             """,
             document_id,
         )
@@ -569,6 +705,7 @@ async def chunks_search_with_passport(
     Поиск чанков с фильтрацией по паспорту.
 
     Возвращает чанки с prefix + context + chunk_text для использования в RAG.
+    Использует массивы cultures, goals, growth_phases.
     """
     pool = get_pool()
 
@@ -581,17 +718,18 @@ async def chunks_search_with_passport(
     param_idx = 3
 
     if culture:
-        conditions.append(f"c.culture = ${param_idx}")
+        # Используем ANY для поиска в массиве
+        conditions.append(f"${param_idx} = ANY(c.cultures)")
         params.append(culture)
         param_idx += 1
 
     if goal:
-        conditions.append(f"c.goal = ${param_idx}")
+        conditions.append(f"${param_idx} = ANY(c.goals)")
         params.append(goal)
         param_idx += 1
 
     if phase:
-        conditions.append(f"c.growth_phase = ${param_idx}")
+        conditions.append(f"${param_idx} = ANY(c.growth_phases)")
         params.append(phase)
         param_idx += 1
 
@@ -606,10 +744,10 @@ async def chunks_search_with_passport(
                 c.chunk_text,
                 c.page_number,
                 c.subcategory,
-                c.culture,
+                c.cultures,
                 c.culture_subtype,
-                c.goal,
-                c.growth_phase,
+                c.goals,
+                c.growth_phases,
                 c.prefix,
                 c.context,
                 c.embedding <=> $1::vector AS distance

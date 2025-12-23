@@ -9,7 +9,6 @@ import { FunnelKanban } from '@/components/funnel/FunnelKanban'
 import { Dashboard } from '@/components/pages/Dashboard'
 import { PlaceholderPage } from '@/components/pages/PlaceholderPage'
 import { ExpensesPage } from '@/components/expenses'
-import { PromptDocsPage } from '@/components/promptDocs'
 import { RagDocsPage } from '@/components/ragDocuments'
 import { PromptsPage } from '@/components/prompts'
 import { PaymentsList } from '@/components/payments/PaymentsList'
@@ -58,9 +57,6 @@ function App() {
       {/* Редактор промптов */}
       {currentView === 'prompts' && <PromptsPage />}
 
-      {/* Промт-документы */}
-      {currentView === 'prompt-docs' && <PromptDocsPage />}
-
       {/* RAG Документы v2.0 — паспортизация чанков */}
       {currentView === 'rag-docs' && <RagDocsPage />}
 
@@ -71,7 +67,7 @@ function App() {
       {currentView === 'expenses' && <ExpensesPage />}
 
       {/* Списки - Платежи */}
-      {currentView === 'lists' && <PaymentsList />}
+      {currentView === 'payments' && <PaymentsList />}
 
       {/* Настройки - заглушка */}
       {currentView === 'settings' && (

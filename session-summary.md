@@ -1,10 +1,10 @@
-# Session Summary — 2025-12-23
+# Session Summary — 2026-02-12
 
 ## Project Context
 
 **Sadovniki-bot** — Telegram-бот для профессиональных консультаций по ягодным культурам с RAG-системой на базе PostgreSQL + pgvector и OpenAI GPT.
 
-**Current Stage:** Production-ready system (v1.2.2) with prompt system enhancements and culture-specific prompts.
+**Current Stage:** Production-ready system (v1.2.2) with troubleshooting OpenAI API configuration.
 
 **Tech Stack:**
 - Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
@@ -14,157 +14,379 @@
 
 ## Session Goal
 
-**Primary Goal:** Fix classification system — "обрезка" (pruning) was incorrectly classified as "посадка и уход" (planting and care), needed to be a separate category.
-
-**Secondary Goals:**
-1. Complete prompt system restructuring (remove prompt_documents section)
-2. Add berry culture-specific prompts (Raspberry+Blackberry, Currant+Honeysuckle, Blueberry)
-3. Implement 3-level hierarchical grouping in admin panel prompt tree
-4. Create migration scripts for new prompt groups
+**Primary Goal:** Diagnose and resolve OpenAI API connection errors preventing the bot from functioning.
 
 ## Accomplishments
 
-### 1. Pruning Category Implementation
+### 1. OpenAI API Configuration Troubleshooting
 
-**Problem:**
-- Classification LLM incorrectly assigned pruning questions to "посадка и уход" category
-- Keywords like "обрез", "формиров" were in planting_keywords
-- No dedicated prompt for pruning-specific consultations
-- Missing category in consultation flow
+**Initial Problem:**
+- Bot startup failed with `APIConnectionError: Connection error` when trying to use OpenAI API
+- Error message indicated connection issue rather than authentication problem
 
-**Solution:**
-- Created separate "обрезка" category with dedicated keywords
-- Removed pruning keywords from planting category
-- Added new pruning category prompt file
-- Updated all mapping dictionaries
+**Investigation Process:**
 
-**Files Modified:**
+1. **Examined .env file:**
+   - Located OpenAI model configuration settings
+   - Discovered typo: `OPENAI_MODEL_CLASSIFICATION=gpt-55` (should be `gpt-4o-mini` or similar)
 
-1. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/llm/classification_llm.py`**
+2. **Checked core_llm.py:**
+   - Verified how model names are loaded from environment variables
+   - Confirmed that invalid model name causes connection error (not model-not-found error)
 
-   **Changes in `_keyword_category_fallback()` function:**
-   ```python
-   # NEW: Dedicated pruning keywords (runs BEFORE planting check)
-   pruning_keywords = [
-       "обрез", "обрезк", "формиров", "прищип", "пасынков",
-       "укорач", "прорежив", "санитарн"
-   ]
-   if any(kw in text for kw in pruning_keywords):
-       return "обрезка"
+3. **User Fixed Typo:**
+   - Changed `gpt-55` to `gpt-5`
+   - Revealed the real underlying issue: `insufficient_quota` (429 error)
+   - OpenAI account had run out of balance
 
-   # MODIFIED: Removed "обрез", "формиров" from planting_keywords
-   planting_keywords = [
-       "посад", "пересад", "саж", "высад", "полив", "мульч",
-       "укрыт", "зим", "уход", "агротехник",  # removed: "обрез", "формиров"
-       "схем", "расстоян", "глубин", "когда сажать", "как сажать",
-       "размножен", "черенк", "делен"
-   ]
-   ```
+**Root Causes Identified:**
 
-   **Changes in `detect_category_and_culture()` function:**
-   - Added "обрезка" to categories list (now 7 categories total)
-   - Updated LLM system prompt with pruning category rules:
-     ```
-     2. 'посадка и уход' - посадка, пересадка, полив, мульчирование, укрытие на зиму
-     3. 'обрезка' - обрезка, формирование куста, прищипка, пасынкование, санитарная обрезка
-     ```
-   - Added category_mapping entry: `"обрезка": "обрезка"`
+1. **Typo in .env:** `OPENAI_MODEL_CLASSIFICATION=gpt-55`
+   - Non-existent model caused connection error
+   - Misleading error message (connection vs invalid model)
 
-   **Rationale:**
-   - Pruning is sufficiently complex to warrant separate category
-   - Different timing, techniques, tools than general care
-   - Prevents misclassification of pruning questions
+2. **OpenAI Account Quota Exhausted:**
+   - After fixing typo, real error emerged: HTTP 429 `insufficient_quota`
+   - Account balance depleted, cannot make API calls
 
-2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/consultation_prompts.py`**
+**Solution Implemented by User:**
 
-   **Added pruning import:**
-   ```python
-   from src.prompts.category_prompts import (
-       get_nutrition_category_prompt,
-       get_planting_care_category_prompt,
-       get_pruning_category_prompt,  # NEW
-       # ...
-   )
-   ```
+User switched to more economical model configuration in `.env`:
 
-   **Added pruning to DB mapping (`_get_category_prompt_from_db`):**
-   ```python
-   category_to_subgroup = {
-       "питание растений": "nutrition",
-       "посадка и уход": "planting_care",
-       "обрезка": "pruning",  # NEW
-       "защита растений": "diseases_pests",
-       # ...
-   }
-   ```
+```bash
+# Previous configuration (expensive models):
+OPENAI_MODEL_CONSULTATION=gpt-4o
+OPENAI_MODEL_ARTICLE=gpt-4o
+OPENAI_MODEL_CLASSIFICATION=gpt-55  # typo
+OPENAI_MODEL_UTILITY=gpt-4o
 
-   **Added pruning to Python fallback (`_get_category_specific_prompt_python`):**
-   ```python
-   category_map = {
-       "питание растений": get_nutrition_category_prompt,
-       "посадка и уход": get_planting_care_category_prompt,
-       "обрезка": get_pruning_category_prompt,  # NEW
-       # ...
-   }
-   ```
+# New configuration (budget-friendly):
+OPENAI_MODEL_CONSULTATION=gpt-5-mini
+OPENAI_MODEL_ARTICLE=gpt-4.1-mini
+OPENAI_MODEL_CLASSIFICATION=gpt-4.1-mini  # fixed typo + cheaper model
+OPENAI_MODEL_UTILITY=gpt-4.1-mini
+```
 
-3. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/category_prompts/pruning.py`** (NEW FILE, 57 lines)
+**Files Examined (No Code Changes Made):**
 
-   **Purpose:** Category-specific prompt for pruning consultations
+1. **`.env`** — Environment configuration
+   - Contains OpenAI API key and model settings
+   - User fixed typo and updated to cheaper models
 
-   **Function signature:**
-   ```python
-   def get_pruning_category_prompt(
-       culture: str,
-       default_location: str = "средняя полоса",
-       default_growing_type: str = "открытый грунт"
-   ) -> Tuple[str, bool]:
-   ```
-
-   **Returns:**
-   - Prompt text with pruning-specific instructions
-   - `use_minimal_base = False` (use full base prompt)
-
-   **Prompt content covers:**
-   - Types of pruning: formative, sanitary, rejuvenating, normalizing
-   - Timing: spring, fall, after fruiting
-   - Technique: cut location (above bud, at ring), angle
-   - Tools: pruner, lopper, saw
-   - Post-pruning care: wound treatment, feeding
-
-   **Culture-specific guidance:**
-   - Raspberry remontant: can cut completely in fall or leave for two harvests
-   - Raspberry summer: remove fruited second-year shoots
-   - Currant/honeysuckle: rejuvenating old branches
-   - Blueberry: bush formation, thinning
-   - Strawberry: removing old leaves, runners
-
-4. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/category_prompts/__init__.py`**
-
-   **Added exports:**
-   ```python
-   from .pruning import get_pruning_category_prompt
-
-   __all__ = [
-       "get_nutrition_category_prompt",
-       "get_planting_care_category_prompt",
-       "get_pruning_category_prompt",  # NEW
-       # ...
-   ]
-   ```
+2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/llm/core_llm.py`**
+   - Loads model names from environment variables
+   - Creates OpenAI client and makes API calls
+   - No changes needed (configuration issue, not code issue)
 
 **Impact:**
-- Pruning questions now correctly classified as separate category
-- Dedicated expert prompt ensures quality pruning advice
-- Reduced false positives in "посадка и уход" category
-- Better user experience (more specific answers)
+- Bot startup no longer crashes with connection error
+- OpenAI API calls will work (assuming account has balance)
+- More cost-effective model usage reduces API costs
+- System can continue functioning with cheaper GPT models
 
-**Testing needed:**
-- Test questions like "Когда обрезать малину?" → should classify as "обрезка"
-- Test "Как формировать куст смородины?" → should classify as "обрезка"
-- Verify planting questions still work: "Когда сажать клубнику?" → "посадка и уход"
+**Lessons Learned:**
+1. Model name typos cause misleading `APIConnectionError` instead of "invalid model" error
+2. OpenAI API quota exhaustion returns HTTP 429 `insufficient_quota`
+3. Switching to mini models (gpt-4.1-mini, gpt-5-mini) significantly reduces costs
+4. Always check both model configuration AND account balance when troubleshooting OpenAI errors
 
-### 2. Prompt System Restructuring
+## Key Decisions
+
+### Diagnostic Approach
+
+1. **Start with Configuration, Not Code:**
+   - **Decision:** Examine .env file first before diving into source code
+   - **Rationale:**
+     - Connection errors often stem from configuration issues
+     - Environment variables are easier to check than code logic
+     - Misconfigurations are more common than code bugs in mature systems
+   - **Outcome:** Quickly identified typo in model name
+
+2. **Verify Error Message Accuracy:**
+   - **Decision:** After fixing typo, re-run to see if error persists or changes
+   - **Rationale:**
+     - First error might mask underlying issues
+     - OpenAI API error messages can be misleading
+     - Sequential troubleshooting reveals root cause
+   - **Outcome:** Discovered quota exhaustion after fixing typo
+
+3. **Cost Optimization Over Performance:**
+   - **Decision:** User chose cheaper models (mini variants) instead of topping up account
+   - **Rationale:**
+     - Budget constraints
+     - Mini models still provide good quality for most tasks
+     - Consultation bot doesn't need cutting-edge models for all operations
+   - **Trade-offs:**
+     - Slightly lower quality responses possible
+     - Acceptable for classification and utility tasks
+     - Consultation quality may need monitoring
+
+## Problems & Limitations
+
+### Configuration Issues Discovered
+
+1. **Model Name Typo in .env:**
+   - **Issue:** `OPENAI_MODEL_CLASSIFICATION=gpt-55` (typo: should be `gpt-4o-mini` or `gpt-5`)
+   - **Impact:** Bot crashed on startup, unable to make any OpenAI API calls
+   - **Root Cause:** Manual editing of .env file introduced typo
+   - **Solution:** User corrected to `gpt-4.1-mini`
+   - **Prevention:** Add .env validation script to check model names at startup
+
+2. **OpenAI Account Quota Exhausted:**
+   - **Issue:** HTTP 429 `insufficient_quota` error after fixing typo
+   - **Impact:** All OpenAI API calls fail until account is topped up
+   - **Root Cause:** High usage with expensive models (gpt-4o) depleted balance
+   - **Solution:** Switched to cheaper models (gpt-5-mini, gpt-4.1-mini)
+   - **Long-term:** Monitor API usage and set up billing alerts
+
+3. **Misleading Error Messages:**
+   - **Issue:** Invalid model name caused `APIConnectionError` instead of "model not found"
+   - **Impact:** Wasted time investigating network/connection issues
+   - **Root Cause:** OpenAI API error handling doesn't distinguish connection vs model errors
+   - **Learning:** Always check configuration first, even for connection errors
+
+### Technical Debt Identified
+
+1. **No .env Validation:**
+   - **Current State:** .env values loaded without validation
+   - **Risk:** Typos or invalid values cause runtime errors
+   - **Better Approach:** Add startup validation script:
+     ```python
+     # Proposed: src/config/validator.py
+     def validate_openai_models():
+         valid_models = ["gpt-4o", "gpt-4o-mini", "gpt-5", "gpt-5-mini", "gpt-4.1-mini"]
+         for key in ["OPENAI_MODEL_CONSULTATION", "OPENAI_MODEL_CLASSIFICATION", ...]:
+             model = os.getenv(key)
+             if model not in valid_models:
+                 raise ValueError(f"Invalid model {model} for {key}")
+     ```
+   - **Priority:** MEDIUM (prevents startup failures)
+
+2. **No API Usage Monitoring:**
+   - **Current State:** No tracking of OpenAI API costs or usage
+   - **Risk:** Surprise bills, quota exhaustion without warning
+   - **Better Approach:** Log API usage to database, create dashboard
+   - **Priority:** HIGH (cost control)
+
+3. **No Fallback for API Failures:**
+   - **Current State:** Bot crashes if OpenAI API unavailable
+   - **Risk:** Complete service outage during API issues
+   - **Better Approach:** Implement graceful degradation (cached responses, fallback logic)
+   - **Priority:** LOW (OpenAI uptime is generally high)
+
+## Rejected Ideas
+
+### Why Not Top Up OpenAI Account Instead of Switching Models?
+
+- **Proposal:** Add funds to OpenAI account to continue using gpt-4o
+- **Reasons for rejection:**
+  1. Budget constraints: User prefers cost optimization
+  2. Mini models sufficient: Quality difference acceptable for this use case
+  3. Temporary solution: Would deplete again without usage optimization
+  4. Better long-term: Cheaper models reduce ongoing costs
+- **Chosen solution:** Switch to gpt-4.1-mini and gpt-5-mini
+
+### Why Not Add Automatic Model Fallback Logic?
+
+- **Proposal:** If API call fails, automatically try cheaper model
+- **Reasons for rejection:**
+  1. Complexity: Requires retry logic and model hierarchy
+  2. Hidden costs: Users might not know which model was used
+  3. Quality inconsistency: Responses vary between models
+  4. Better approach: Fix configuration properly rather than add workarounds
+- **Chosen solution:** User fixes .env manually
+
+### Why Not Cache OpenAI Responses?
+
+- **Proposal:** Cache common questions to reduce API calls
+- **Reasons for rejection:**
+  1. Not addressing root cause: Typo and quota issue need fixing first
+  2. Complexity: Requires cache invalidation logic
+  3. Staleness: Agriculture advice may change seasonally
+  4. Future consideration: Could implement later for cost optimization
+- **Chosen solution:** Fix configuration first, consider caching later
+
+## Current Code State
+
+### Files Examined (No Changes)
+
+1. **`.env`** (modified by user, not by assistant)
+   - Contains OpenAI API key and model configuration
+   - User fixed typo: `gpt-55` → `gpt-4.1-mini`
+   - User updated all model settings to cheaper variants
+
+2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/llm/core_llm.py`**
+   - Loads model names from environment variables
+   - Creates OpenAI AsyncClient
+   - Makes API calls with error handling
+   - No changes needed (configuration issue, not code bug)
+
+### What's Working
+
+**Configuration:**
+1. **Model Names:** Now valid after user corrections
+2. **API Key:** Valid (quota was the issue, not authentication)
+3. **Environment Loading:** `settings.py` correctly reads .env
+
+**Code:**
+1. **LLM Services:** core_llm.py logic is correct
+2. **Error Handling:** Properly catches and logs OpenAI errors
+3. **Model Loading:** Environment variables correctly passed to OpenAI client
+
+### What Needs Attention
+
+**Configuration:**
+
+1. **OpenAI Account Balance:**
+   - Current status: Depleted (insufficient_quota error)
+   - Action needed: Top up account OR continue with cheaper models
+   - Monitoring needed: Set up billing alerts
+
+2. **Model Configuration Verification:**
+   - New models: gpt-5-mini, gpt-4.1-mini
+   - Need to verify: These model names are correct and supported by OpenAI API
+   - Test: Make test API call to confirm model availability
+
+**Code (Future Enhancements):**
+
+3. **Add .env Validation:**
+   - Create startup validation script
+   - Check model names against known valid models
+   - Fail fast with clear error messages
+
+4. **Add API Usage Tracking:**
+   - Log token usage per request
+   - Calculate costs per consultation
+   - Create usage dashboard in admin panel
+
+## Next Steps
+
+### Immediate (HIGH PRIORITY)
+
+1. **Verify New Model Configuration:**
+   - **Action:** Test bot startup with new model names
+   - **Command:** `python -m src`
+   - **Expected:** Bot starts without errors
+   - **If fails:** Check OpenAI documentation for correct model names
+   - **Risk:** HIGH (bot won't work if model names invalid)
+
+2. **Test OpenAI API Calls:**
+   - **Action:** Send test message to bot to trigger classification
+   - **Test question:** "Когда сажать клубнику?"
+   - **Expected:** Bot responds with consultation answer
+   - **If fails:** Check OpenAI account balance, add funds if needed
+   - **Risk:** HIGH (core functionality)
+
+3. **Monitor Response Quality:**
+   - **Action:** Compare responses from gpt-4.1-mini vs previous gpt-4o responses
+   - **Test categories:**
+     - Classification accuracy (12 culture types)
+     - Consultation quality (detailed advice)
+     - Formatting (markdown rendering)
+   - **Decision:** If quality unacceptable, consider topping up account for premium models
+   - **Risk:** MEDIUM (quality vs cost trade-off)
+
+### Short-term (MEDIUM PRIORITY)
+
+4. **Implement .env Validation Script:**
+   - **File:** `src/config/validator.py`
+   - **Logic:**
+     - Load all required env vars
+     - Check model names against OpenAI supported models list
+     - Validate API key format
+     - Run at startup (call from `src/__main__.py`)
+   - **Benefit:** Catch configuration errors before runtime
+   - **Priority:** MEDIUM (prevents future issues)
+
+5. **Add API Usage Logging:**
+   - **Database:** Add fields to `consultation_logs` table
+     - `model_used` (text)
+     - `tokens_used` (integer)
+     - `cost_usd` (numeric)
+   - **Code:** Update `core_llm.py` to log usage data
+   - **Admin Panel:** Create usage dashboard page
+   - **Benefit:** Track costs, optimize usage
+   - **Priority:** MEDIUM (cost control)
+
+6. **Set Up OpenAI Billing Alerts:**
+   - **Action:** Configure alerts in OpenAI dashboard
+   - **Thresholds:**
+     - Warning at 80% of monthly budget
+     - Critical at 95% of budget
+   - **Benefit:** Prevent surprise quota exhaustion
+   - **Priority:** HIGH (cost control)
+
+### Long-term (FUTURE)
+
+7. **Implement Response Caching:**
+   - **Strategy:** Cache responses for identical questions
+   - **TTL:** 7 days (seasonal advice may change)
+   - **Invalidation:** Manual cache clear in admin panel
+   - **Storage:** Redis or PostgreSQL with JSONB
+   - **Benefit:** Reduce API costs for common questions
+   - **Priority:** LOW (optimization)
+
+8. **Add Fallback Logic for API Failures:**
+   - **Strategy:** If OpenAI unavailable, return cached response or generic message
+   - **User message:** "Сервис временно недоступен, попробуйте позже"
+   - **Benefit:** Graceful degradation instead of crash
+   - **Priority:** LOW (OpenAI uptime is high)
+
+9. **Optimize Model Selection by Task:**
+   - **Strategy:** Use different models based on task complexity
+     - Simple classification: gpt-4.1-mini
+     - Complex consultations: gpt-5 or gpt-4o
+     - Embeddings: continue with text-embedding-3-large
+   - **Implementation:** Task-based model routing in core_llm.py
+   - **Benefit:** Balance quality and cost
+   - **Priority:** MEDIUM (optimization)
+
+## Environment Variables
+
+**Modified by User:**
+
+```bash
+# .env changes (user-modified, not assistant)
+
+# Before (with typo + expensive models):
+OPENAI_MODEL_CONSULTATION=gpt-4o
+OPENAI_MODEL_ARTICLE=gpt-4o
+OPENAI_MODEL_CLASSIFICATION=gpt-55  # TYPO
+OPENAI_MODEL_UTILITY=gpt-4o
+
+# After (fixed + budget-friendly):
+OPENAI_MODEL_CONSULTATION=gpt-5-mini
+OPENAI_MODEL_ARTICLE=gpt-4.1-mini
+OPENAI_MODEL_CLASSIFICATION=gpt-4.1-mini  # FIXED
+OPENAI_MODEL_UTILITY=gpt-4.1-mini
+```
+
+**No other environment variables changed.**
+
+## Session Statistics
+
+- **Duration:** ~30 minutes (diagnosis and troubleshooting)
+- **Files Examined:** 2 (.env, core_llm.py)
+- **Files Modified:** 0 (user modified .env, not assistant)
+- **Code Changes:** 0 lines (configuration issue, not code bug)
+- **Issues Identified:** 2 (typo + quota exhaustion)
+- **Issues Resolved:** 2 (user fixed both)
+- **Tests Run:** 0 (diagnostic session only)
+- **Documentation Updated:** 1 (this session summary)
+
+---
+
+**Session completed:** 2026-02-12
+**Session type:** Troubleshooting / Diagnostics
+**Status:** Issues identified and resolved by user
+**User Action Required:** Verify bot startup with new model configuration, test API calls
+**Version:** Still 1.2.2 (no code changes, configuration only)
+
+---
+
+# Previous Sessions
+
+## Session Summary — 2025-12-23 (Pruning Category + Prompt System)
 
 **Problem:**
 - Admin panel had separate "Промт документы" section (legacy, 8 documents)

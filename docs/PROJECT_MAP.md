@@ -1,8 +1,8 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2025-12-20
-**Project:** Sadovniki-bot v1.2.2
-**Status:** Production-ready with payments display system
+**Last Updated:** 2026-02-16
+**Project:** Sadovniki-bot v1.2.3
+**Status:** Production-ready with major system enhancements
 
 ## Quick Navigation
 
@@ -188,22 +188,27 @@ User Question
 
 ## Active Context
 
-### Current Phase: Payment System Display
+### Current Phase: System Enhancement & Optimization
 
 **Focus Areas:**
-1. Payment data visualization in admin panel
-2. CRM integration with billing information
-3. Payment activity tracking and statistics
+1. Database-driven configuration and prompts
+2. Advanced RAG with semantic chunking
+3. Admin settings infrastructure
+4. Trial limits and monetization
 
-**Last Session Changes (2025-12-20):**
-- Implemented complete payment display system in Admin Panel
-- Backend: 4 JOIN functions in payment_repo, 3 new API endpoints
-- Frontend: BillingTab rewrite, PaymentsList component, activity events
-- CRM Integration: Payments visible in client card billing tab
-- Activity Feed: Payment events with icons and status badges
-- Statistics: Total received, pending, payment counts
-- Schema: Using existing schema_30_payments.sql (no changes)
-- No version bump (internal feature addition)
+**Last Session Changes (2026-02-16):**
+- Complete prompt system redesign with database migration
+- RAG documents v2.0 with semantic chunking and chunk editor
+- Admin settings infrastructure with UI configuration panel
+- Pricing system display and subscription plan management
+- KB hierarchy with priority levels and trial question limits
+- Answer logic configuration system
+- Referral system foundation
+- LLM service layer improvements
+- Bot handlers refactoring
+- CRM and expenses system enhancements
+- Version: 1.2.2 → 1.2.3
+- Database: 11 new migrations (schema_37-47)
 
 ### Constraints & Invariants
 

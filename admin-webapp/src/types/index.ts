@@ -192,7 +192,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'payments'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -298,11 +298,22 @@ export interface ActivityEvent {
   created_at: string
 }
 
+export interface ReferrerInfo {
+  id: number
+  username: string | null
+  first_name: string | null
+  last_name: string | null
+  created_at: string
+}
+
 export interface CrmClientFull extends CrmClient {
   priority: ClientPriority
   source: string | null
   tags: ClientTag[]
   custom_fields: CustomFieldValue[]
+  referrer?: ReferrerInfo | null
+  referrals_count?: number
+  referral_code?: string | null
 }
 
 // Create/Update DTOs
@@ -630,16 +641,22 @@ export interface PaymentStats {
 export interface SubscriptionPlan {
   id: number
   name: string
+  description: string | null
   price_rub: number
   duration_days: number
   tokens_included: number
+  is_active: boolean
+  created_at: string | null
 }
 
 export interface TokenPackage {
   id: number
   name: string
+  description: string | null
   price_rub: number
   tokens_amount: number
+  is_active: boolean
+  created_at: string | null
 }
 
 // ============================================
@@ -696,6 +713,7 @@ export interface RagChunk {
   growth_phases: string[]
   prefix: string | null
   context: string | null
+  assembled_text: string
   is_passported: boolean
   created_at: string | null
 }
@@ -829,4 +847,48 @@ export interface VersionDiffResponse {
   diff: DiffResult
   version: PromptHistoryItem
   current_version: number
+}
+
+// =============================================================================
+// Prompt Preview Types (Превью собранного промпта)
+// =============================================================================
+
+export interface PromptPreviewSection {
+  id: string
+  label: string
+  source: 'base' | 'culture' | 'category' | 'prompt_doc' | 'rag' | 'terminology' | 'reference'
+  color: string
+  content: string | null
+  is_from_db?: boolean
+  is_enabled?: boolean
+  is_placeholder?: boolean
+  placeholder_text?: string
+  skipped_reason?: string
+  prompt_id?: number | null
+  prompt_ids?: number[]
+}
+
+export interface PromptPreviewMetadata {
+  category: string
+  culture: string
+  culture_group: string | null
+  use_minimal_base: boolean
+  base_source: 'db' | 'python'
+  category_source: 'db' | 'python'
+  total_chars: number
+}
+
+export interface PromptPreviewResponse {
+  sections: PromptPreviewSection[]
+  metadata: PromptPreviewMetadata
+}
+
+export interface PromptPreviewOption {
+  value: string
+  label: string
+}
+
+export interface PromptPreviewOptionsResponse {
+  categories: PromptPreviewOption[]
+  cultures: PromptPreviewOption[]
 }

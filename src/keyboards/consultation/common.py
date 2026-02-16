@@ -46,66 +46,55 @@ CONSULTATION_MENU_INLINE_KB = InlineKeyboardMarkup(
 )
 
 
-# Маппинг категорий на тексты кнопок "Детальный план"
-CATEGORY_DETAILED_PLAN_BUTTONS = {
-    "питание растений": "📋 Детальный план подкормок",
-    "улучшение почвы": "📋 Детальный план улучшения почвы",
-    "посадка и уход": "📋 Детальный план ухода",
-    "защита растений": "📋 Детальный план защиты растений",
-    "подбор сорта": "📋 Детальный план подбора сортов",
+# Примеры вопросов для инлайн-кнопок при входе в консультацию
+EXAMPLE_QUESTIONS = {
+    "1": "Как подготовить ПОЧВУ перед посадкой?",
+    "2": "Чем обработать клубнику от ДОЛГОНОСИКА?",
+    "3": "Как избавиться от ДИДИМЕЛЛЫ на малине?",
+    "4": "План подкормок клубники на сезон",
 }
 
-
-def get_followup_keyboard(category: str = "питание растений") -> ReplyKeyboardMarkup:
-    """
-    Клавиатура после получения ответа с динамической кнопкой детального плана.
-
-    Args:
-        category: Категория консультации для выбора текста кнопки
-    """
-    detailed_plan_text = CATEGORY_DETAILED_PLAN_BUTTONS.get(
-        category, "📋 Детальный план"
-    )
-    return ReplyKeyboardMarkup(
-        keyboard=[
-            [
-                KeyboardButton(text="🔄 Вопрос по новой теме"),
-                KeyboardButton(text="✏️ Заменить параметры"),
-            ],
-            [
-                KeyboardButton(text=detailed_plan_text),
-                KeyboardButton(text="⬅️ Назад в меню"),
-            ],
-        ],
-        resize_keyboard=True,
-        one_time_keyboard=False,
-    )
+CONSULTATION_ENTRY_TEXT = (
+    "Добро пожаловать в режим консультаций! Здесь вы можете получить ответы, "
+    "основанные на отобранной литературе и рекомендациях лучших экспертов.\n\n"
+    "Ниже — примеры вопросов, на которые вы можете получить качественный ответ "
+    "по выбранной культуре. Вы также можете задать свой вопрос.\n\n"
+    "Стоимость: 1-2 вопроса в зависимости от темы."
+)
 
 
-# Alias для обратной совместимости
-def get_nutrition_followup_keyboard() -> ReplyKeyboardMarkup:
-    """Deprecated: используйте get_followup_keyboard(category) вместо этого."""
-    return get_followup_keyboard("питание растений")
+def get_example_questions_keyboard() -> InlineKeyboardMarkup:
+    """Инлайн-кнопки с примерами вопросов для консультации."""
+    buttons = []
+    for key, text in EXAMPLE_QUESTIONS.items():
+        buttons.append([InlineKeyboardButton(text=text, callback_data=f"example_q:{key}")])
+    # Кнопка "Свой вопрос" внизу
+    buttons.append([InlineKeyboardButton(text="✅ Или напишите свой вопрос👇", callback_data="custom_question")])
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_more_questions_keyboard() -> InlineKeyboardMarkup:
-    """
-    Клавиатура с кнопкой для получения дополнительных 3 уточняющих вопросов.
-    Показывается когда счётчик достигает 0.
-    """
+def get_followup_keyboard(category: str = "") -> InlineKeyboardMarkup:
+    """Инлайн-клавиатура после получения ответа — выбор типа следующего вопроса."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="➕ Получить еще 3 уточняющих вопроса",
-                    callback_data="get_more_followup_questions",
-                )
+                    text="✅ Задать уточняющий вопрос",
+                    callback_data="followup_type:clarification"
+                ),
             ],
             [
                 InlineKeyboardButton(
-                    text="🔄 Новая тема консультации",
-                    callback_data="new_consultation_topic",
-                )
+                    text="✅ Задать вопрос по новой теме",
+                    callback_data="followup_type:new_topic"
+                ),
             ],
         ]
     )
+
+
+# Alias для обратной совместимости
+def get_nutrition_followup_keyboard() -> InlineKeyboardMarkup:
+    return get_followup_keyboard()
+
+

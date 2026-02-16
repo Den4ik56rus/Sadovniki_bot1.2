@@ -3,33 +3,25 @@
 """
 Хендлеры для сценария консультации по питанию растений.
 
-НОВАЯ ЛОГИКА:
+ЛОГИКА:
 ЭТАП 1 (waiting_nutrition_root):
     - Пользователь пишет первый вопрос.
-    - Определяем культуру через классификатор.
-    - Если культура "клубника общая" или "малина общая":
-        * задаем ТОЛЬКО вопрос о типе (ремонтантная/летняя),
-        * переводим в состояние "waiting_variety_clarification".
-    - Иначе:
-        * вызываем LLM для получения ответа или уточняющих вопросов,
-        * если LLM задал уточняющие вопросы → переводим в "waiting_nutrition_details",
-        * если LLM дал финальный ответ → завершаем консультацию.
-
-ЭТАП 2 (waiting_variety_clarification):
-    - Пользователь отвечает на вопрос о типе культуры.
-    - Переопределяем культуру на основе ответа.
+    - Определяем культуру через классификатор (всегда конкретная: "клубника летняя", "малина ремонтантная", и т.д.).
     - Вызываем LLM для получения ответа или уточняющих вопросов.
     - Если LLM задал уточняющие вопросы → переводим в "waiting_nutrition_details".
+    - Если LLM дал финальный ответ → завершаем консультацию.
 
-ЭТАП 3 (waiting_nutrition_details):
+ЭТАП 2 (waiting_nutrition_details):
     - Пользователь отвечает на уточняющие вопросы LLM.
     - Вызываем LLM для финального ответа.
     - Отправляем Q&A в moderation_queue.
     - Очищаем состояние и контекст.
 """
 
-from aiogram import Router
+from aiogram import Router, F
 from aiogram.types import Message
+
+from src.keyboards.consultation.common import CONSULTATION_ENTRY_TEXT, get_example_questions_keyboard
 
 from src.handlers.common import (
     CONSULTATION_STATE,
@@ -49,11 +41,11 @@ from src.services.db.moderation_repo import moderation_add
 from src.services.llm.consultation_llm import ask_consultation_llm, compose_full_question
 from src.services.llm.classification_llm import detect_culture_name
 
-# Импортируем функции для отправки информации о счётчике и проверки отказа
 from src.handlers.consultation.entry import (
-    send_followup_count_message,
     send_long_message,
+    finalize_streaming_message,
     is_rejection_response,
+    is_clarification_question,
 )
 
 # Утилита форматирования Markdown → HTML
@@ -62,7 +54,6 @@ from src.utils.formatting import markdown_to_telegram_html
 from src.keyboards.consultation.common import get_followup_keyboard
 from src.utils.status_manager import StatusMessageManager
 
-from aiogram import F
 from aiogram.types import CallbackQuery
 
 router = Router()
@@ -80,6 +71,7 @@ async def process_nutrition_consultation(
     root_question: str,
     classification_cost_usd: float = 0.0,
     classification_tokens: int = 0,
+    correction_hint: str | None = None,
 ) -> None:
     """
     Обрабатывает консультацию по питанию растений.
@@ -136,47 +128,31 @@ async def process_nutrition_consultation(
         "classification_tokens": classification_tokens,
     }
 
-    # Проверяем, нужно ли уточнять тип культуры
-    if culture in ("клубника общая", "малина общая"):
-        # Задаем ТОЛЬКО вопрос о типе культуры
-        if culture == "клубника общая":
-            variety_question = "Какая у вас клубника: летняя (июньская) или ремонтантная (НСД)?"
-        else:  # малина общая
-            variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
-
-        await message.answer(variety_question)
-        # Логируем уточняющий вопрос бота
-        await log_message(
-            user_id=user_id,
-            direction="bot",
-            text=variety_question,
-            session_id=session_id,
-            topic_id=topic_id,
-        )
-        CONSULTATION_STATE[telegram_user_id] = "waiting_variety_clarification"
-        print(f"[process_nutrition] Asking variety, state -> waiting_variety_clarification")
-        return
-
     # Вызываем LLM для получения ответа
+    # (Больше не уточняем тип культуры — классификатор сразу определяет "летняя" или "ремонтантная")
     base_category = category
 
     # Определяем, нужен ли RAG
     use_rag = culture not in ("общая информация", "не определено", None)
 
+    # Отправляем подсказку о коррекции культуры (если есть и RAG будет использован)
+    if correction_hint and use_rag:
+        await message.answer(f"💡 {correction_hint}")
+
     # Показываем сообщение ожидания с динамическими обновлениями
     status_mgr = StatusMessageManager(message, use_rag=use_rag)
     await status_mgr.start()
 
-    # Формируем красивый вопрос для RAG ТОЛЬКО если RAG используется
-    # (не тратим токены на compose когда будем задавать уточняющие вопросы)
-    if use_rag:
-        composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, [])
-    else:
-        composed_q = root_question
-        compose_cost = 0.0
-        compose_tokens = 0
-
     try:
+        # Формируем красивый вопрос для RAG ТОЛЬКО если RAG используется
+        # (не тратим токены на compose когда будем задавать уточняющие вопросы)
+        if use_rag:
+            composed_q, compose_cost, compose_tokens = await compose_full_question(root_question, [])
+        else:
+            composed_q = root_question
+            compose_cost = 0.0
+            compose_tokens = 0
+
         answer_text = await ask_consultation_llm(
             user_id=user_id,
             telegram_user_id=telegram_user_id,
@@ -194,21 +170,16 @@ async def process_nutrition_consultation(
             classification_cost_usd=classification_cost_usd,
             classification_tokens=classification_tokens,
             status_updater=status_mgr.update,
+            stream=use_rag,
+            streaming_transition=status_mgr.start_streaming if use_rag else None,
         )
     finally:
+        streaming_msg = status_mgr.get_streaming_message() if use_rag else None
         await status_mgr.complete()
 
     # Проверяем, является ли ответ уточняющим вопросом
     if not use_rag:
-        is_clarification = (
-            len(answer_text) < 300
-            and (
-                "уточните" in answer_text.lower()
-                or "о какой культуре" in answer_text.lower()
-                or "какая у вас" in answer_text.lower()
-                or "?" in answer_text
-            )
-        )
+        is_clarification = is_clarification_question(answer_text)
     else:
         is_clarification = False
 
@@ -218,11 +189,13 @@ async def process_nutrition_consultation(
         CONSULTATION_STATE[telegram_user_id] = "waiting_nutrition_clarification"
         print(f"[process_nutrition] LLM asking clarification, state -> waiting_nutrition_clarification")
     else:
-        await send_long_message(message, answer_text)
-        # Отправляем клавиатуру отдельным сообщением если ответ был длинным
-        # (клавиатура не поддерживается при разбивке на несколько сообщений)
+        await finalize_streaming_message(
+            streaming_msg, message, answer_text,
+            keyboard=get_followup_keyboard(category),
+            show_followup_prompt=True,
+        )
         CONSULTATION_CONTEXT[telegram_user_id]["full_question"] = root_question
-        CONSULTATION_STATE.pop(telegram_user_id, None)
+        CONSULTATION_STATE[telegram_user_id] = "waiting_followup"
         print(f"[process_nutrition] Showing followup buttons, use_rag={use_rag}")
 
     # Логируем ответ бота
@@ -249,10 +222,6 @@ async def process_nutrition_consultation(
             category_guess=category_guess,
         )
 
-        # Отправляем информацию о количестве оставшихся вопросов
-        from src.services.db.topics_repo import get_follow_up_questions_left
-        questions_left = await get_follow_up_questions_left(topic_id)
-        await send_followup_count_message(message, questions_left, topic_id)
 
 
 # ==== ЭТАП 1: корневой вопрос по питанию ====
@@ -356,38 +325,20 @@ async def handle_nutrition_root(message: Message) -> None:
         "classification_tokens": classification_tokens,
     }
 
-    # Проверяем, нужно ли уточнять тип культуры
-    if culture in ("клубника общая", "малина общая"):
-        # Задаем ТОЛЬКО вопрос о типе культуры
-        if culture == "клубника общая":
-            variety_question = "Какая у вас клубника: летняя (июньская) или ремонтантная (НСД)?"
-        else:  # малина общая
-            variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
+    # Вызываем LLM для получения ответа
+    # (Больше не уточняем тип культуры — классификатор сразу определяет "летняя" или "ремонтантная")
+    base_category = "питание растений"
 
-        await message.answer(variety_question)
-        # Логируем уточняющий вопрос бота
-        await log_message(
-            user_id=user_id,
-            direction="bot",
-            text=variety_question,
-            session_id=session_id,
-            topic_id=topic_id,
-        )
-        CONSULTATION_STATE[user.id] = "waiting_variety_clarification"
-        print(f"[nutrition] STEP1 done, state -> waiting_variety_clarification, user_id={user.id}")
-    else:
-        # Вызываем LLM для получения ответа
-        base_category = "питание растений"
+    # Определяем, нужен ли RAG
+    # Если культура конкретная (не "общая информация" и не "не определено") - используем RAG сразу
+    # Если культура неопределённая - сначала без RAG (для уточняющих вопросов)
+    use_rag = culture not in ("общая информация", "не определено", None)
 
-        # Определяем, нужен ли RAG
-        # Если культура конкретная (не "общая информация" и не "не определено") - используем RAG сразу
-        # Если культура неопределённая - сначала без RAG (для уточняющих вопросов)
-        use_rag = culture not in ("общая информация", "не определено", None)
+    # Показываем сообщение ожидания с динамическими обновлениями
+    status_mgr = StatusMessageManager(message, use_rag=use_rag)
+    await status_mgr.start()
 
-        # Показываем сообщение ожидания с динамическими обновлениями
-        status_mgr = StatusMessageManager(message, use_rag=use_rag)
-        await status_mgr.start()
-
+    try:
         # Формируем красивый вопрос для RAG ТОЛЬКО если RAG используется
         # (не тратим токены на compose когда будем задавать уточняющие вопросы)
         if use_rag:
@@ -397,89 +348,82 @@ async def handle_nutrition_root(message: Message) -> None:
             compose_cost = 0.0
             compose_tokens = 0
 
-        try:
-            answer_text = await ask_consultation_llm(
-                user_id=user_id,
-                telegram_user_id=telegram_user_id,
-                text=root_question,
-                session_id=session_id,
-                topic_id=topic_id,
-                consultation_category=base_category,
-                culture=culture,
-                default_location="средняя полоса",
-                default_growing_type="открытый грунт",
-                skip_rag=not use_rag,  # Используем RAG только если культура определена
-                composed_question=composed_q if use_rag else None,
-                compose_cost_usd=compose_cost,
-                compose_tokens=compose_tokens,
-                classification_cost_usd=classification_cost_usd,
-                classification_tokens=classification_tokens,
-                status_updater=status_mgr.update,
-            )
-        finally:
-            await status_mgr.complete()
-
-        # Проверяем, является ли ответ уточняющим вопросом (только если RAG не использовался)
-        if not use_rag:
-            is_clarification = (
-                len(answer_text) < 300  # Короткий ответ
-                and (
-                    "уточните" in answer_text.lower()
-                    or "о какой культуре" in answer_text.lower()
-                    or "какая у вас" in answer_text.lower()
-                    or "?" in answer_text
-                )
-            )
-        else:
-            # Если использовался RAG - это финальный ответ
-            is_clarification = False
-
-        # Отправляем ответ (с кнопками только если это финальный ответ)
-        # Конвертируем Markdown → HTML для Telegram
-        answer_text = markdown_to_telegram_html(answer_text)
-        if is_clarification:
-            await message.answer(answer_text)
-            # Переводим в состояние ожидания ответа на уточняющий вопрос
-            CONSULTATION_STATE[user.id] = "waiting_nutrition_clarification"
-            print(f"[nutrition] STEP1 done, LLM asking for clarification, state -> waiting_nutrition_clarification")
-        else:
-            await message.answer(answer_text, reply_markup=get_followup_keyboard(category))
-
-            # Сохраняем полный вопрос в контекст для кнопок
-            CONSULTATION_CONTEXT[user.id]["full_question"] = root_question
-
-            # Очищаем состояние ожидания (контекст сохраняем для кнопок)
-            CONSULTATION_STATE.pop(user.id, None)
-            print(f"[nutrition] STEP1 done, showing followup buttons, use_rag={use_rag}")
-
-        # Логируем ответ бота
-        await log_message(
+        answer_text = await ask_consultation_llm(
             user_id=user_id,
-            direction="bot",
-            text=answer_text,
+            telegram_user_id=telegram_user_id,
+            text=root_question,
             session_id=session_id,
             topic_id=topic_id,
+            consultation_category=base_category,
+            culture=culture,
+            default_location="средняя полоса",
+            default_growing_type="открытый грунт",
+            skip_rag=not use_rag,  # Используем RAG только если культура определена
+            composed_question=composed_q if use_rag else None,
+            compose_cost_usd=compose_cost,
+            compose_tokens=compose_tokens,
+            classification_cost_usd=classification_cost_usd,
+            classification_tokens=classification_tokens,
+            status_updater=status_mgr.update,
+            stream=use_rag,
+            streaming_transition=status_mgr.start_streaming if use_rag else None,
+        )
+    finally:
+        streaming_msg = status_mgr.get_streaming_message() if use_rag else None
+        await status_mgr.complete()
+
+    # Проверяем, является ли ответ уточняющим вопросом (только если RAG не использовался)
+    if not use_rag:
+        is_clarification = is_clarification_question(answer_text)
+    else:
+        # Если использовался RAG - это финальный ответ
+        is_clarification = False
+
+    # Отправляем ответ (с кнопками только если это финальный ответ)
+    if is_clarification:
+        answer_text = markdown_to_telegram_html(answer_text)
+        await message.answer(answer_text)
+        # Переводим в состояние ожидания ответа на уточняющий вопрос
+        CONSULTATION_STATE[user.id] = "waiting_nutrition_clarification"
+        print(f"[nutrition] STEP1 done, LLM asking for clarification, state -> waiting_nutrition_clarification")
+    else:
+        await finalize_streaming_message(
+            streaming_msg, message, answer_text,
+            keyboard=get_followup_keyboard(category),
+            show_followup_prompt=True,
         )
 
-        # Формируем category_guess для moderation (только если финальный ответ и НЕ отказ)
-        if not is_clarification and not is_rejection_response(answer_text):
-            if culture and culture != "не определено":
-                category_guess = f"{base_category} / {culture}"
-            else:
-                category_guess = base_category
+        # Сохраняем полный вопрос в контекст для кнопок
+        CONSULTATION_CONTEXT[user.id]["full_question"] = root_question
 
-            await moderation_add(
-                user_id=user_id,
-                topic_id=topic_id,
-                question=root_question,
-                answer=answer_text,
-                category_guess=category_guess,
-            )
+        # Переводим в режим ожидания follow-up (контекст сохраняем для кнопок)
+        CONSULTATION_STATE[user.id] = "waiting_followup"
+        print(f"[nutrition] STEP1 done, showing followup buttons, use_rag={use_rag}")
 
-            # Отправляем информацию о количестве оставшихся вопросов
-            from src.services.db.topics_repo import get_follow_up_questions_left
-            questions_left = await get_follow_up_questions_left(topic_id)
-            await send_followup_count_message(message, questions_left, topic_id)
+    # Логируем ответ бота
+    await log_message(
+        user_id=user_id,
+        direction="bot",
+        text=answer_text,
+        session_id=session_id,
+        topic_id=topic_id,
+    )
+
+    # Формируем category_guess для moderation (только если финальный ответ и НЕ отказ)
+    if not is_clarification and not is_rejection_response(answer_text):
+        if culture and culture != "не определено":
+            category_guess = f"{base_category} / {culture}"
+        else:
+            category_guess = base_category
+
+        await moderation_add(
+            user_id=user_id,
+            topic_id=topic_id,
+            question=root_question,
+            answer=answer_text,
+            category_guess=category_guess,
+        )
+
 
 
 # ==== ЭТАП 1.5: ответ на уточняющий вопрос LLM ====
@@ -549,28 +493,8 @@ async def handle_nutrition_clarification(message: Message) -> None:
     ctx["classification_tokens"] = classification_tokens
     CONSULTATION_CONTEXT[user.id] = ctx
 
-    # Проверяем, нужно ли уточнять тип культуры
-    if culture in ("клубника общая", "малина общая"):
-        # Задаем вопрос о типе культуры
-        if culture == "клубника общая":
-            variety_question = "Какая у вас клубника: летняя (июньская) или ремонтантная (НСД)?"
-        else:  # малина общая
-            variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
-
-        await message.answer(variety_question)
-        # Логируем уточняющий вопрос бота
-        await log_message(
-            user_id=user_id,
-            direction="bot",
-            text=variety_question,
-            session_id=session_id,
-            topic_id=topic_id,
-        )
-        CONSULTATION_STATE[user.id] = "waiting_variety_clarification"
-        print(f"[nutrition] STEP1.5 done, state -> waiting_variety_clarification")
-        return
-
     # Вызываем LLM для финального ответа с RAG
+    # (Больше не уточняем тип культуры — классификатор сразу определяет "летняя" или "ремонтантная")
     base_category = ctx.get("category", "питание растений")
     combined_question = root_question + "\n\n" + clarification_answer
 
@@ -599,12 +523,27 @@ async def handle_nutrition_clarification(message: Message) -> None:
             classification_cost_usd=classification_cost_usd,
             classification_tokens=classification_tokens,
             status_updater=status_mgr.update,
+            stream=True,
+            streaming_transition=status_mgr.start_streaming,
         )
-    finally:
+    except Exception as e:
+        print(f"[nutrition] ERROR in ask_consultation_llm: {e}")
         await status_mgr.complete()
+        await message.answer(
+            "Произошла ошибка при обращении к модели. "
+            "Попробуйте отправить вопрос ещё раз."
+        )
+        return
+
+    streaming_msg = status_mgr.get_streaming_message()
+    await status_mgr.complete()
 
     # Отправляем ответ
-    await send_long_message(message, answer_text)
+    await finalize_streaming_message(
+        streaming_msg, message, answer_text,
+        keyboard=get_followup_keyboard(base_category),
+        show_followup_prompt=True,
+    )
 
     # Логируем ответ бота
     await log_message(
@@ -630,17 +569,13 @@ async def handle_nutrition_clarification(message: Message) -> None:
             category_guess=category_guess,
         )
 
-        # Отправляем информацию о количестве оставшихся вопросов
-        from src.services.db.topics_repo import get_follow_up_questions_left
-        questions_left = await get_follow_up_questions_left(topic_id)
-        await send_followup_count_message(message, questions_left, topic_id)
 
     # Сохраняем полный вопрос в контекст для кнопок
     ctx["full_question"] = combined_question
     CONSULTATION_CONTEXT[user.id] = ctx
 
-    # Очищаем состояние (контекст сохраняем для кнопок)
-    CONSULTATION_STATE.pop(user.id, None)
+    # Переводим в режим ожидания follow-up (контекст сохраняем для кнопок)
+    CONSULTATION_STATE[user.id] = "waiting_followup"
     print(f"[nutrition] STEP1.5 done, showing followup buttons")
 
 
@@ -773,12 +708,27 @@ async def handle_variety_clarification(message: Message) -> None:
             classification_cost_usd=classification_cost_usd,
             classification_tokens=classification_tokens,
             status_updater=status_mgr.update,
+            stream=True,
+            streaming_transition=status_mgr.start_streaming,
         )
-    finally:
+    except Exception as e:
+        print(f"[nutrition] ERROR in ask_consultation_llm: {e}")
         await status_mgr.complete()
+        await message.answer(
+            "Произошла ошибка при обращении к модели. "
+            "Попробуйте отправить вопрос ещё раз."
+        )
+        return
+
+    streaming_msg = status_mgr.get_streaming_message()
+    await status_mgr.complete()
 
     # Отправляем ответ
-    await send_long_message(message, answer_text)
+    await finalize_streaming_message(
+        streaming_msg, message, answer_text,
+        keyboard=get_followup_keyboard(base_category),
+        show_followup_prompt=True,
+    )
 
     # Логируем ответ бота
     await log_message(
@@ -804,17 +754,13 @@ async def handle_variety_clarification(message: Message) -> None:
             category_guess=category_guess,
         )
 
-        # Отправляем информацию о количестве оставшихся вопросов
-        from src.services.db.topics_repo import get_follow_up_questions_left
-        questions_left = await get_follow_up_questions_left(topic_id)
-        await send_followup_count_message(message, questions_left, topic_id)
 
     # Сохраняем полный вопрос в контекст для кнопок
     ctx["full_question"] = composed_q
     CONSULTATION_CONTEXT[user.id] = ctx
 
-    # Очищаем состояние (контекст сохраняем для кнопок)
-    CONSULTATION_STATE.pop(user.id, None)
+    # Переводим в режим ожидания follow-up (контекст сохраняем для кнопок)
+    CONSULTATION_STATE[user.id] = "waiting_followup"
     print(f"[nutrition] STEP2 (variety) done, showing followup buttons")
 
 
@@ -854,15 +800,8 @@ async def handle_nutrition_new_topic(message: Message) -> None:
     # Устанавливаем новое состояние - ждем вопрос
     CONSULTATION_STATE[user.id] = "waiting_consultation_question"
 
-    # Просим задать вопрос (без выбора категории)
-    text = (
-        "Опишите, пожалуйста, ваш вопрос одним сообщением:\n"
-        "— какая культура (и сорт, если знаете);\n"
-        "— в каком регионе/климате вы находитесь;\n"
-        "— что именно вас волнует (питание, посадка, болезни и т.п.)."
-    )
-
-    await message.answer(text)
+    # Просим задать вопрос с инлайн-кнопками примеров
+    await message.answer(CONSULTATION_ENTRY_TEXT, reply_markup=get_example_questions_keyboard())
 
 
 @router.message(F.text == "✏️ Заменить параметры")
@@ -973,12 +912,23 @@ async def handle_param_replacement(message: Message) -> None:
             compose_cost_usd=compose_cost,
             compose_tokens=compose_tokens,
             status_updater=status_mgr.update,
+            stream=True,
+            streaming_transition=status_mgr.start_streaming,
         )
-    finally:
+    except Exception as e:
+        print(f"[nutrition] ERROR in ask_consultation_llm: {e}")
         await status_mgr.complete()
+        await message.answer(
+            "Произошла ошибка при обращении к модели. "
+            "Попробуйте отправить вопрос ещё раз."
+        )
+        return
+
+    streaming_msg = status_mgr.get_streaming_message()
+    await status_mgr.complete()
 
     # Отправляем ответ
-    await send_long_message(message, answer_text)
+    await finalize_streaming_message(streaming_msg, message, answer_text)
 
     # Логируем сообщения
     await log_message(
@@ -1066,12 +1016,27 @@ async def handle_detailed_plan(message: Message) -> None:
             compose_cost_usd=compose_cost,
             compose_tokens=compose_tokens,
             status_updater=status_mgr.update,
+            stream=True,
+            streaming_transition=status_mgr.start_streaming,
         )
-    finally:
+    except Exception as e:
+        print(f"[nutrition] ERROR in ask_consultation_llm (detailed plan): {e}")
         await status_mgr.complete()
+        await message.answer(
+            "Произошла ошибка при обращении к модели. "
+            "Попробуйте отправить вопрос ещё раз."
+        )
+        return
+
+    streaming_msg = status_mgr.get_streaming_message()
+    await status_mgr.complete()
 
     # Отправляем детальный план
-    await send_long_message(message, detailed_plan)
+    await finalize_streaming_message(
+        streaming_msg, message, detailed_plan,
+        keyboard=get_followup_keyboard(category),
+        show_followup_prompt=True,
+    )
 
     # Логируем запрос и ответ
     await log_message(

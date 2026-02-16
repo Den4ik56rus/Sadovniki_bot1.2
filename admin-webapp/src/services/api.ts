@@ -71,6 +71,11 @@ import type {
   PaymentType,
   PaymentsResponse,
   PaymentStats,
+  SubscriptionPlan,
+  TokenPackage,
+  // Prompt Preview
+  PromptPreviewResponse,
+  PromptPreviewOptionsResponse,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -871,12 +876,91 @@ export const api = {
     return response.json()
   },
 
+  async updateRagDocumentSubcategory(id: number, subcategory: string): Promise<{ success: boolean; document_id: number; subcategory: string }> {
+    return fetchApi(`/rag-documents/${id}/subcategory`, {
+      method: 'PATCH',
+      body: JSON.stringify({ subcategory }),
+    })
+  },
+
   async embedRagDocument(id: number): Promise<EmbedDocumentResponse> {
     const response = await fetch(`${API_BASE}/rag-documents/${id}/embed`, {
       method: 'POST',
     })
     // Возвращаем JSON даже при ошибке, так как там может быть error message
     return response.json()
+  },
+
+  // ============================================================================
+  // Admin Settings API (Глобальные настройки)
+  // ============================================================================
+
+  async getSettings(): Promise<{ settings: Array<{ key: string; value: string; description: string | null; updated_at: string }> }> {
+    return fetchApi('/settings')
+  },
+
+  async updateSetting(key: string, value: string): Promise<{ setting: { key: string; value: string }; success: boolean }> {
+    return fetchApi(`/settings/${key}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ value }),
+    })
+  },
+
+  // ============================================================================
+  // Pricing API (Управление тарифами)
+  // ============================================================================
+
+  async getSubscriptionPlans(): Promise<{ plans: SubscriptionPlan[] }> {
+    return fetchApi('/settings/pricing/plans')
+  },
+
+  async createSubscriptionPlan(data: {
+    name: string
+    price_rub: number
+    tokens_included: number
+    duration_days?: number
+    description?: string
+  }): Promise<{ plan: SubscriptionPlan; success: boolean }> {
+    return fetchApi('/settings/pricing/plans', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateSubscriptionPlan(
+    id: number,
+    data: Partial<SubscriptionPlan>
+  ): Promise<{ plan: SubscriptionPlan; success: boolean }> {
+    return fetchApi(`/settings/pricing/plans/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async getTokenPackages(): Promise<{ packages: TokenPackage[] }> {
+    return fetchApi('/settings/pricing/packages')
+  },
+
+  async createTokenPackage(data: {
+    name: string
+    price_rub: number
+    tokens_amount: number
+    description?: string
+  }): Promise<{ package: TokenPackage; success: boolean }> {
+    return fetchApi('/settings/pricing/packages', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateTokenPackage(
+    id: number,
+    data: Partial<TokenPackage>
+  ): Promise<{ package: TokenPackage; success: boolean }> {
+    return fetchApi(`/settings/pricing/packages/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
   },
 
   // ============================================================================
@@ -969,5 +1053,20 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ version, reverted_by: revertedBy || 'admin' }),
     })
+  },
+
+  // ============================================================================
+  // Prompt Preview API (Превью собранного промпта)
+  // ============================================================================
+
+  async getPromptPreviewOptions(): Promise<PromptPreviewOptionsResponse> {
+    return fetchApi<PromptPreviewOptionsResponse>('/prompts/preview/options')
+  },
+
+  async getPromptPreview(category: string, culture: string): Promise<PromptPreviewResponse> {
+    const params = new URLSearchParams()
+    params.set('category', category)
+    params.set('culture', culture)
+    return fetchApi<PromptPreviewResponse>(`/prompts/preview?${params.toString()}`)
   },
 }

@@ -60,20 +60,20 @@ class Settings(BaseSettings):
         description="API-ключ OpenAI",
     )
     openai_model_consultation: str = Field(
-        ...,
-        description="Модель для консультаций (OPENAI_MODEL_CONSULTATION)",
+        "gpt-4o-mini",  # Fallback значение если не задано в admin_settings
+        description="Модель для консультаций (OPENAI_MODEL_CONSULTATION) - используется как fallback, основные настройки в БД",
     )
     openai_model_article: str = Field(
-        ...,
-        description="Модель для статей (OPENAI_MODEL_ARTICLE)",
+        "gpt-4o-mini",  # Fallback значение
+        description="Модель для статей (OPENAI_MODEL_ARTICLE) - используется как fallback, основные настройки в БД",
     )
     openai_model_classification: str = Field(
-        ...,
-        description="Модель для классификации (OPENAI_MODEL_CLASSIFICATION)",
+        "gpt-4o-mini",  # Fallback значение
+        description="Модель для классификации (OPENAI_MODEL_CLASSIFICATION) - используется как fallback, основные настройки в БД",
     )
     openai_model_utility: str = Field(
-        ...,
-        description="Модель для вспомогательных задач (OPENAI_MODEL_UTILITY)",
+        "gpt-4o-mini",  # Fallback значение
+        description="Модель для вспомогательных задач (OPENAI_MODEL_UTILITY) - используется как fallback, основные настройки в БД",
     )
     openai_embeddings_model: str = Field(
         "text-embedding-3-small",  # модель эмбеддингов (1536 dimensions)

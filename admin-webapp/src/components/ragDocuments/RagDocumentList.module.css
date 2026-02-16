@@ -75,10 +75,77 @@
 }
 
 .subcategory {
-  display: block;
+  display: inline-block;
   font-size: 12px;
   color: var(--text-secondary);
   margin-top: 2px;
+}
+
+.subcategoryEditable {
+  cursor: pointer;
+  padding: 1px 6px;
+  border-radius: 4px;
+  border: 1px dashed transparent;
+  transition: all 0.15s;
+}
+
+.subcategoryEditable:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-hover);
+  color: var(--accent-primary);
+}
+
+.subcategoryEditor {
+  position: relative;
+  margin-top: 2px;
+}
+
+.subcategorySaving {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.subcategoryDropdown {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 50;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  box-shadow: var(--shadow-lg);
+  padding: 4px;
+  min-width: 160px;
+  max-height: 240px;
+  overflow-y: auto;
+}
+
+.subcategoryOption {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 10px;
+  font-size: 13px;
+  color: var(--text-primary);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.subcategoryOption:hover {
+  background: var(--bg-hover);
+}
+
+.subcategoryOptionActive {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.subcategoryOptionActive:hover {
+  background: var(--accent-primary-hover);
 }
 
 .cellStatus {

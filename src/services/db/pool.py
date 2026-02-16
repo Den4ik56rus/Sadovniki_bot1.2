@@ -1,5 +1,7 @@
 # src/services/db/pool.py
 
+import json
+
 import asyncpg  # Библиотека для работы с PostgreSQL асинхронно
 from typing import Optional  # Для аннотации типов (Optional[...] может быть None)
 
@@ -9,6 +11,16 @@ from src.config import settings  # Конфиг проекта: из него б
 # Глобальная переменная, в которой будет лежать пул соединений.
 # Тип: asyncpg.Pool или None (если пул ещё не создан или уже закрыт).
 _db_pool: Optional[asyncpg.Pool] = None
+
+
+async def _setup_jsonb_codec(conn: asyncpg.Connection) -> None:
+    """Настраивает JSONB codec для автоматической сериализации/десериализации."""
+    await conn.set_type_codec(
+        'jsonb',
+        encoder=json.dumps,
+        decoder=json.loads,
+        schema='pg_catalog',
+    )
 
 
 async def init_db_pool() -> None:
@@ -33,6 +45,7 @@ async def init_db_pool() -> None:
         password=settings.db_password, # Пароль
         min_size=1,                    # Минимальное количество соединений в пуле
         max_size=5,                    # Максимальное количество соединений в пуле
+        init=_setup_jsonb_codec,       # JSONB auto-serialize/deserialize
     )
 
 

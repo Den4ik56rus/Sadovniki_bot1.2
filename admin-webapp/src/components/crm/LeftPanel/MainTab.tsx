@@ -108,6 +108,34 @@ export function MainTab({
         </div>
       </div>
 
+      {/* Referral Program */}
+      <div className={styles.section}>
+        <h4 className={styles.sectionTitle}>Реферальная программа</h4>
+
+        {client.referrer && (
+          <div className={styles.field}>
+            <span className={styles.fieldLabel}>Приглашён</span>
+            <span className={styles.fieldValue}>
+              {client.referrer.first_name || client.referrer.username || `#${client.referrer.id}`}
+            </span>
+          </div>
+        )}
+
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>Реф. код</span>
+          <span className={styles.fieldValue}>
+            {client.referral_code
+              ? <code className={styles.referralCode}>{client.referral_code}</code>
+              : '-'}
+          </span>
+        </div>
+
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>Приглашено</span>
+          <span className={styles.fieldValue}>{client.referrals_count ?? 0}</span>
+        </div>
+      </div>
+
       {/* Tags */}
       <TagsSection
         clientTags={client.tags}

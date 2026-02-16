@@ -93,7 +93,7 @@ async def run_tests():
 
     for i, (text, expected_category, expected_culture) in enumerate(TEST_CASES, 1):
         try:
-            category, culture, cost, tokens = await detect_category_and_culture(text)
+            category, culture, _correction, cost, tokens = await detect_category_and_culture(text)
 
             # Проверяем категорию
             category_correct = category == expected_category

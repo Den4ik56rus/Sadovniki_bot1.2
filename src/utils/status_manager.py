@@ -3,259 +3,232 @@
 """
 Менеджер статусных сообщений для показа прогресса обработки запроса.
 
-Используется в хендлерах консультаций для отображения динамических
-статусов во время генерации ответа.
+Два режима:
+1. Прогресс-бар — показывает реальный этап обработки (▰▰▱▱▱▱ 2/6 Ищу литературу...)
+2. Стриминг — показывает текст ответа по мере генерации (edit каждые 3 сек)
 
-Сообщения показываются по таймеру, независимо от реального прогресса,
-чтобы создать плавный UX для пользователя.
+Переход: progress → streaming → complete
 
-Структура:
-- Первое сообщение: "⏳ Подождите, рекомендация формируется..." (анимация часов + точки)
-- Второе сообщение: динамические статусы (удаляется и пишется новое)
+Финальный ответ: стриминг-сообщение НЕ удаляется, а переиспользуется
+для финального отформатированного ответа (без задержки на delete+send).
 """
 
 import asyncio
 import logging
-from typing import Optional, Union, List
+from typing import Optional, Union, Callable, Awaitable
 from aiogram.types import Message, CallbackQuery
+
+from src.utils.formatting import markdown_to_telegram_html
 
 logger = logging.getLogger(__name__)
 
+# Интервал редактирования стриминг-сообщения (секунды)
+STREAMING_EDIT_INTERVAL: float = 3.0
 
-# Статусы для полного RAG-потока
-RAG_STATUSES: List[str] = [
-    "📚 Загружаю историю диалога...",
-    "🔍 Готовлю запрос для поиска...",
-    "📖 Ищу подходящую литературу...",
-    "🧠 Изучаю найденные материалы...",
-]
+# Максимальная длина текста для стриминг-превью (Telegram лимит 4096)
+MAX_STREAMING_DISPLAY: int = 3900
 
-# Статусы для упрощённого потока (без RAG)
-SIMPLE_STATUSES: List[str] = [
-    "📚 Анализирую Ваш вопрос...",
-    "🔍 Определяю тему консультации...",
-]
 
-# Финальные статусы (зацикливаются пока не придёт ответ)
-FINAL_LOOP_STATUSES: List[str] = [
-    "✍️ Формирую ответ...",
-    "📝 Структурирую информацию...",
-    "✨ Проверяю рекомендации...",
-    "🔄 Дорабатываю формулировки...",
-]
-
-# Интервал между сменой статусов (секунды)
-STATUS_INTERVAL: float = 5.0
-
-# Интервал анимации основного сообщения (секунды)
-MAIN_ANIMATION_INTERVAL: float = 1.0
-
-# Шаблоны для анимации основного сообщения (часы + точки)
-MAIN_MESSAGE_FRAMES: List[str] = [
-    "⏳ Подождите, рекомендация\nформируется",
-    "⌛ Подождите, рекомендация\nформируется.",
-    "⏳ Подождите, рекомендация\nформируется..",
-    "⌛ Подождите, рекомендация\nформируется...",
-]
+def _build_progress_bar(step: int, total: int, label: str) -> str:
+    """Формирует строку прогресс-бара: ▰▰▰▱▱▱ 3/6 Ищу литературу..."""
+    filled = "▰" * step
+    empty = "▱" * (total - step)
+    return f"{filled}{empty} {step}/{total} {label}"
 
 
 class StatusMessageManager:
     """
-    Управляет двумя сообщениями:
-    1. Анимированное "⏳/⌛ Подождите, рекомендация формируется..." (часы + точки)
-    2. Динамическое со статусами (удаляется и пишется новое)
+    Управляет сообщениями прогресса и стриминга.
 
-    Пример использования:
-        async with StatusMessageManager(message) as status_mgr:
-            reply = await ask_consultation_llm(...)
-        # Оба сообщения автоматически удалятся при выходе из контекста
+    Режим прогресса:
+        Одно сообщение с прогресс-баром, обновляется через update().
 
-    Или классический вариант:
-        status_mgr = StatusMessageManager(message)
-        await status_mgr.start()
-        try:
-            reply = await ask_consultation_llm(...)
-        finally:
-            await status_mgr.complete()
+    Режим стриминга:
+        Прогресс-сообщение удаляется, создаётся новое для стриминга текста.
+        Текст форматируется markdown→HTML и редактируется каждые 3 секунды.
+
+    Финализация:
+        Стриминг-сообщение можно забрать через get_streaming_message()
+        для финального edit (без пересоздания) или удалить через complete().
     """
 
     def __init__(self, source: Union[Message, CallbackQuery], use_rag: bool = True):
-        """
-        Инициализирует менеджер.
-
-        Args:
-            source: Message или CallbackQuery от пользователя
-            use_rag: True для полного RAG-потока, False для упрощённого
-        """
         self._source = source
         self._use_rag = use_rag
-        self._main_message: Optional[Message] = None      # Анимированное сообщение
-        self._status_message: Optional[Message] = None    # Динамическое сообщение
-        self._current_status: str = ""
-        self._status_task: Optional[asyncio.Task] = None
-        self._main_task: Optional[asyncio.Task] = None
-        self._running: bool = False
+
+        # Прогресс-режим
+        self._progress_message: Optional[Message] = None
+
+        # Стриминг-режим
+        self._streaming_message: Optional[Message] = None
+        self._streaming_text: str = ""
+        self._streaming_dirty: bool = False
+        self._streaming_task: Optional[asyncio.Task] = None
+
+        self._mode: str = "idle"  # idle → progress → streaming → done
 
     async def __aenter__(self):
-        """Поддержка async with."""
         await self.start()
         return self
 
     async def __aexit__(self, exc_type, exc_val, exc_tb):
-        """Автоматическое завершение при выходе из контекста."""
         await self.complete()
         return False
 
     def _get_chat(self):
-        """Возвращает чат для отправки сообщений."""
         if isinstance(self._source, CallbackQuery):
             return self._source.message
         return self._source
 
     async def start(self, initial_text: Optional[str] = None) -> None:
-        """
-        Отправляет два сообщения и запускает автоматическую смену статусов.
-
-        Args:
-            initial_text: Текст основного сообщения (опционально, игнорируется для анимации)
-        """
-        # Первый кадр анимации
-        main_text = MAIN_MESSAGE_FRAMES[0]
-
-        # Выбираем первый статус
-        statuses = RAG_STATUSES if self._use_rag else SIMPLE_STATUSES
-        first_status = statuses[0] if statuses else FINAL_LOOP_STATUSES[0]
+        """Отправляет начальное сообщение с прогресс-баром."""
+        total = 6 if self._use_rag else 3
+        text = initial_text or _build_progress_bar(1, total, "Анализирую запрос...")
 
         try:
             chat = self._get_chat()
-            # Отправляем основное сообщение
-            self._main_message = await chat.answer(main_text)
-            # Отправляем сообщение со статусом
-            self._status_message = await chat.answer(first_status)
-
-            self._current_status = first_status
-
-            # Запускаем фоновые задачи
-            self._running = True
-            self._status_task = asyncio.create_task(self._status_loop())
-            self._main_task = asyncio.create_task(self._main_animation_loop())
-
+            self._progress_message = await chat.answer(text)
+            self._mode = "progress"
         except Exception as e:
-            logger.warning(f"[StatusManager] Failed to send messages: {e}")
+            logger.warning(f"[StatusManager] Failed to send progress message: {e}")
 
-    async def _main_animation_loop(self) -> None:
-        """Фоновая задача: анимация основного сообщения (часы + точки)."""
-        try:
-            frame_index = 1  # Начинаем с 1, т.к. 0 уже показан
-            while self._running:
-                await asyncio.sleep(MAIN_ANIMATION_INTERVAL)
-                if not self._running or not self._main_message:
-                    return
-
-                frame = MAIN_MESSAGE_FRAMES[frame_index % len(MAIN_MESSAGE_FRAMES)]
-                try:
-                    await self._main_message.edit_text(frame)
-                except Exception:
-                    pass  # Игнорируем ошибки редактирования
-
-                frame_index += 1
-
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.debug(f"[StatusManager] Main animation error: {e}")
-
-    async def _status_loop(self) -> None:
-        """Фоновая задача: меняет статусы по таймеру (удаление + новое сообщение)."""
-        try:
-            # Выбираем начальные статусы
-            statuses = RAG_STATUSES if self._use_rag else SIMPLE_STATUSES
-
-            # Пропускаем первый статус (уже показан) и проходим по остальным
-            for status in statuses[1:]:
-                if not self._running:
-                    return
-                await asyncio.sleep(STATUS_INTERVAL)
-                if not self._running:
-                    return
-                await self._replace_status(status)
-
-            # Затем зацикливаем финальные статусы
-            loop_index = 0
-            while self._running:
-                await asyncio.sleep(STATUS_INTERVAL)
-                if not self._running:
-                    return
-                status = FINAL_LOOP_STATUSES[loop_index % len(FINAL_LOOP_STATUSES)]
-                await self._replace_status(status)
-                loop_index += 1
-
-        except asyncio.CancelledError:
-            pass
-        except Exception as e:
-            logger.debug(f"[StatusManager] Status loop error: {e}")
-
-    async def _replace_status(self, status_text: str) -> None:
-        """Удаляет старое сообщение и отправляет новое с новым статусом."""
-        if not self._status_message:
+    async def update(self, step: int, total: int, label: str) -> None:
+        """Обновляет прогресс-бар на текущий этап."""
+        if self._mode != "progress" or not self._progress_message:
             return
 
-        # Не меняем если текст не изменился
-        if status_text == self._current_status:
-            return
-
+        text = _build_progress_bar(step, total, label)
         try:
-            chat = self._get_chat()
+            await self._progress_message.edit_text(text)
+        except Exception:
+            pass  # message not modified или другая ошибка Telegram
 
-            # Удаляем старое сообщение
+    async def start_streaming(self) -> Callable[[str], Awaitable[None]]:
+        """
+        Переход из прогресс-режима в стриминг.
+
+        Удаляет прогресс-сообщение, создаёт новое для стриминга.
+        Возвращает callback для передачи накопленного текста.
+        """
+        self._mode = "streaming"
+
+        # Удаляем прогресс-сообщение
+        if self._progress_message:
             try:
-                await self._status_message.delete()
+                await self._progress_message.delete()
             except Exception:
-                pass  # Игнорируем ошибки удаления
+                pass
+            self._progress_message = None
 
-            # Отправляем новое сообщение
-            self._status_message = await chat.answer(status_text)
-            self._current_status = status_text
-
+        # Создаём сообщение для стриминга
+        try:
+            chat = self._get_chat()
+            self._streaming_message = await chat.answer("⏳ Генерирую ответ...")
         except Exception as e:
-            logger.debug(f"[StatusManager] Failed to replace status: {e}")
+            logger.warning(f"[StatusManager] Failed to send streaming message: {e}")
 
-    async def update(self, status_text: str) -> None:
+        # Запускаем фоновый цикл редактирования
+        self._streaming_task = asyncio.create_task(self._streaming_edit_loop())
+
+        return self._on_stream_chunk
+
+    async def _on_stream_chunk(self, accumulated_text: str) -> None:
+        """Callback: сохраняет накопленный текст для следующего edit."""
+        self._streaming_text = accumulated_text
+        self._streaming_dirty = True
+
+    def _format_for_display(self, text: str) -> str:
+        """Конвертирует markdown→HTML для отображения в Telegram."""
+        try:
+            return markdown_to_telegram_html(text)
+        except Exception:
+            # Fallback: отправляем как есть если форматирование сломалось
+            return text
+
+    async def _streaming_edit_loop(self) -> None:
+        """Фоновая задача: редактирует стриминг-сообщение каждые 3 секунды."""
+        # Анимация песочных часов пока ждём первый чанк от LLM
+        _hourglass_frames = ["⏳", "⌛"]
+        _hourglass_idx = 0
+
+        try:
+            while self._mode == "streaming":
+                await asyncio.sleep(STREAMING_EDIT_INTERVAL)
+
+                if self._mode != "streaming":
+                    return
+                if not self._streaming_message:
+                    continue
+
+                # Если текст ещё не пришёл — анимируем часы
+                if not self._streaming_dirty or not self._streaming_text:
+                    hg = _hourglass_frames[_hourglass_idx % len(_hourglass_frames)]
+                    _hourglass_idx += 1
+                    try:
+                        await self._streaming_message.edit_text(f"{hg} Генерирую ответ...")
+                    except Exception:
+                        pass
+                    continue
+
+                self._streaming_dirty = False
+                raw_text = self._streaming_text
+
+                # Форматируем markdown → HTML
+                display = self._format_for_display(raw_text)
+
+                # Обрезаем если слишком длинное для Telegram
+                if len(display) > MAX_STREAMING_DISPLAY:
+                    display = display[:MAX_STREAMING_DISPLAY] + "\n\n⏳ Завершаю генерацию..."
+                else:
+                    # Курсор — индикатор что текст ещё генерируется
+                    display += "\n\n▌"
+
+                try:
+                    await self._streaming_message.edit_text(display)
+                except Exception:
+                    pass  # message not modified
+        except asyncio.CancelledError:
+            pass
+        except Exception as e:
+            logger.debug(f"[StatusManager] Streaming edit loop error: {e}")
+
+    def get_streaming_message(self) -> Optional[Message]:
         """
-        Ручное обновление статуса (для обратной совместимости).
-        В новой версии это игнорируется, т.к. статусы меняются автоматически.
+        Возвращает стриминг-сообщение для финального edit.
+
+        Вызывать ПОСЛЕ complete(). Если сообщение было забрано,
+        complete() не будет его удалять.
         """
-        pass  # Игнорируем ручные вызовы
+        msg = self._streaming_message
+        self._streaming_message = None  # Отдаём владение — complete() не удалит
+        return msg
 
     async def complete(self) -> None:
-        """Останавливает смену статусов и удаляет оба сообщения."""
-        self._running = False
+        """Останавливает всё и удаляет все временные сообщения."""
+        self._mode = "done"
 
-        # Отменяем фоновые задачи
-        for task in [self._status_task, self._main_task]:
-            if task and not task.done():
-                task.cancel()
-                try:
-                    await task
-                except asyncio.CancelledError:
-                    pass
-
-        # Удаляем динамическое сообщение со статусом
-        if self._status_message:
+        # Останавливаем стриминг-задачу
+        if self._streaming_task and not self._streaming_task.done():
+            self._streaming_task.cancel()
             try:
-                await self._status_message.delete()
-            except Exception as e:
-                logger.debug(f"[StatusManager] Failed to delete status message: {e}")
-            finally:
-                self._status_message = None
+                await self._streaming_task
+            except asyncio.CancelledError:
+                pass
 
-        # Удаляем основное сообщение
-        if self._main_message:
+        # Удаляем прогресс-сообщение (если ещё есть)
+        if self._progress_message:
             try:
-                await self._main_message.delete()
-            except Exception as e:
-                logger.debug(f"[StatusManager] Failed to delete main message: {e}")
-            finally:
-                self._main_message = None
+                await self._progress_message.delete()
+            except Exception:
+                pass
+            self._progress_message = None
 
-        self._current_status = ""
+        # Удаляем стриминг-сообщение (если не забрали через get_streaming_message)
+        if self._streaming_message:
+            try:
+                await self._streaming_message.delete()
+            except Exception:
+                pass
+            self._streaming_message = None
+
+        self._streaming_text = ""

@@ -18,6 +18,17 @@ from src.prompts.base_prompt import (
     get_base_system_prompt,
     get_base_system_prompt_minimal,
     build_base_prompt_from_sections,
+    _section_role,
+    _section_scope,
+    _section_defaults,
+    _section_culture_rules_with_context,
+    _section_culture_rules_undefined,
+    _section_kb_usage,
+    _section_response_format,
+    _section_work_context,
+    _section_answer_logic,
+    _section_tone,
+    _section_safety,
 )
 from src.prompts.category_prompts import (
     get_nutrition_category_prompt,
@@ -27,6 +38,11 @@ from src.prompts.category_prompts import (
     get_soil_improvement_category_prompt,
     get_variety_selection_category_prompt,
     get_prompt_group_for_culture,
+    get_fertilizers_reference,
+    get_pesticides_reference,
+)
+from src.prompts.category_prompts._fertilizers_reference import (
+    get_varieties_reference,
 )
 
 logger = logging.getLogger(__name__)
@@ -40,6 +56,7 @@ async def _get_base_prompt_from_db(
     default_location: str,
     default_growing_type: str,
     include_response_format: bool = True,
+    culture_is_known: bool = True,
 ) -> Optional[str]:
     """
     Загружает базовый промпт из БД.
@@ -71,7 +88,9 @@ async def _get_base_prompt_from_db(
         # Теперь загружаем только включённые
         enabled_sections = await get_base_sections(is_enabled_only=True)
 
-        # Подставляем переменные в defaults секцию
+        # Построим словарь для быстрого доступа к секциям по slug
+        sections_by_slug = {s.get("slug", ""): s.get("content", "") for s in enabled_sections}
+
         section_contents = []
         for section in enabled_sections:
             slug = section.get("slug", "")
@@ -79,6 +98,18 @@ async def _get_base_prompt_from_db(
 
             # Пропускаем response_format если не нужен
             if slug == "response_format" and not include_response_format:
+                continue
+
+            # Условная логика для culture_rules
+            if slug == "culture_rules":
+                # Если есть новые варианты — используем их вместо старого culture_rules
+                if culture_is_known and "culture_rules_known" in sections_by_slug:
+                    content = sections_by_slug["culture_rules_known"]
+                elif not culture_is_known and "culture_rules_undefined" in sections_by_slug:
+                    content = sections_by_slug["culture_rules_undefined"]
+                # Если новых нет — используем старый culture_rules как есть
+            elif slug in ("culture_rules_known", "culture_rules_undefined"):
+                # Пропускаем — уже обработаны через culture_rules
                 continue
 
             # Подставляем переменные в defaults
@@ -103,12 +134,12 @@ async def _get_category_prompt_from_db(
     culture: str,
     default_location: str,
     default_growing_type: str,
-) -> Optional[Tuple[str, bool]]:
+) -> Optional[Tuple[str, bool, Optional[int]]]:
     """
     Загружает категорийный промпт из БД.
 
     Логика:
-    - Если категория отключена (is_enabled=False) → возвращаем ("", False) — пустой промпт
+    - Если категория отключена (is_enabled=False) → возвращаем ("", False, None) — пустой промпт
     - Если категория не найдена в БД → возвращаем None (fallback на Python)
     - Если категория включена → возвращаем её содержимое
 
@@ -119,7 +150,7 @@ async def _get_category_prompt_from_db(
         default_growing_type: Тип выращивания по умолчанию
 
     Returns:
-        Tuple[str, bool] (промпт, use_minimal_base) или None если БД недоступна
+        Tuple[str, bool, Optional[int]] (промпт, use_minimal_base, prompt_id) или None если БД недоступна
     """
     try:
         from src.services.db.prompt_repo import get_category_prompt, get_fallback_prompt, check_category_exists
@@ -144,7 +175,7 @@ async def _get_category_prompt_from_db(
             fallback = await get_fallback_prompt()
             if fallback and fallback.get("content"):
                 content = fallback["content"].replace("{culture}", culture)
-                return (content, fallback.get("use_minimal_base", False))
+                return (content, fallback.get("use_minimal_base", False), None)
             return None
 
         # Для питания нужно определить группу культуры
@@ -168,12 +199,13 @@ async def _get_category_prompt_from_db(
             if exists:
                 # Категория есть но отключена → возвращаем пустой промпт
                 logger.info(f"[_get_category_prompt_from_db] Category {subgroup_slug}/{culture_group or 'main'} is disabled in DB")
-                return ("", False)
+                return ("", False, None)
             # Категории нет в БД → fallback на Python
             return None
 
         content = prompt_data["content"]
         use_minimal_base = prompt_data.get("use_minimal_base", False)
+        prompt_id = prompt_data.get("id")
 
         # Подставляем переменные
         content = content.replace("{culture}", culture)
@@ -181,7 +213,7 @@ async def _get_category_prompt_from_db(
         content = content.replace("{default_growing_type}", default_growing_type)
 
         logger.info(f"[_get_category_prompt_from_db] Loaded {subgroup_slug}/{culture_group or 'main'} from DB")
-        return (content, use_minimal_base)
+        return (content, use_minimal_base, prompt_id)
 
     except Exception as e:
         logger.warning(f"[_get_category_prompt_from_db] Error loading from DB: {e}")
@@ -357,6 +389,55 @@ async def get_prompt_document_section(culture: str, consultation_category: str) 
     return ""
 
 
+async def _load_reference_section(consultation_category: str) -> str:
+    """
+    Загружает справочник (удобрения/СЗР/сорта) для вставки как отдельную секцию.
+
+    Справочник загружается из БД, fallback на Python.
+    Используется ТОЛЬКО когда категорийный промпт загружен из БД
+    (в Python-версии справочник уже встроен через f-string).
+    """
+    CATEGORY_REFERENCES = {
+        "питание растений": ("fertilizers", get_fertilizers_reference),
+        "защита растений": ("pesticides", get_pesticides_reference),
+        "болезни и вредители": ("pesticides", get_pesticides_reference),
+        "подбор сортов": ("varieties", get_varieties_reference),
+        "подбор сорта": ("varieties", get_varieties_reference),
+    }
+
+    normalized = consultation_category.lower().strip()
+    ref_info = CATEGORY_REFERENCES.get(normalized)
+    if not ref_info:
+        return ""
+
+    ref_slug, ref_python_func = ref_info
+    ref_content = None
+
+    # Пробуем из БД
+    try:
+        from src.services.db.prompt_repo import get_reference_content
+        db_result = await get_reference_content(ref_slug)
+        if db_result:
+            ref_content = db_result["content"]
+    except Exception as e:
+        logger.warning(f"[_load_reference_section] DB error: {e}")
+
+    # Fallback на Python
+    if not ref_content:
+        ref_content = ref_python_func()
+
+    if ref_content:
+        return f"""
+📙 СПРАВОЧНИК (дополнительные рекомендации по препаратам/удобрениям/сортам):
+
+ИНСТРУКЦИЯ: Используй справочник как ДОПОЛНЕНИЕ к промт-документу выше.
+Сначала бери рекомендации из промт-документа, потом дополняй из справочника.
+
+{ref_content.strip()}
+"""
+    return ""
+
+
 def _get_fallback_prompt_python(culture: str) -> Tuple[str, bool]:
     """
     Возвращает fallback-промпт для вопросов с неопределённой темой/категорией.
@@ -503,6 +584,7 @@ async def build_consultation_system_prompt(
     # Сначала пробуем загрузить из БД, затем fallback на Python
     category_prompt = ""
     use_minimal_base = False  # По умолчанию используем полный базовый промпт
+    db_result = None  # Для проверки источника (БД vs Python) при загрузке справочников
 
     if consultation_category:
         # Пробуем загрузить из БД
@@ -515,7 +597,7 @@ async def build_consultation_system_prompt(
 
         if db_result is not None:
             # Загружено из БД (может быть пустой строкой если категория отключена)
-            category_prompt, use_minimal_base = db_result
+            category_prompt, use_minimal_base, _prompt_id = db_result
             if category_prompt == "":
                 logger.info(f"[build_consultation_system_prompt] Category prompt disabled in DB")
             else:
@@ -532,18 +614,31 @@ async def build_consultation_system_prompt(
 
     # 1. Базовый промпт (выбираем минимальный или полный в зависимости от категорийного промпта)
     # Сначала пробуем загрузить из БД, затем fallback на Python
+    # Определяем, известна ли культура для выбора правильной секции промпта
+    culture_is_known = culture not in ("не определено", "общая информация")
+
     base_prompt = await _get_base_prompt_from_db(
         default_location,
         default_growing_type,
-        include_response_format=not use_minimal_base
+        include_response_format=not use_minimal_base,
+        culture_is_known=culture_is_known,
     )
 
     if base_prompt is None:
         # Fallback на Python (БД недоступна или пуста)
+        # Передаём culture_is_known для выбора правильной секции культуры
         if use_minimal_base:
-            base_prompt = get_base_system_prompt_minimal(default_location, default_growing_type)
+            base_prompt = get_base_system_prompt_minimal(
+                default_location,
+                default_growing_type,
+                culture_is_known=culture_is_known
+            )
         else:
-            base_prompt = get_base_system_prompt(default_location, default_growing_type)
+            base_prompt = get_base_system_prompt(
+                default_location,
+                default_growing_type,
+                culture_is_known=culture_is_known
+            )
         logger.debug(f"[build_consultation_system_prompt] Base prompt loaded from Python fallback")
     else:
         # Загружено из БД (может быть пустой строкой если всё отключено)
@@ -564,20 +659,26 @@ async def build_consultation_system_prompt(
 
 ИНСТРУКЦИЯ:
 - Отвечай на основе своих агрономических знаний, следуя стандартной структуре ответа
-- В КАЖДОМ пункте/разделе ответа добавь пометку:
-  "(По этому пункту информация из нашей библиотеки недостаточная — ответ отправлен на модерацию к агроному)"
+- Используй информацию из промт-документа и справочников, если они доступны
 - Соблюдай все ограничения (культуры, безопасность дозировок и т.д.)
 """
 
     # 4. Промт-документ (специализированные инструкции из админ-панели)
     prompt_doc_section = await get_prompt_document_section(culture, consultation_category)
 
-    # 5. Словарь терминологии
+    # 5. Справочники (удобрения, СЗР, сорта) — ОТДЕЛЬНАЯ секция
+    # Загружаем ТОЛЬКО когда категорийный промпт из БД (в Python-версии справочник уже встроен)
+    reference_section = ""
+    if consultation_category and db_result is not None and category_prompt:
+        reference_section = await _load_reference_section(consultation_category)
+
+    # 6. Словарь терминологии
     terminology_section = await build_terminology_section()
     if terminology_section:
         terminology_section = "\n\n" + terminology_section
 
     # Собираем все части вместе
+    # Порядок: база → культура → категория → промт-документ → справочник → RAG → терминология
     parts = [base_prompt]
 
     if culture_context:
@@ -586,9 +687,13 @@ async def build_consultation_system_prompt(
     if category_prompt:
         parts.append(category_prompt)
 
-    # Промт-документ добавляем ПЕРЕД KB, чтобы он был выше по приоритету
+    # Промт-документ — ОСНОВНОЙ источник информации
     if prompt_doc_section:
         parts.append(prompt_doc_section)
+
+    # Справочник — ДОПОЛНЯЕТ промт-документ конкретными препаратами/удобрениями/сортами
+    if reference_section:
+        parts.append(reference_section)
 
     parts.append(kb_section)
 
@@ -598,3 +703,421 @@ async def build_consultation_system_prompt(
     # Склеиваем и возвращаем
     full_prompt = "\n\n".join(parts)
     return full_prompt.strip()
+
+
+# ============================================================================
+# Prompt Preview (для админ-панели)
+# ============================================================================
+
+# Маппинг slug → русская метка
+BASE_SECTION_LABELS = {
+    "role": "Роль",
+    "scope": "Ограничения",
+    "defaults": "Стандартные параметры",
+    "culture_rules": "Правила работы с культурой",
+    "culture_rules_known": "Правила (культура известна)",
+    "culture_rules_undefined": "Правила (культура не определена)",
+    "kb_usage": "Работа с базой знаний",
+    "response_format": "Формат ответа",
+    "work_context": "Контекст работ (до/после)",
+    "answer_logic": "Логика формирования ответа",
+    "tone": "Стиль ответа",
+    "safety": "Правила безопасности",
+}
+
+# Python-функции для базовых секций (порядок как в build_base_prompt)
+BASE_SECTION_FUNCTIONS = [
+    ("role", _section_role),
+    ("scope", _section_scope),
+    # defaults и culture_rules обрабатываются отдельно (параметризованы)
+    ("kb_usage", _section_kb_usage),
+    ("response_format", _section_response_format),
+    ("work_context", _section_work_context),
+    ("tone", _section_tone),
+    ("safety", _section_safety),
+]
+
+
+async def _get_base_sections_for_preview(
+    default_location: str,
+    default_growing_type: str,
+    include_response_format: bool,
+    culture_is_known: bool,
+) -> list:
+    """
+    Загружает базовые секции для превью — каждую отдельно с метаданными.
+    Пробует DB, fallback на Python.
+    """
+    sections = []
+
+    # Пробуем загрузить из DB
+    try:
+        from src.services.db.prompt_repo import get_base_sections
+
+        all_db_sections = await get_base_sections(is_enabled_only=False)
+        if all_db_sections:
+            # Проверяем наличие новых вариантов culture_rules
+            has_split_culture_rules = any(
+                s.get("slug") in ("culture_rules_known", "culture_rules_undefined")
+                for s in all_db_sections
+            )
+
+            for s in all_db_sections:
+                slug = s.get("slug", "")
+                content = s.get("content", "")
+                is_enabled = s.get("is_enabled", True)
+                prompt_id = s.get("id")
+
+                # Пропускаем response_format если use_minimal_base
+                if slug == "response_format" and not include_response_format:
+                    sections.append({
+                        "id": f"base_{slug}",
+                        "label": f"Базовая — {BASE_SECTION_LABELS.get(slug, slug)}",
+                        "source": "base",
+                        "color": "#3B82F6",
+                        "content": content,
+                        "is_from_db": True,
+                        "is_enabled": False,
+                        "skipped_reason": "Пропущено (use_minimal_base=True)",
+                        "prompt_id": prompt_id,
+                    })
+                    continue
+
+                # Скрываем старый culture_rules если есть новые варианты
+                if slug == "culture_rules" and has_split_culture_rules:
+                    continue
+
+                # Условная логика для culture_rules_known/undefined
+                if slug == "culture_rules_known":
+                    is_active = culture_is_known
+                    sections.append({
+                        "id": f"base_{slug}",
+                        "label": f"Базовая — {BASE_SECTION_LABELS.get(slug, slug)}",
+                        "source": "base",
+                        "color": "#3B82F6",
+                        "content": content,
+                        "is_from_db": True,
+                        "is_enabled": is_enabled and is_active,
+                        "prompt_id": prompt_id,
+                        **({"skipped_reason": "Пропущено (культура не определена)"} if not is_active else {}),
+                    })
+                    continue
+
+                if slug == "culture_rules_undefined":
+                    is_active = not culture_is_known
+                    sections.append({
+                        "id": f"base_{slug}",
+                        "label": f"Базовая — {BASE_SECTION_LABELS.get(slug, slug)}",
+                        "source": "base",
+                        "color": "#3B82F6",
+                        "content": content,
+                        "is_from_db": True,
+                        "is_enabled": is_enabled and is_active,
+                        "prompt_id": prompt_id,
+                        **({"skipped_reason": "Пропущено (культура известна)"} if not is_active else {}),
+                    })
+                    continue
+
+                # Подстановка переменных
+                if slug == "defaults":
+                    content = content.replace("{default_location}", default_location)
+                    content = content.replace("{default_growing_type}", default_growing_type)
+
+                sections.append({
+                    "id": f"base_{slug}",
+                    "label": f"Базовая — {BASE_SECTION_LABELS.get(slug, slug)}",
+                    "source": "base",
+                    "color": "#3B82F6",
+                    "content": content,
+                    "is_from_db": True,
+                    "is_enabled": is_enabled,
+                    "prompt_id": prompt_id,
+                })
+
+            return sections
+    except Exception as e:
+        logger.warning(f"[_get_base_sections_for_preview] DB error: {e}")
+
+    # Fallback на Python
+    python_sections = [
+        ("role", _section_role()),
+        ("scope", _section_scope()),
+        ("defaults", _section_defaults(default_location, default_growing_type)),
+        ("culture_rules",
+         _section_culture_rules_with_context() if culture_is_known else _section_culture_rules_undefined()),
+        ("kb_usage", _section_kb_usage()),
+    ]
+    if include_response_format:
+        python_sections.append(("response_format", _section_response_format()))
+    else:
+        python_sections.append(("response_format", _section_response_format()))
+        # Пометим как пропущенную
+        sections_temp_skip = "response_format"
+
+    python_sections.append(("work_context", _section_work_context()))
+    python_sections.append(("answer_logic", _section_answer_logic()))
+    python_sections.append(("tone", _section_tone()))
+    python_sections.append(("safety", _section_safety()))
+
+    for slug, content in python_sections:
+        is_skipped = (slug == "response_format" and not include_response_format)
+        sections.append({
+            "id": f"base_{slug}",
+            "label": f"Базовая — {BASE_SECTION_LABELS.get(slug, slug)}",
+            "source": "base",
+            "color": "#3B82F6",
+            "content": content,
+            "is_from_db": False,
+            "is_enabled": not is_skipped,
+            "prompt_id": None,
+            **({"skipped_reason": "Пропущено (use_minimal_base=True)"} if is_skipped else {}),
+        })
+
+    return sections
+
+
+async def build_prompt_preview(
+    culture: str,
+    consultation_category: str = "",
+    default_location: str = "средняя полоса",
+    default_growing_type: str = "открытый грунт",
+) -> dict:
+    """
+    Собирает превью промпта — аннотированный список секций для визуализации в админ-панели.
+    Повторяет логику build_consultation_system_prompt, но возвращает структуру вместо строки.
+    """
+    sections = []
+
+    # --- 1. Категорийный промпт (определяем use_minimal_base) ---
+    category_prompt = ""
+    use_minimal_base = False
+    category_source = "python"
+    category_prompt_id = None
+    culture_group = None
+
+    if consultation_category:
+        # Определяем culture_group для питания
+        if consultation_category.lower().strip() == "питание растений":
+            culture_group = get_prompt_group_for_culture("питание растений", culture)
+
+        db_result = await _get_category_prompt_from_db(
+            consultation_category, culture, default_location, default_growing_type
+        )
+        if db_result is not None:
+            category_prompt, use_minimal_base, category_prompt_id = db_result
+            category_source = "db"
+        else:
+            category_prompt, use_minimal_base = _get_category_specific_prompt_python(
+                consultation_category, culture, default_location, default_growing_type
+            )
+            category_source = "python"
+            category_prompt_id = None
+
+    # --- 2. Базовые секции ---
+    culture_is_known = culture not in ("не определено", "общая информация")
+    base_sections = await _get_base_sections_for_preview(
+        default_location, default_growing_type,
+        include_response_format=not use_minimal_base,
+        culture_is_known=culture_is_known,
+    )
+    base_source = "db" if (base_sections and base_sections[0].get("is_from_db")) else "python"
+    sections.extend(base_sections)
+
+    # --- 3. Контекст культуры ---
+    if culture and culture not in ("не определено", "общая информация"):
+        culture_context = f"🌱 КОНТЕКСТ КОНСУЛЬТАЦИИ:\nТы консультируешь по культуре: {culture.upper()}\nВСЕ твои ответы должны быть в контексте {culture}."
+        sections.append({
+            "id": "culture_context",
+            "label": "Контекст культуры",
+            "source": "culture",
+            "color": "#22C55E",
+            "content": culture_context,
+            "is_from_db": False,
+            "is_enabled": True,
+            "prompt_id": None,
+        })
+
+    # --- 4. Категорийный промпт ---
+    if consultation_category:
+        group_label = ""
+        if culture_group:
+            group_names = {
+                "group_strawberry": "Клубника",
+                "group_raspberry": "Малина/Ежевика",
+                "group_b_berries": "Кустарники (Группа Б)",
+            }
+            group_label = f" ({group_names.get(culture_group, culture_group)})"
+
+        cat_display = consultation_category.capitalize()
+        sections.append({
+            "id": "category_prompt",
+            "label": f"Категорийный — {cat_display}{group_label}",
+            "source": "category",
+            "color": "#8B5CF6",
+            "content": category_prompt if category_prompt else "(Категорийный промпт отключён или пуст)",
+            "is_from_db": category_source == "db",
+            "is_enabled": bool(category_prompt),
+            "prompt_id": category_prompt_id,
+        })
+
+    # --- 5. Промт-документ (ПЕРЕД справочником — он имеет высший приоритет) ---
+    # Используем версию с ID для редактирования
+    prompt_doc_data = None
+    try:
+        from src.services.db.prompt_repo import get_prompt_document_content_with_ids
+        prompt_doc_data = await get_prompt_document_content_with_ids(culture, consultation_category)
+    except Exception as e:
+        logger.warning(f"[build_prompt_preview] prompt_doc_with_ids error: {e}")
+
+    # Fallback на обычную функцию если новая не сработала
+    if prompt_doc_data is None:
+        prompt_doc_section = await get_prompt_document_section(culture, consultation_category)
+        if prompt_doc_section:
+            sections.append({
+                "id": "prompt_document",
+                "label": "Промт-документ",
+                "source": "prompt_doc",
+                "color": "#F59E0B",
+                "content": prompt_doc_section.strip(),
+                "is_from_db": True,
+                "is_enabled": True,
+                "prompt_id": None,
+            })
+        else:
+            sections.append({
+                "id": "prompt_document",
+                "label": "Промт-документ",
+                "source": "prompt_doc",
+                "color": "#F59E0B",
+                "content": None,
+                "is_from_db": True,
+                "is_enabled": False,
+                "skipped_reason": "Не найден для данной комбинации культуры и категории",
+                "prompt_id": None,
+            })
+    else:
+        prompt_ids = prompt_doc_data["prompt_ids"]
+        sections.append({
+            "id": "prompt_document",
+            "label": "Промт-документ",
+            "source": "prompt_doc",
+            "color": "#F59E0B",
+            "content": prompt_doc_data["content"].strip(),
+            "is_from_db": True,
+            "is_enabled": True,
+            "prompt_id": prompt_ids[0] if len(prompt_ids) == 1 else None,
+            "prompt_ids": prompt_ids if len(prompt_ids) > 1 else None,
+        })
+
+    # --- 6. Справочники (удобрения, СЗР, сорта) — ДОПОЛНЯЮТ промт-документ ---
+    # Маппинг категория → (slug в БД, python fallback, метка)
+    CATEGORY_REFERENCES = {
+        "питание растений": [("fertilizers", get_fertilizers_reference, "Справочник удобрений")],
+        "защита растений": [("pesticides", get_pesticides_reference, "Справочник СЗР")],
+        "подбор сортов": [("varieties", get_varieties_reference, "Справочник сортов")],
+        "подбор сорта": [("varieties", get_varieties_reference, "Справочник сортов")],
+    }
+
+    ref_list = CATEGORY_REFERENCES.get(consultation_category.lower().strip(), [])
+    for ref_slug, ref_python_func, ref_label in ref_list:
+        # Если категорийный промпт из Python — справочник уже встроен через f-string
+        if category_source == "python":
+            sections.append({
+                "id": f"reference_{ref_slug}",
+                "label": ref_label,
+                "source": "reference",
+                "color": "#F97316",
+                "content": "(Встроен в категорийный промпт выше)",
+                "is_from_db": False,
+                "is_enabled": True,
+                "is_embedded": True,
+                "prompt_id": None,
+            })
+            continue
+
+        # Для DB-источника — загружаем справочник отдельно
+        ref_content = None
+        ref_from_db = False
+        ref_prompt_id = None
+
+        # Пробуем из БД
+        try:
+            from src.services.db.prompt_repo import get_reference_content
+            db_result = await get_reference_content(ref_slug)
+            if db_result:
+                ref_content = db_result["content"]
+                ref_prompt_id = db_result["id"]
+                ref_from_db = True
+        except Exception as e:
+            logger.warning(f"[build_prompt_preview] DB reference error: {e}")
+
+        # Fallback на Python
+        if not ref_content:
+            ref_content = ref_python_func()
+            ref_from_db = False
+            ref_prompt_id = None
+
+        if ref_content:
+            sections.append({
+                "id": f"reference_{ref_slug}",
+                "label": ref_label,
+                "source": "reference",
+                "color": "#F97316",
+                "content": ref_content.strip(),
+                "is_from_db": ref_from_db,
+                "is_enabled": True,
+                "prompt_id": ref_prompt_id,
+            })
+
+    # --- 7. RAG-плейсхолдер ---
+    sections.append({
+        "id": "kb_placeholder",
+        "label": "База знаний (RAG)",
+        "source": "rag",
+        "color": "#EF4444",
+        "content": None,
+        "is_placeholder": True,
+        "is_enabled": True,
+        "prompt_id": None,
+        "placeholder_text": (
+            "[ Сюда вставляются результаты RAG-поиска ]\n\n"
+            "УРОВЕНЬ 1: Q&A пары (высший приоритет — используются дословно)\n"
+            "УРОВЕНЬ 2: Приоритетные документы (универсальные принципы)\n"
+            "УРОВЕНЬ 3: Общие документы (синтез информации)\n\n"
+            "Если Q&A найдены — показываются ТОЛЬКО они.\n"
+            "Если нет — показываются Уровни 2 и 3."
+        ),
+    })
+
+    # --- 8. Терминология ---
+    terminology_section = await build_terminology_section()
+    if terminology_section:
+        sections.append({
+            "id": "terminology",
+            "label": "Словарь терминологии",
+            "source": "terminology",
+            "color": "#14B8A6",
+            "content": terminology_section.strip(),
+            "is_from_db": True,
+            "is_enabled": True,
+            "prompt_id": None,  # Из таблицы terminology, не prompts
+        })
+
+    # Метаданные
+    total_chars = sum(
+        len(s.get("content") or s.get("placeholder_text") or "")
+        for s in sections
+    )
+
+    return {
+        "sections": sections,
+        "metadata": {
+            "category": consultation_category,
+            "culture": culture,
+            "culture_group": culture_group,
+            "use_minimal_base": use_minimal_base,
+            "base_source": base_source,
+            "category_source": category_source,
+            "total_chars": total_chars,
+        },
+    }

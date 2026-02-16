@@ -11,7 +11,9 @@ import { PlaceholderPage } from '@/components/pages/PlaceholderPage'
 import { ExpensesPage } from '@/components/expenses'
 import { RagDocsPage } from '@/components/ragDocuments'
 import { PromptsPage } from '@/components/prompts'
+import { PromptPreviewPage } from '@/components/promptPreview'
 import { PaymentsList } from '@/components/payments/PaymentsList'
+import { SettingsPage } from '@/components/settings'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
@@ -57,6 +59,9 @@ function App() {
       {/* Редактор промптов */}
       {currentView === 'prompts' && <PromptsPage />}
 
+      {/* Превью собранного промпта */}
+      {currentView === 'prompt-preview' && <PromptPreviewPage />}
+
       {/* RAG Документы v2.0 — паспортизация чанков */}
       {currentView === 'rag-docs' && <RagDocsPage />}
 
@@ -69,14 +74,8 @@ function App() {
       {/* Списки - Платежи */}
       {currentView === 'payments' && <PaymentsList />}
 
-      {/* Настройки - заглушка */}
-      {currentView === 'settings' && (
-        <PlaceholderPage
-          icon="⚙️"
-          title="Настройки"
-          description="Настройки приложения находятся в разработке"
-        />
-      )}
+      {/* Настройки — модели, temperature, RAG */}
+      {currentView === 'settings' && <SettingsPage />}
 
       {/* Legacy views - для обратной совместимости */}
       {currentView === 'users' && (

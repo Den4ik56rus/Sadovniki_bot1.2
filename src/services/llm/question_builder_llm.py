@@ -18,6 +18,7 @@ from typing import Optional
 
 from src.services.llm.core_llm import create_chat_completion
 from src.config import settings
+from src.services.db.settings_repo import get_model_for_task, get_temperature_for_task, get_reasoning_effort_for_task
 
 
 async def build_full_question(
@@ -87,8 +88,9 @@ async def build_full_question(
     try:
         llm_answer = await create_chat_completion(
             messages=messages,
-            model=settings.openai_model_utility,
-            # temperature берётся из settings.openai_temperature
+            model=await get_model_for_task("utility"),
+            temperature=await get_temperature_for_task("utility"),
+            reasoning_effort=await get_reasoning_effort_for_task("utility"),
         )
 
         full = (llm_answer or "").strip()

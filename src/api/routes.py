@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, webhooks, payments
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings
 
 
 def setup_routes(app: web.Application) -> None:
@@ -75,6 +75,9 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/api/admin/crm/clients/{id}/notes", crm.get_client_notes)
     app.router.add_post("/api/admin/crm/clients/{id}/notes", crm.create_note)
     app.router.add_delete("/api/admin/crm/notes/{id}", crm.delete_note)
+
+    # CRM: Рефералы
+    app.router.add_get("/api/admin/crm/clients/{id}/referrals", crm.get_client_referrals)
 
     # CRM: Лента активности
     app.router.add_get("/api/admin/crm/clients/{id}/activity", crm.get_client_activity)
@@ -177,10 +180,15 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_delete("/api/admin/rag-documents/clear-all", rag_documents.clear_all_rag_documents)
     app.router.add_get(r"/api/admin/rag-documents/{id:\d+}", rag_documents.get_rag_document)
     app.router.add_get(r"/api/admin/rag-documents/{id:\d+}/chunks", rag_documents.get_document_chunks)
+    app.router.add_patch(r"/api/admin/rag-documents/{id:\d+}/subcategory", rag_documents.update_document_subcategory)
     app.router.add_delete(r"/api/admin/rag-documents/{id:\d+}", rag_documents.delete_rag_document)
     app.router.add_patch(r"/api/admin/rag-documents/chunks/{id:\d+}/passport", rag_documents.update_chunk_passport_handler)
     app.router.add_post(r"/api/admin/rag-documents/chunks/{id:\d+}/generate-context", rag_documents.generate_chunk_context_handler)
     app.router.add_post(r"/api/admin/rag-documents/{id:\d+}/embed", rag_documents.embed_document_handler)
+
+    # Prompt Preview API (превью собранного промпта)
+    app.router.add_get("/api/admin/prompts/preview/options", prompt_preview.get_preview_options)
+    app.router.add_get("/api/admin/prompts/preview", prompt_preview.get_prompt_preview)
 
     # Prompts API (редактор промптов)
     app.router.add_get("/api/admin/prompts/groups", prompts.get_prompt_groups)
@@ -191,6 +199,19 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get(r"/api/admin/prompts/{id:\d+}/history", prompts.get_prompt_history)
     app.router.add_get(r"/api/admin/prompts/{id:\d+}/history/{version:\d+}/diff", prompts.get_version_diff)
     app.router.add_post(r"/api/admin/prompts/{id:\d+}/revert", prompts.revert_prompt_version)
+
+    # Admin Settings API (глобальные настройки)
+    app.router.add_get("/api/admin/settings/llm", settings.get_llm_config)
+    app.router.add_get("/api/admin/settings", settings.get_settings)
+    app.router.add_patch("/api/admin/settings/{key}", settings.update_setting)
+
+    # Pricing API (управление тарифами)
+    app.router.add_get("/api/admin/settings/pricing/plans", settings.get_subscription_plans)
+    app.router.add_post("/api/admin/settings/pricing/plans", settings.create_subscription_plan)
+    app.router.add_put(r"/api/admin/settings/pricing/plans/{id:\d+}", settings.update_subscription_plan)
+    app.router.add_get("/api/admin/settings/pricing/packages", settings.get_token_packages)
+    app.router.add_post("/api/admin/settings/pricing/packages", settings.create_token_package)
+    app.router.add_put(r"/api/admin/settings/pricing/packages/{id:\d+}", settings.update_token_package)
 
     # Webhooks (платежные системы)
     app.router.add_post("/api/webhooks/yookassa", webhooks.yookassa_webhook)

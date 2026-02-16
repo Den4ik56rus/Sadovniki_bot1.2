@@ -27,6 +27,7 @@ from src.services.db.document_chunks_repo import (
     get_passported_chunks_count,
     update_chunk_passport,
     update_chunk_context,
+    assemble_chunk_text,
 )
 from src.services.llm.context_generator import generate_chunk_context
 from src.services.documents.processor import embed_document
@@ -187,6 +188,7 @@ async def get_document_chunks(request: web.Request) -> web.Response:
                 "growth_phases": growth_phases,
                 "prefix": chunk["prefix"],
                 "context": chunk["context"],
+                "assembled_text": assemble_chunk_text(chunk),
                 "is_passported": bool(cultures or goals or growth_phases),
                 "created_at": chunk["created_at"].isoformat() if chunk.get("created_at") else None,
             })
@@ -303,7 +305,9 @@ async def generate_chunk_context_handler(request: web.Request) -> web.Response:
     """
     POST /api/admin/rag-documents/chunks/{id}/generate-context
 
-    Сгенерировать контекст для чанка через LLM.
+    Сгенерировать контекст для чанка через LLM (RAG v2.5).
+
+    Использует локальное окно вокруг чанка для генерации релевантного контекста.
     """
     try:
         chunk_id = int(request.match_info["id"])
@@ -313,21 +317,30 @@ async def generate_chunk_context_handler(request: web.Request) -> web.Response:
         if not chunk:
             raise web.HTTPNotFound(text="Chunk not found")
 
-        # Получаем документ для полного текста
+        # Получаем документ
         doc = await documents_repo.document_get_by_id(chunk["document_id"])
         if not doc:
             raise web.HTTPNotFound(text="Document not found")
 
-        # Получаем все чанки документа для подсчёта total
-        all_chunks = await get_chunks_by_document(chunk["document_id"])
-        total_chunks = len(all_chunks)
+        # RAG v2.5: Получаем full_text из БД
+        full_text = await documents_repo.document_get_full_text(chunk["document_id"])
 
-        # Собираем полный текст документа из чанков
-        full_text = "\n\n".join([c["chunk_text"] for c in all_chunks])
+        if not full_text:
+            # Fallback: собираем из чанков (для старых документов)
+            all_chunks = await get_chunks_by_document(chunk["document_id"])
+            full_text = "\n\n".join([c["chunk_text"] for c in all_chunks])
+            logger.warning(
+                f"Document {chunk['document_id']} has no full_text, "
+                "using fallback (chunks concatenation)"
+            )
 
-        # Генерируем контекст
-        context, input_tokens, output_tokens, cost = await generate_chunk_context(
-            document_text=full_text,
+        total_chunks = doc.get("total_chunks") or 0
+
+        # RAG v2.5: Используем новую функцию с локальным окном
+        from src.services.llm.context_generator import generate_chunk_context_with_window
+
+        context, input_tokens, output_tokens, cost = await generate_chunk_context_with_window(
+            full_text=full_text,
             chunk_text=chunk["chunk_text"],
             chunk_index=chunk["chunk_index"],
             total_chunks=total_chunks,
@@ -473,6 +486,68 @@ async def embed_document_handler(request: web.Request) -> web.Response:
     except Exception as e:
         logger.error(f"Error embedding document: {e}")
         raise web.HTTPInternalServerError(text=f"Embedding failed: {str(e)}")
+
+
+async def update_document_subcategory(request: web.Request) -> web.Response:
+    """
+    PATCH /api/admin/rag-documents/{id}/subcategory
+
+    Обновить классификацию (subcategory) документа и всех его чанков.
+
+    Body (JSON):
+        subcategory: string — новая классификация документа
+    """
+    try:
+        document_id = int(request.match_info["id"])
+
+        # Проверяем существование
+        doc = await documents_repo.document_get_by_id(document_id)
+        if not doc:
+            raise web.HTTPNotFound(text="Document not found")
+
+        data = await request.json()
+        subcategory = data.get("subcategory", "").strip()
+
+        if not subcategory:
+            raise web.HTTPBadRequest(text="subcategory is required")
+
+        pool = get_pool()
+
+        async with pool.acquire() as conn:
+            # Обновляем документ
+            await conn.execute(
+                "UPDATE documents SET subcategory = $1 WHERE id = $2",
+                subcategory,
+                document_id,
+            )
+
+            # Обновляем все чанки документа
+            await conn.execute(
+                "UPDATE document_chunks SET subcategory = $1 WHERE document_id = $2",
+                subcategory,
+                document_id,
+            )
+
+        logger.info(
+            f"Updated subcategory for document {document_id} "
+            f"({doc['filename']}): '{doc.get('subcategory')}' -> '{subcategory}'"
+        )
+
+        return web.json_response({
+            "success": True,
+            "document_id": document_id,
+            "subcategory": subcategory,
+        })
+
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid document ID")
+    except web.HTTPNotFound:
+        raise
+    except web.HTTPBadRequest:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating document subcategory: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
 
 
 async def clear_all_rag_documents(request: web.Request) -> web.Response:

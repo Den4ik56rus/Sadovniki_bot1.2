@@ -10,16 +10,22 @@ import { ExpenseList } from './ExpenseList'
 import { ExpenseForm } from './ExpenseForm'
 import styles from './ExpensesPage.module.css'
 
+type ViewMode = 'month' | 'all'
+
 export function ExpensesPage() {
   const {
     fetchExpenses,
     fetchCategories,
     fetchStats,
     setFilters,
+    clearFilters,
     isFormOpen,
     openForm,
     closeForm,
   } = useExpenseStore()
+
+  // View mode: month or all time
+  const [viewMode, setViewMode] = useState<ViewMode>('month')
 
   // Current month navigation
   const [currentDate, setCurrentDate] = useState(new Date())
@@ -43,6 +49,23 @@ export function ExpensesPage() {
     setFilters({
       start_date: format(startOfMonth(newDate), 'yyyy-MM-dd'),
       end_date: format(endOfMonth(newDate), 'yyyy-MM-dd'),
+    })
+  }
+
+  // Switch view mode
+  const switchToMonth = () => {
+    setViewMode('month')
+    setFilters({
+      start_date: format(startOfMonth(currentDate), 'yyyy-MM-dd'),
+      end_date: format(endOfMonth(currentDate), 'yyyy-MM-dd'),
+    })
+  }
+
+  const switchToAll = () => {
+    setViewMode('all')
+    setFilters({
+      start_date: undefined,
+      end_date: undefined,
     })
   }
 
@@ -83,14 +106,34 @@ export function ExpensesPage() {
         )}
 
         <div className={styles.dateNavigation}>
-          <button className={styles.navButton} onClick={goToPrevMonth} title="Предыдущий месяц">
-            <svg style={{ width: 36, height: 36 }} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M15 5L8 12L15 19" stroke="#374151" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+          {/* View mode toggle */}
+          <div className={styles.viewToggle}>
+            <button
+              className={`${styles.toggleButton} ${viewMode === 'month' ? styles.toggleActive : ''}`}
+              onClick={switchToMonth}
+            >
+              По месяцам
+            </button>
+            <button
+              className={`${styles.toggleButton} ${viewMode === 'all' ? styles.toggleActive : ''}`}
+              onClick={switchToAll}
+            >
+              За всё время
+            </button>
+          </div>
+
+          {viewMode === 'month' && (
+            <button className={styles.navButton} onClick={goToPrevMonth} title="Предыдущий месяц">
+              <svg style={{ width: 36, height: 36 }} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M15 5L8 12L15 19" stroke="#374151" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
 
           <div className={styles.dateRange}>
-            <span className={styles.dateRangeText}>{dateRangeLabel}</span>
+            <span className={styles.dateRangeText}>
+              {viewMode === 'all' ? 'За всё время' : dateRangeLabel}
+            </span>
             <svg className={styles.dateRangeIcon} width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
               <rect x="2" y="3" width="12" height="11" rx="2" stroke="currentColor" strokeWidth="1.5"/>
               <path d="M2 6H14" stroke="currentColor" strokeWidth="1.5"/>
@@ -98,11 +141,13 @@ export function ExpensesPage() {
             </svg>
           </div>
 
-          <button className={styles.navButton} onClick={goToNextMonth} title="Следующий месяц">
-            <svg style={{ width: 36, height: 36 }} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <path d="M9 5L16 12L9 19" stroke="#374151" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </button>
+          {viewMode === 'month' && (
+            <button className={styles.navButton} onClick={goToNextMonth} title="Следующий месяц">
+              <svg style={{ width: 36, height: 36 }} viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M9 5L16 12L9 19" stroke="#374151" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </button>
+          )}
         </div>
       </div>
 

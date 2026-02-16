@@ -1,7 +1,7 @@
 // RAG Document List — Таблица документов
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useRagDocumentStore } from '@/store/ragDocumentStore'
-import { useCurrencyStore } from '@/store'
+import { useCurrencyStore, useDocumentsStore } from '@/store'
 import type { RagDocument } from '@/types'
 import styles from './RagDocumentList.module.css'
 
@@ -123,6 +123,69 @@ function CostCell({ doc }: { doc: RagDocument }) {
   )
 }
 
+function SubcategoryBadge({ doc }: { doc: RagDocument }) {
+  const { updateDocumentSubcategory } = useRagDocumentStore()
+  const { subcategories } = useDocumentsStore()
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  const handleSelect = useCallback(async (value: string) => {
+    if (value === doc.subcategory) {
+      setIsEditing(false)
+      return
+    }
+    setIsSaving(true)
+    await updateDocumentSubcategory(doc.id, value)
+    setIsSaving(false)
+    setIsEditing(false)
+  }, [doc.id, doc.subcategory, updateDocumentSubcategory])
+
+  // Закрытие по клику вне
+  useEffect(() => {
+    if (!isEditing) return
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsEditing(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [isEditing])
+
+  if (isEditing) {
+    return (
+      <div className={styles.subcategoryEditor} ref={dropdownRef}>
+        {isSaving ? (
+          <span className={styles.subcategorySaving}>Сохранение...</span>
+        ) : (
+          <div className={styles.subcategoryDropdown}>
+            {subcategories.map(cat => (
+              <button
+                key={cat}
+                className={`${styles.subcategoryOption} ${cat === doc.subcategory ? styles.subcategoryOptionActive : ''}`}
+                onClick={() => handleSelect(cat)}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    )
+  }
+
+  return (
+    <span
+      className={`${styles.subcategory} ${styles.subcategoryEditable}`}
+      onClick={(e) => { e.stopPropagation(); setIsEditing(true) }}
+      title="Нажмите для изменения классификации"
+    >
+      {doc.subcategory || '—'}
+    </span>
+  )
+}
+
 function DocumentRow({ doc }: { doc: RagDocument }) {
   const { openEditor, deleteDocument, embedDocument, isEmbedding } = useRagDocumentStore()
 
@@ -158,9 +221,7 @@ function DocumentRow({ doc }: { doc: RagDocument }) {
     <tr className={styles.row}>
       <td className={styles.cellName}>
         <span className={styles.filename}>{doc.filename}</span>
-        {doc.subcategory && (
-          <span className={styles.subcategory}>{doc.subcategory}</span>
-        )}
+        <SubcategoryBadge doc={doc} />
       </td>
       <td className={styles.cellStatus}>
         <StatusBadge status={doc.status} isEmbedded={doc.is_embedded} />
@@ -216,11 +277,15 @@ function DocumentRow({ doc }: { doc: RagDocument }) {
 export function RagDocumentList() {
   const { documents, isLoading, error, fetchDocuments, clearAllDocuments } = useRagDocumentStore()
   const { fetchRate } = useCurrencyStore()
+  const { subcategories, fetchDocuments: fetchDocsStore } = useDocumentsStore()
 
-  // Загрузка курса валют
+  // Загрузка курса валют и subcategories
   useEffect(() => {
     fetchRate()
-  }, [fetchRate])
+    if (subcategories.length === 0) {
+      fetchDocsStore()
+    }
+  }, [fetchRate, subcategories.length, fetchDocsStore])
 
   const handleClearAll = async () => {
     if (confirm('Удалить ВСЕ RAG документы? Это действие нельзя отменить.')) {

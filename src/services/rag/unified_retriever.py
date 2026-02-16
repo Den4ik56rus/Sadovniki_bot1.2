@@ -21,6 +21,7 @@ from src.services.db.document_chunks_repo import (
     chunks_search_priority,
     chunks_search_all,
     chunks_search_priority_all,
+    assemble_chunk_text,
 )
 
 
@@ -158,7 +159,7 @@ async def retrieve_unified_snippets(
                 all_snippets.append({
                     "source_type": "document",
                     "priority_level": 2,  # ПРИОРИТЕТНЫЕ ДОКУМЕНТЫ
-                    "content": row["chunk_text"],
+                    "content": assemble_chunk_text(row),
                     "distance": row["distance"],
                     "id": row["id"],
                     "document_id": row["document_id"],
@@ -191,7 +192,7 @@ async def retrieve_unified_snippets(
                 all_snippets.append({
                     "source_type": "document",
                     "priority_level": 3,  # СРЕДНИЙ ПРИОРИТЕТ
-                    "content": row["chunk_text"],
+                    "content": assemble_chunk_text(row),
                     "distance": row["distance"],
                     "id": row["id"],
                     "document_id": row["document_id"],

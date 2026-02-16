@@ -321,16 +321,32 @@ def detect_headings(text: str) -> List[Dict]:
         (r'^\d+\.\d+\.?\s+[А-ЯA-Z][^.!?]{0,80}$', 'numbered'),     # 1.1 Подраздел
         (r'^Глава\s+\d+[.:]\s*.{0,80}$', 'chapter'),               # Глава 1: Название
         (r'^Раздел\s+\d+[.:]\s*.{0,80}$', 'section'),              # Раздел 2. Название
-        (r'^[А-ЯA-Z][А-ЯA-Z\s\-]{3,80}$', 'caps'),                 # ЗАГОЛОВОК В CAPS
-        (r'^[А-ЯA-Z][а-яёА-ЯЁ\s\-]{3,60}:?\s*$', 'title'),         # Заголовок без точки
-        (r'^[А-ЯA-Z][а-яё]+\s+[а-яё]+\s*$', 'short_title'),        # Короткий заголовок
+        (r'^[А-ЯA-Z][А-ЯA-Z\s\-]{5,80}$', 'caps'),                 # ЗАГОЛОВОК В CAPS (мин 6 символов)
+        (r'^[А-ЯA-Z][а-яёА-ЯЁ\s\-]{8,60}:?\s*$', 'title'),         # Заголовок без точки (мин 9 символов)
     ]
+
+    # Слова, которые НЕ являются заголовками (элементы списков, материалы и т.д.)
+    heading_stop_words = {
+        "солому", "солома", "кора", "песок", "торф", "опилки",
+        "навоз", "перегной", "компост", "известь", "зола",
+    }
 
     for i, line in enumerate(lines):
         line_stripped = line.strip()
         line_length = len(line) + 1  # +1 для \n
 
         if not line_stripped:
+            current_position += line_length
+            continue
+
+        # Пропускаем слишком короткие строки (< 8 символов) — не заголовки
+        if len(line_stripped) < 8:
+            current_position += line_length
+            continue
+
+        # Пропускаем строки со стоп-словами
+        first_word = line_stripped.split()[0].lower().rstrip(':.,!?')
+        if first_word in heading_stop_words:
             current_position += line_length
             continue
 
@@ -348,6 +364,10 @@ def detect_headings(text: str) -> List[Dict]:
                     # Если следующая строка пустая или тоже заголовок — пропускаем
                     if not next_line:
                         continue
+
+                # 3. Не содержит emoji (это обычный текст, не заголовок)
+                if any(ord(c) > 0x1F000 for c in line_stripped):
+                    continue
 
                 headings.append({
                     "text": line_stripped,

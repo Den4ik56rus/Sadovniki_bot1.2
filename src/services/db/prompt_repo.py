@@ -273,15 +273,15 @@ async def get_base_sections(is_enabled_only: bool = True) -> List[Dict[str, Any]
         is_enabled_only: Если True, возвращает только включённые секции
 
     Returns:
-        Список секций в порядке: role, scope, defaults, culture_rules, kb_usage, response_format, tone, safety
+        Список секций в порядке: role, scope, defaults, culture_rules, kb_usage, response_format, work_context, answer_logic, tone, safety
     """
     pool = get_pool()
     async with pool.acquire() as conn:
         # Определяем порядок секций
-        section_order = ["role", "scope", "defaults", "culture_rules", "kb_usage", "response_format", "tone", "safety"]
+        section_order = ["role", "scope", "defaults", "culture_rules", "culture_rules_known", "culture_rules_undefined", "kb_usage", "response_format", "work_context", "answer_logic", "tone", "safety"]
 
         query = """
-            SELECT p.slug, p.content, p.is_enabled
+            SELECT p.id, p.slug, p.content, p.is_enabled, p.version, p.updated_at
             FROM prompts p
             JOIN prompt_groups g ON p.group_id = g.id
             WHERE g.slug = 'base'
@@ -315,14 +315,14 @@ async def get_category_prompt(
         culture_group: Группа культуры для питания (например, "strawberry", "raspberry")
 
     Returns:
-        Промпт с полями: content, use_minimal_base, is_enabled
+        Промпт с полями: id, content, use_minimal_base, is_enabled
     """
     pool = get_pool()
     async with pool.acquire() as conn:
         # Для питания ищем по culture_group
         if category_slug == "nutrition" and culture_group:
             row = await conn.fetchrow("""
-                SELECT p.content, p.use_minimal_base, p.is_enabled
+                SELECT p.id, p.content, p.use_minimal_base, p.is_enabled
                 FROM prompts p
                 JOIN prompt_groups g ON p.group_id = g.id
                 JOIN prompt_subgroups s ON p.subgroup_id = s.id
@@ -336,7 +336,7 @@ async def get_category_prompt(
 
             # Fallback на default
             row = await conn.fetchrow("""
-                SELECT p.content, p.use_minimal_base, p.is_enabled
+                SELECT p.id, p.content, p.use_minimal_base, p.is_enabled
                 FROM prompts p
                 JOIN prompt_groups g ON p.group_id = g.id
                 JOIN prompt_subgroups s ON p.subgroup_id = s.id
@@ -349,7 +349,7 @@ async def get_category_prompt(
 
         # Для остальных категорий ищем main промпт
         row = await conn.fetchrow("""
-            SELECT p.content, p.use_minimal_base, p.is_enabled
+            SELECT p.id, p.content, p.use_minimal_base, p.is_enabled
             FROM prompts p
             JOIN prompt_groups g ON p.group_id = g.id
             JOIN prompt_subgroups s ON p.subgroup_id = s.id
@@ -421,7 +421,7 @@ async def check_category_exists(
         return exists
 
 
-async def get_reference_content(reference_slug: str) -> Optional[str]:
+async def get_reference_content(reference_slug: str) -> Optional[Dict[str, Any]]:
     """
     Получает содержимое справочника.
 
@@ -429,19 +429,19 @@ async def get_reference_content(reference_slug: str) -> Optional[str]:
         reference_slug: Slug справочника (fertilizers, pesticides, varieties)
 
     Returns:
-        Текст справочника или None
+        Dict с id и content справочника или None
     """
     pool = get_pool()
     async with pool.acquire() as conn:
-        content = await conn.fetchval("""
-            SELECT p.content
+        row = await conn.fetchrow("""
+            SELECT p.id, p.content
             FROM prompts p
             JOIN prompt_groups g ON p.group_id = g.id
             WHERE g.slug = 'references'
               AND p.slug = $1
               AND p.is_enabled = TRUE
         """, reference_slug)
-        return content
+        return dict(row) if row else None
 
 
 async def get_fallback_prompt() -> Optional[Dict[str, Any]]:
@@ -676,6 +676,103 @@ async def get_prompt_document_content(
     combined = "\n\n---\n\n".join(parts)
     logger.info(f"[get_prompt_document_content] Combined {len(documents_content)} docs, {len(combined)} chars")
     return combined
+
+
+async def get_prompt_document_content_with_ids(
+    culture: str,
+    consultation_category: str,
+) -> Optional[Dict[str, Any]]:
+    """
+    Аналог get_prompt_document_content, но возвращает и ID промптов для редактирования.
+
+    Returns:
+        {"content": str, "prompt_ids": [int, ...]} или None
+    """
+    culture_lower = culture.lower().strip()
+    category_lower = consultation_category.lower().strip()
+
+    subgroup_slug, subculture_slug = _parse_culture_subculture(culture_lower)
+    if not subgroup_slug:
+        return None
+
+    work_type_slug = CATEGORY_TO_WORK_SLUG.get(category_lower)
+    if not work_type_slug:
+        return None
+
+    pool = get_pool()
+    documents = []  # (label, content, prompt_id)
+
+    async with pool.acquire() as conn:
+        subgroup_id = await conn.fetchval("""
+            SELECT s.id
+            FROM prompt_subgroups s
+            JOIN prompt_groups g ON s.group_id = g.id
+            WHERE g.slug = 'prompt_docs' AND s.slug = $1
+        """, subgroup_slug)
+
+        if not subgroup_id:
+            return None
+
+        # 1. Общий документ
+        general_slug = f"general_{work_type_slug}"
+        row = await conn.fetchrow("""
+            SELECT p.id, p.content
+            FROM prompts p
+            JOIN prompt_groups g ON p.group_id = g.id
+            WHERE g.slug = 'prompt_docs'
+              AND p.subgroup_id = $1
+              AND p.slug = $2
+              AND p.is_enabled = TRUE
+              AND p.content IS NOT NULL
+              AND p.content != ''
+        """, subgroup_id, general_slug)
+        if row:
+            documents.append(("📗 ОБЩАЯ ИНФОРМАЦИЯ", row["content"], row["id"]))
+
+        # 2. Специфический документ
+        if subculture_slug and subculture_slug != 'general':
+            specific_slug = f"{subculture_slug}_{work_type_slug}"
+            row = await conn.fetchrow("""
+                SELECT p.id, p.content
+                FROM prompts p
+                JOIN prompt_groups g ON p.group_id = g.id
+                WHERE g.slug = 'prompt_docs'
+                  AND p.subgroup_id = $1
+                  AND p.slug = $2
+                  AND p.is_enabled = TRUE
+                  AND p.content IS NOT NULL
+                  AND p.content != ''
+            """, subgroup_id, specific_slug)
+            if row:
+                documents.append((f"📘 СПЕЦИФИКА: {subculture_slug.upper()}", row["content"], row["id"]))
+
+        # 3. Для кустарников
+        if subgroup_slug == 'bushes':
+            row = await conn.fetchrow("""
+                SELECT p.id, p.content
+                FROM prompts p
+                JOIN prompt_groups g ON p.group_id = g.id
+                WHERE g.slug = 'prompt_docs'
+                  AND p.subgroup_id = $1
+                  AND p.slug = $2
+                  AND p.is_enabled = TRUE
+                  AND p.content IS NOT NULL
+                  AND p.content != ''
+            """, subgroup_id, work_type_slug)
+            if row:
+                documents.append(("📗 ИНФОРМАЦИЯ", row["content"], row["id"]))
+
+    if not documents:
+        return None
+
+    parts = []
+    prompt_ids = []
+    for label, content, pid in documents:
+        parts.append(f"{label}\n\n{content}")
+        prompt_ids.append(pid)
+
+    combined = "\n\n---\n\n".join(parts)
+    return {"content": combined, "prompt_ids": prompt_ids}
 
 
 async def check_prompt_doc_exists(

@@ -3,7 +3,7 @@
 
 Обработчики:
     - /buy — открыть меню покупок
-    - Кнопка "💳 Купить" из главного меню
+    - Кнопка "💰 Пополнить баланс" из главного меню
 """
 
 import logging
@@ -12,6 +12,7 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from aiogram.filters import Command
 
 from src.services.db import subscription_plan_repo, token_package_repo
+from src.pricing import pluralize_questions
 
 logger = logging.getLogger(__name__)
 router = Router(name="payments_menu")
@@ -62,9 +63,11 @@ def get_payment_menu_keyboard(
 
         # Планы подписки
         for plan in subscription_plans:
+            qty = plan.get('tokens_included', 0)
+            qty_text = f" ({pluralize_questions(qty)}/мес)" if qty else ""
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"  {plan['name']} — {int(plan['price_rub'])}₽/мес",
+                    text=f"  {plan['name']} — {int(plan['price_rub'])}₽/мес{qty_text}",
                     callback_data=f"buy_subscription_{plan['id']}"
                 )
             ])
@@ -81,7 +84,7 @@ def get_payment_menu_keyboard(
 
 
 @router.message(Command("buy"))
-@router.message(F.text == "💳 Купить")
+@router.message(F.text == "💰 Пополнить баланс")
 async def show_payment_menu(message: Message):
     """Показать меню покупок."""
     user_id = message.from_user.id
@@ -99,7 +102,7 @@ async def show_payment_menu(message: Message):
             return
 
         # Сформировать описание
-        text_parts = ["💳 Купить токены или подписку\n"]
+        text_parts = ["💰 Пополнить баланс\n"]
 
         if token_packages:
             text_parts.append("\n📦 Разовая покупка:")
@@ -111,7 +114,8 @@ async def show_payment_menu(message: Message):
         if subscription_plans:
             text_parts.append("\n📅 Подписка:")
             for plan in subscription_plans:
-                tokens_info = f"({plan['tokens_included']} вопросов в месяц)" if plan.get('tokens_included') else ""
+                qty = plan.get('tokens_included', 0)
+                tokens_info = f"({pluralize_questions(qty)}/мес)" if qty else ""
                 text_parts.append(
                     f"  • {plan['name']} — {int(plan['price_rub'])}₽/мес {tokens_info}"
                 )
@@ -164,7 +168,7 @@ async def show_payment_menu_callback(callback: CallbackQuery):
             return
 
         # Сформировать описание
-        text_parts = ["💳 Купить токены или подписку\n"]
+        text_parts = ["💰 Пополнить баланс\n"]
 
         if token_packages:
             text_parts.append("\n📦 Разовая покупка:")
@@ -176,7 +180,8 @@ async def show_payment_menu_callback(callback: CallbackQuery):
         if subscription_plans:
             text_parts.append("\n📅 Подписка:")
             for plan in subscription_plans:
-                tokens_info = f"({plan['tokens_included']} вопросов в месяц)" if plan.get('tokens_included') else ""
+                qty = plan.get('tokens_included', 0)
+                tokens_info = f"({pluralize_questions(qty)}/мес)" if qty else ""
                 text_parts.append(
                     f"  • {plan['name']} — {int(plan['price_rub'])}₽/мес {tokens_info}"
                 )

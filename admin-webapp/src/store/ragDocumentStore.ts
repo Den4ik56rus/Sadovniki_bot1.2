@@ -42,6 +42,7 @@ interface RagDocumentState {
   updateChunkPassport: (chunkId: number, passport: UpdatePassportDto) => Promise<boolean>
   generateContext: (chunkId: number) => Promise<void>
   embedDocument: (id: number) => Promise<boolean>  // Загрузка в библиотеку
+  updateDocumentSubcategory: (id: number, subcategory: string) => Promise<boolean>
   deleteDocument: (id: number) => Promise<void>
   clearAllDocuments: () => Promise<void>
 
@@ -238,6 +239,25 @@ export const useRagDocumentStore = create<RagDocumentState>((set, get) => ({
       return false
     } catch (err) {
       set({ error: String(err), isEmbedding: false })
+      return false
+    }
+  },
+
+  // Update document subcategory
+  updateDocumentSubcategory: async (id: number, subcategory: string) => {
+    try {
+      const response = await api.updateRagDocumentSubcategory(id, subcategory)
+      if (response.success) {
+        set((state) => ({
+          documents: state.documents.map(d =>
+            d.id === id ? { ...d, subcategory: response.subcategory } : d
+          ),
+        }))
+        return true
+      }
+      return false
+    } catch (err) {
+      console.error('Failed to update subcategory:', err)
       return false
     }
   },

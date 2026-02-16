@@ -111,6 +111,7 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
     submenu: [
       { id: 'payments', label: 'Платежи' },
       { id: 'prompts', label: 'Промпты' },
+      { id: 'prompt-preview', label: 'Превью промпта' },
       { id: 'rag-docs', label: 'RAG Документы' },
     ],
   },

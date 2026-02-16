@@ -1,9 +1,12 @@
 # src/services/llm/embeddings_llm.py
 
+import logging
 from typing import List, Tuple, Dict, Any
 
 from src.services.llm.core_llm import get_client  # Берём клиента OpenAI
 from src.config import settings                   # Настройки (модель эмбеддингов)
+
+logger = logging.getLogger(__name__)
 
 
 async def get_text_embedding(text: str) -> List[float]:
@@ -19,11 +22,15 @@ async def get_text_embedding(text: str) -> List[float]:
     # Получаем клиента
     client = get_client()
 
-    # Делаем запрос на получение эмбеддинга
-    response = await client.embeddings.create(
-        model=settings.openai_embeddings_model,  # Имя модели эмбеддингов
-        input=text,                              # Текст, для которого считаем эмбеддинг
-    )
+    try:
+        # Делаем запрос на получение эмбеддинга
+        response = await client.embeddings.create(
+            model=settings.openai_embeddings_model,  # Имя модели эмбеддингов
+            input=text,                              # Текст, для которого считаем эмбеддинг
+        )
+    except Exception as e:
+        logger.error(f"[embeddings_llm] Ошибка get_text_embedding: {type(e).__name__}: {e}")
+        raise
 
     # В ответе может быть несколько эмбеддингов (если подали список),
     # но мы отправляем один текст, значит берём первый элемент.
@@ -45,10 +52,14 @@ async def get_text_embedding_with_usage(text: str) -> Tuple[List[float], int, st
     """
     client = get_client()
 
-    response = await client.embeddings.create(
-        model=settings.openai_embeddings_model,
-        input=text,
-    )
+    try:
+        response = await client.embeddings.create(
+            model=settings.openai_embeddings_model,
+            input=text,
+        )
+    except Exception as e:
+        logger.error(f"[embeddings_llm] Ошибка get_text_embedding_with_usage: {type(e).__name__}: {e}")
+        raise
 
     embedding = response.data[0].embedding
     tokens = response.usage.total_tokens if response.usage else 0
@@ -72,10 +83,14 @@ async def get_batch_embeddings_with_usage(texts: List[str]) -> Tuple[List[List[f
 
     client = get_client()
 
-    response = await client.embeddings.create(
-        model=settings.openai_embeddings_model,
-        input=texts,
-    )
+    try:
+        response = await client.embeddings.create(
+            model=settings.openai_embeddings_model,
+            input=texts,
+        )
+    except Exception as e:
+        logger.error(f"[embeddings_llm] Ошибка get_batch_embeddings_with_usage: {type(e).__name__}: {e}")
+        raise
 
     # Сортируем по индексу, т.к. API может вернуть в другом порядке
     embeddings = [None] * len(texts)

@@ -1,0 +1,457 @@
+/* Settings Page Styles */
+
+.container {
+  padding: 32px 48px;
+  max-width: 1000px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.headerIcon {
+  font-size: 24px;
+}
+
+.headerTitle {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--color-text, #111827);
+}
+
+/* RAG Toggle Section */
+.toggleSection {
+  background: var(--color-bg-secondary, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 12px;
+  padding: 20px 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.toggleInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.toggleLabel {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text, #111827);
+}
+
+.toggleDescription {
+  font-size: 13px;
+  color: var(--color-text-secondary, #6b7280);
+}
+
+/* Toggle Switch */
+.switch {
+  position: relative;
+  width: 48px;
+  height: 26px;
+  flex-shrink: 0;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #d1d5db;
+  border-radius: 26px;
+  transition: background-color 0.2s ease;
+}
+
+.slider::before {
+  content: "";
+  position: absolute;
+  height: 20px;
+  width: 20px;
+  left: 3px;
+  bottom: 3px;
+  background-color: white;
+  border-radius: 50%;
+  transition: transform 0.2s ease;
+}
+
+.switch input:checked + .slider {
+  background-color: #22C55E;
+}
+
+.switch input:checked + .slider::before {
+  transform: translateX(22px);
+}
+
+/* Section Title */
+.sectionTitle {
+  font-size: 17px;
+  font-weight: 600;
+  color: var(--color-text, #111827);
+  margin-top: 8px;
+}
+
+/* Task Cards Grid */
+.cardsGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 16px;
+}
+
+@media (max-width: 768px) {
+  .cardsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .container {
+    padding: 20px;
+  }
+}
+
+/* Task Card */
+.card {
+  background: var(--color-bg-secondary, #fff);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 12px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cardHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.cardTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-text, #111827);
+}
+
+.savedBadge {
+  font-size: 12px;
+  color: #22C55E;
+  font-weight: 500;
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+
+.savedBadgeHidden {
+  composes: savedBadge;
+  opacity: 0;
+}
+
+/* Form Field */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--color-text-secondary, #6b7280);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.select {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--color-text, #111827);
+  background: var(--color-bg, #fff);
+  cursor: pointer;
+  transition: border-color 0.15s ease;
+}
+
+.select:hover {
+  border-color: #9ca3af;
+}
+
+.select:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.envHint {
+  font-size: 11px;
+  color: var(--color-text-tertiary, #9ca3af);
+}
+
+/* Reasoning Effort */
+.reasoningRow {
+  display: flex;
+  gap: 6px;
+}
+
+.reasoningButton {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 500;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 6px;
+  background: var(--color-bg, #fff);
+  color: var(--color-text-secondary, #6b7280);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.reasoningButton:hover {
+  border-color: #9ca3af;
+  color: var(--color-text, #111827);
+}
+
+.reasoningButtonActive {
+  composes: reasoningButton;
+  background: #6366f1;
+  color: white;
+  border-color: #6366f1;
+}
+
+.reasoningButtonActive:hover {
+  background: #4f46e5;
+  border-color: #4f46e5;
+  color: white;
+}
+
+.reasoningHint {
+  font-size: 11px;
+  color: #f59e0b;
+  font-style: italic;
+}
+
+/* Temperature Row */
+.tempRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tempCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--color-text-secondary, #6b7280);
+  white-space: nowrap;
+  user-select: none;
+}
+
+.tempCheckbox input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: #6366f1;
+}
+
+.sliderContainer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.rangeSlider {
+  flex: 1;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  background: #e5e7eb;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+
+.rangeSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #6366f1;
+  cursor: pointer;
+  border: 2px solid white;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+.rangeSlider:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.rangeSlider:disabled::-webkit-slider-thumb {
+  background: #9ca3af;
+  cursor: not-allowed;
+}
+
+.tempValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text, #111827);
+  min-width: 28px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.tempValueDisabled {
+  composes: tempValue;
+  color: var(--color-text-tertiary, #9ca3af);
+}
+
+/* Save Button */
+.saveButton {
+  padding: 8px 16px;
+  background: #6366f1;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+  align-self: flex-end;
+}
+
+.saveButton:hover {
+  background: #4f46e5;
+}
+
+.saveButton:disabled {
+  background: #a5b4fc;
+  cursor: not-allowed;
+}
+
+/* Loading */
+.loading {
+  text-align: center;
+  padding: 60px 0;
+  color: var(--color-text-secondary, #6b7280);
+  font-size: 15px;
+}
+
+/* Error */
+.error {
+  text-align: center;
+  padding: 40px 0;
+  color: #ef4444;
+  font-size: 14px;
+}
+
+/* ============================================================================
+   Pricing Section
+   ============================================================================ */
+
+.pricingSubtitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--color-text-secondary, #6b7280);
+  margin-top: 4px;
+}
+
+.pricingCard {
+  composes: card;
+  position: relative;
+}
+
+.pricingCardInactive {
+  composes: pricingCard;
+  opacity: 0.55;
+}
+
+.inputRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.numberInput {
+  padding: 8px 12px;
+  border: 1px solid var(--color-border, #d1d5db);
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--color-text, #111827);
+  background: var(--color-bg, #fff);
+  width: 100px;
+  transition: border-color 0.15s ease;
+}
+
+.numberInput:focus {
+  outline: none;
+  border-color: #6366f1;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15);
+}
+
+.textInput {
+  composes: numberInput;
+  width: 100%;
+}
+
+.inputSuffix {
+  font-size: 13px;
+  color: var(--color-text-secondary, #6b7280);
+  white-space: nowrap;
+}
+
+.trialRow {
+  composes: toggleSection;
+}
+
+.trialInput {
+  composes: numberInput;
+  width: 70px;
+  text-align: center;
+}
+
+.addButton {
+  padding: 10px 16px;
+  background: transparent;
+  color: #6366f1;
+  border: 2px dashed #c7d2fe;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.addButton:hover {
+  background: #eef2ff;
+  border-color: #6366f1;
+}
+
+.cardActions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.pricingList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}

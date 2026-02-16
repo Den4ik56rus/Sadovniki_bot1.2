@@ -16,6 +16,7 @@ from decimal import Decimal
 
 from src.services.payments.yookassa_client import yookassa_client
 from src.services.db import payment_repo, token_package_repo, subscription_plan_repo, user_subscription_repo, client_crm_repo
+from src.services.db.pool import get_pool
 from src.services.db.tokens_repo import add_tokens
 from src.config import settings
 
@@ -630,9 +631,9 @@ async def _send_token_payment_notification(
             "✅ <b>Оплата успешно завершена!</b>\n\n"
             f"📦 Пакет: {package['name']}\n"
             f"💰 Сумма: {int(payment['amount_rub'])}₽\n"
-            f"🎁 Начислено токенов: {package['tokens_amount']}\n"
-            f"🪙 Новый баланс: {new_balance} токенов\n\n"
-            "Токены доступны для использования прямо сейчас!"
+            f"🎁 Начислено вопросов: {package['tokens_amount']}\n"
+            f"❓ Новый баланс: {new_balance} вопросов\n\n"
+            "Вопросы доступны для использования прямо сейчас!"
         )
 
         await bot.send_message(
@@ -680,7 +681,7 @@ async def _send_subscription_notification(
             f"📅 План: {plan['name']}\n"
             f"💰 Стоимость: {int(payment['amount_rub'])}₽\n"
             f"⏱ Действует до: {expires_str}\n"
-            f"🎁 Начислено токенов: {plan['tokens_included']}\n\n"
+            f"🎁 Начислено вопросов: {plan['tokens_included']}\n\n"
             "Спасибо за вашу поддержку! 🌱"
         )
 

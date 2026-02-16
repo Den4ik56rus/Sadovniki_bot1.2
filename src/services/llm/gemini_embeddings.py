@@ -25,7 +25,7 @@ OutputDimensionality = Literal[768, 1536, 3072]
 DEFAULT_MODEL = "google/gemini-embedding-001"
 
 # QueryRouter base URL
-QUERYROUTER_BASE_URL = "https://api.queryrouter.ru/v1"
+QUERYROUTER_BASE_URL = "https://api.zveno.ai/v1"
 
 # Клиент (lazy initialization)
 _client: AsyncOpenAI | None = None

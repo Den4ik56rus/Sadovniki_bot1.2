@@ -13,9 +13,13 @@ async def document_insert(
     category: str,
     subcategory: Optional[str] = None,
     processing_status: str = "pending",
+    full_text: Optional[str] = None,
 ) -> int:
     """
     Создаёт новую запись в таблице documents и возвращает её id.
+
+    Параметры:
+        full_text: Полный текст документа (RAG v2.5) для генерации контекста с локальным окном
     """
     pool = get_pool()
 
@@ -29,9 +33,10 @@ async def document_insert(
                 file_size_bytes,
                 category,
                 subcategory,
-                processing_status
+                processing_status,
+                full_text
             )
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
             RETURNING id;
             """,
             filename,
@@ -41,6 +46,7 @@ async def document_insert(
             category,
             subcategory,
             processing_status,
+            full_text,
         )
 
     return row["id"]
@@ -183,3 +189,25 @@ async def document_list_by_category(
             )
 
     return [dict(row) for row in rows]
+
+
+async def document_get_full_text(document_id: int) -> Optional[str]:
+    """
+    Получить полный текст документа для генерации контекста (RAG v2.5).
+
+    Используется в generate_chunk_context_with_window() для извлечения
+    локального окна вокруг чанка.
+
+    Возвращает:
+        - full_text из БД (если сохранён)
+        - None (если full_text IS NULL — старые документы)
+    """
+    pool = get_pool()
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT full_text FROM documents WHERE id = $1",
+            document_id,
+        )
+
+    return row["full_text"] if row else None

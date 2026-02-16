@@ -8,6 +8,28 @@ from src.services.db.pool import get_pool
 VECTOR_DIM = 1536  # text-embedding-3-small
 
 
+def assemble_chunk_text(chunk: Dict) -> str:
+    """
+    Собирает полный текст чанка: prefix + context + chunk_text.
+
+    Это единственная точка сборки — используется для:
+    - генерации эмбеддингов (embed_document)
+    - передачи контекста в LLM (RAG retrieval)
+    - отображения в админке (API endpoint)
+    """
+    parts = []
+    prefix = chunk.get("prefix")
+    context = chunk.get("context")
+    chunk_text = chunk.get("chunk_text", "")
+
+    if prefix:
+        parts.append(prefix)
+    if context:
+        parts.append(context)
+    parts.append(chunk_text)
+    return "\n".join(parts)
+
+
 def _normalize_embedding(embedding: List[float]) -> List[float]:
     """
     Приводит эмбеддинг к размерности VECTOR_DIM.
@@ -109,6 +131,8 @@ async def chunks_search(
                 c.id,
                 c.document_id,
                 c.chunk_text,
+                c.prefix,
+                c.context,
                 c.page_number,
                 c.subcategory,
                 c.embedding <=> $1::vector AS distance
@@ -154,6 +178,8 @@ async def chunks_search_priority(
                 c.id,
                 c.document_id,
                 c.chunk_text,
+                c.prefix,
+                c.context,
                 c.page_number,
                 c.subcategory,
                 c.embedding <=> $1::vector AS distance
@@ -419,13 +445,16 @@ def generate_prefix(
     parts = []
     subtypes = culture_subtypes or {}
 
-    # Фильтруем "общая" из массивов
-    filtered_cultures = [c for c in (cultures or []) if c and c != 'общая']
-    filtered_goals = [g for g in (goals or []) if g and g != 'общая']
-    filtered_phases = [p for p in (growth_phases or []) if p and p != 'общая']
+    all_cultures = cultures or []
+    all_goals = goals or []
+    all_phases = growth_phases or []
 
+    filtered_cultures = [c for c in all_cultures if c and c != 'общая']
+    filtered_goals = [g for g in all_goals if g and g != 'общая']
+    filtered_phases = [p for p in all_phases if p and p != 'общая']
+
+    # Культуры
     if filtered_cultures:
-        # Формируем строку с подтипами для каждой культуры
         culture_parts = []
         for culture in filtered_cultures:
             subtype = subtypes.get(culture)
@@ -433,17 +462,24 @@ def generate_prefix(
                 culture_parts.append(f"{culture} ({subtype})")
             else:
                 culture_parts.append(culture)
-
         label = "Культура" if len(filtered_cultures) == 1 else "Культуры"
         parts.append(f"[{label}: {', '.join(culture_parts)}]")
+    elif 'общая' in all_cultures:
+        parts.append("[Подходит ко всем культурам]")
 
+    # Цели
     if filtered_goals:
         label = "Цель" if len(filtered_goals) == 1 else "Цели"
         parts.append(f"[{label}: {', '.join(filtered_goals)}]")
+    elif 'общая' in all_goals:
+        parts.append("[Подходит ко всем типам работ]")
 
+    # Фазы
     if filtered_phases:
         label = "Фаза" if len(filtered_phases) == 1 else "Фазы"
         parts.append(f"[{label}: {', '.join(filtered_phases)}]")
+    elif 'общая' in all_phases:
+        parts.append("[Подходит ко всем фазам роста]")
 
     return " ".join(parts) if parts else ""
 
@@ -466,24 +502,20 @@ async def update_chunk_passport(
     - Опциональное обновление текста чанка и контекста
     """
     pool = get_pool()
-    import json
 
     # Генерируем prefix
     prefix = generate_prefix(cultures, culture_subtypes, goals, growth_phases)
-
-    # Преобразуем dict в JSON строку для PostgreSQL
-    subtypes_json = json.dumps(culture_subtypes or {})
 
     async with pool.acquire() as conn:
         # Строим динамический запрос
         set_parts = [
             "cultures = $2",
-            "culture_subtypes = $3::jsonb",
+            "culture_subtypes = $3",
             "goals = $4",
             "growth_phases = $5",
             "prefix = $6",
         ]
-        params = [chunk_id, cultures or [], subtypes_json, goals or [], growth_phases or [], prefix]
+        params = [chunk_id, cultures or [], culture_subtypes or {}, goals or [], growth_phases or [], prefix]
         param_idx = 7
 
         if chunk_text is not None:

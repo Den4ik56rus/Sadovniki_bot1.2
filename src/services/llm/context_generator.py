@@ -1,9 +1,9 @@
 # src/services/llm/context_generator.py
 """
-RAG v2.0: Генератор контекста для чанков документов.
+RAG v2.5: Генератор контекста для чанков документов.
 
 Использует GPT-4.1-mini для генерации краткого описания содержимого каждого чанка
-на основе полного текста документа и самого чанка.
+на основе локального окна вокруг чанка (RAG v2.5) или полного текста документа (legacy).
 """
 
 import logging
@@ -21,9 +21,13 @@ logger = logging.getLogger(__name__)
 CONTEXT_MODEL = "gpt-4.1-mini"
 CONTEXT_TEMPERATURE = 0.3  # Низкая температура для консистентных результатов
 
-# Максимальная длина документа для отправки в LLM (в символах)
-# GPT-4.1-mini имеет контекст 128K токенов, но мы ограничиваем для экономии
+# Legacy: Максимальная длина документа для отправки в LLM (в символах)
+# Используется только в fallback режиме для старых документов
 MAX_DOCUMENT_LENGTH = 50000  # ~12500 токенов
+
+# RAG v2.5: Константы для локального окна
+CONTEXT_WINDOW_BEFORE = 2000  # символов до чанка
+CONTEXT_WINDOW_AFTER = 2000   # символов после чанка
 
 # Системный промпт для генерации контекста
 CONTEXT_SYSTEM_PROMPT = """Ты — помощник для анализа агрономических документов о ягодных культурах.
@@ -125,9 +129,141 @@ async def generate_chunk_context(
     return context, input_tokens, output_tokens, cost
 
 
+def find_chunk_position(full_text: str, chunk_text: str) -> Tuple[int, int]:
+    """
+    Находит позицию чанка в полном тексте (RAG v2.5).
+
+    Использует нормализацию пробелов для надёжного поиска.
+
+    Параметры:
+        full_text: Полный текст документа
+        chunk_text: Текст чанка
+
+    Возвращает:
+        (start_pos, end_pos) или (-1, -1) если не найдено
+    """
+    # Нормализуем пробелы для поиска
+    normalized_full = " ".join(full_text.split())
+    normalized_chunk = " ".join(chunk_text.split())
+
+    start_pos = normalized_full.find(normalized_chunk)
+
+    if start_pos == -1:
+        # Fallback: ищем первые 100 символов чанка
+        preview = normalized_chunk[:100]
+        start_pos = normalized_full.find(preview)
+
+        if start_pos != -1:
+            logger.debug("[find_chunk_position] Found by preview (first 100 chars)")
+
+    if start_pos == -1:
+        return (-1, -1)
+
+    end_pos = start_pos + len(normalized_chunk)
+    return (start_pos, end_pos)
+
+
+async def generate_chunk_context_with_window(
+    full_text: str,
+    chunk_text: str,
+    chunk_index: int,
+    total_chunks: int,
+) -> Tuple[str, int, int, float]:
+    """
+    Генерирует контекст используя локальное окно вокруг чанка (RAG v2.5).
+
+    Алгоритм:
+    1. Находим позицию чанка в полном тексте
+    2. Берём окно ±2000 символов вокруг чанка
+    3. Генерируем контекст на основе окна (не всего документа)
+
+    Преимущества:
+    - Контекст всегда релевантен чанку
+    - Работает для документов любого размера
+    - Включает информацию из соседних чанков
+    - Экономия токенов: 4K символов вместо 50K
+
+    Параметры:
+        full_text: Полный текст документа (из БД)
+        chunk_text: Текст конкретного чанка
+        chunk_index: Индекс чанка (0-based)
+        total_chunks: Общее количество чанков
+
+    Возвращает:
+        Tuple[context, input_tokens, output_tokens, cost]
+    """
+    # Находим позицию чанка
+    start_pos, end_pos = find_chunk_position(full_text, chunk_text)
+
+    if start_pos == -1:
+        # Fallback: используем старую логику с обрезанием
+        logger.warning(
+            f"[context_generator] Chunk {chunk_index} not found in full_text, "
+            "using truncated document (fallback)"
+        )
+        return await generate_chunk_context(
+            document_text=full_text[:MAX_DOCUMENT_LENGTH],
+            chunk_text=chunk_text,
+            chunk_index=chunk_index,
+            total_chunks=total_chunks,
+        )
+
+    # Вычисляем границы окна
+    window_start = max(0, start_pos - CONTEXT_WINDOW_BEFORE)
+    window_end = min(len(full_text), end_pos + CONTEXT_WINDOW_AFTER)
+
+    # Извлекаем локальное окно
+    local_context = full_text[window_start:window_end]
+
+    # Добавляем маркеры для LLM (показываем что это фрагмент)
+    if window_start > 0:
+        local_context = "[... текст до фрагмента ...]\n\n" + local_context
+    if window_end < len(full_text):
+        local_context = local_context + "\n\n[... текст после фрагмента ...]"
+
+    # Формируем промпт
+    user_prompt = f"""ЛОКАЛЬНЫЙ КОНТЕКСТ (окно ±2000 символов вокруг фрагмента):
+{local_context}
+
+---
+
+ЦЕЛЕВОЙ ФРАГМЕНТ #{chunk_index + 1} из {total_chunks}:
+{chunk_text}
+
+---
+
+Напиши краткий контекст для этого фрагмента (1-2 предложения):"""
+
+    messages = [
+        {"role": "system", "content": CONTEXT_SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
+    ]
+
+    # Вызываем LLM
+    result = await create_chat_completion_with_usage(
+        messages=messages,
+        model=CONTEXT_MODEL,
+        temperature=CONTEXT_TEMPERATURE,
+    )
+
+    context = result["content"].strip()
+    input_tokens = result["prompt_tokens"]
+    output_tokens = result["completion_tokens"]
+    cost = calculate_cost(CONTEXT_MODEL, input_tokens, output_tokens)
+
+    logger.debug(
+        f"[context_generator] Window-based context: "
+        f"window={window_end - window_start} chars, "
+        f"tokens={input_tokens}/{output_tokens}, cost=${cost:.6f}"
+    )
+
+    return context, input_tokens, output_tokens, cost
+
+
 async def generate_contexts_for_document(
     document_text: str,
     chunks: List[Dict],
+    use_window: bool = True,
 ) -> BatchContextResult:
     """
     Генерирует контексты для всех чанков документа.
@@ -138,6 +274,7 @@ async def generate_contexts_for_document(
             - id: int (chunk_id в БД)
             - chunk_text: str
             - chunk_index: int
+        use_window: True = локальное окно (RAG v2.5), False = обрезание (legacy)
 
     Возвращает:
         BatchContextResult с результатами генерации
@@ -150,7 +287,8 @@ async def generate_contexts_for_document(
     error_count = 0
 
     total_chunks = len(chunks)
-    logger.info(f"[context_generator] Генерация контекста для {total_chunks} чанков...")
+    mode = "локальное окно" if use_window else "обрезание документа"
+    logger.info(f"[context_generator] Генерация контекста для {total_chunks} чанков ({mode})...")
 
     for chunk in chunks:
         chunk_id = chunk["id"]
@@ -158,12 +296,22 @@ async def generate_contexts_for_document(
         chunk_index = chunk["chunk_index"]
 
         try:
-            context, input_tokens, output_tokens, cost = await generate_chunk_context(
-                document_text=document_text,
-                chunk_text=chunk_text,
-                chunk_index=chunk_index,
-                total_chunks=total_chunks,
-            )
+            if use_window:
+                # RAG v2.5: Новая логика с локальным окном
+                context, input_tokens, output_tokens, cost = await generate_chunk_context_with_window(
+                    full_text=document_text,
+                    chunk_text=chunk_text,
+                    chunk_index=chunk_index,
+                    total_chunks=total_chunks,
+                )
+            else:
+                # Legacy: Старая логика с обрезанием (backward compatibility)
+                context, input_tokens, output_tokens, cost = await generate_chunk_context(
+                    document_text=document_text,
+                    chunk_text=chunk_text,
+                    chunk_index=chunk_index,
+                    total_chunks=total_chunks,
+                )
 
             results.append(ContextGenerationResult(
                 chunk_id=chunk_id,

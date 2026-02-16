@@ -14,7 +14,10 @@ from src.services.llm.consultation_llm import ask_consultation_llm, compose_full
 from src.services.db.moderation_repo import moderation_add
 
 from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT
+from src.handlers.consultation.entry import finalize_streaming_message
 from src.utils.status_manager import StatusMessageManager
+from src.services.db.tokens_repo import add_tokens
+from src.pricing import COST_NEW_TOPIC, get_consultation_cost
 
 router = Router()
 
@@ -109,18 +112,27 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
             compose_cost_usd=compose_cost,  # Стоимость формирования вопроса
             compose_tokens=compose_tokens,  # Токены формирования вопроса
             status_updater=status_mgr.update,
+            stream=True,
+            streaming_transition=status_mgr.start_streaming,
         )
     except Exception as e:
-        print(f"ERROR in ask_consultation_llm: {e}")
-        reply_text = (
-            "Сейчас не получается обработать запрос через модель. "
-            "Попробуйте ещё раз чуть позже."
-        )
-    finally:
+        print(f"[culture_callback] ERROR in ask_consultation_llm: {e}, returning questions to user {user_id}")
         await status_mgr.complete()
+        refund_cost = get_consultation_cost(consultation_category) if consultation_category else COST_NEW_TOPIC
+        await add_tokens(user_id, refund_cost, "refund", "Возврат: ошибка модели")
+        await callback.message.answer(
+            "Произошла ошибка при обработке запроса. "
+            "Вопросы возвращены на ваш баланс. Попробуйте ещё раз."
+        )
+        CONSULTATION_STATE.pop(telegram_user_id, None)
+        return
 
-    # Ответ пользователю
-    await callback.message.answer(reply_text)
+    # Забираем стриминг-сообщение ДО complete() чтобы переиспользовать
+    streaming_msg = status_mgr.get_streaming_message()
+    await status_mgr.complete()
+
+    # Ответ пользователю (edit стриминг-сообщения или новое)
+    await finalize_streaming_message(streaming_msg, callback.message, reply_text)
 
     # Логируем ответ бота
     await log_message(
@@ -145,5 +157,5 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
     except Exception as e:
         print(f"ERROR in moderation_add: {e}")
 
-    # Очищаем состояние после обработки
-    CONSULTATION_STATE.pop(telegram_user_id, None)
+    # Переводим в режим ожидания follow-up
+    CONSULTATION_STATE[telegram_user_id] = "waiting_followup"

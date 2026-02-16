@@ -22,6 +22,7 @@ import re
 
 from src.services.llm.core_llm import create_chat_completion, create_chat_completion_with_usage, calculate_cost
 from src.config import settings                                # Настройки проекта (модель и т.п.)
+from src.services.db.settings_repo import get_model_for_task, get_temperature_for_task, get_reasoning_effort_for_task
 from src.services.db.kb_repo import kb_get_distinct_subcategories  # Живой список культур из базы знаний
 
 
@@ -82,57 +83,51 @@ def _keyword_fallback(raw_text: str) -> str:
     text = raw_text.lower()
     candidates: set[str] = set()
 
-    # Специальные термины для клубники
-    if "фриго" in text or "ус" in text or "усы" in text or "усов" in text or "виктори" in text:
-        candidates.add("клубника общая")
+    # Специальные термины для клубники (DEFAULT: летняя)
+    # ВАЖНО: "ус" матчится в "кустарник" - проверяем как отдельное слово или с контекстом
+    has_strawberry_special = (
+        "фриго" in text or
+        "виктори" in text or
+        " ус " in text or  # "ус" как отдельное слово
+        text.startswith("ус ") or
+        text.endswith(" ус") or
+        "усы" in text or
+        "усов" in text or
+        "усик" in text or
+        "усами" in text
+    )
+    if has_strawberry_special:
+        candidates.add("клубника летняя")
 
-    # Специальные термины для малины
+    # Специальные термины для малины (DEFAULT: летняя)
     if "корневая поросль" in text or "поросл" in text:
-        candidates.add("малина общая")
+        candidates.add("малина летняя")
 
     # Специальные термины для голубики
     if "вересков" in text:
         candidates.add("голубика")
 
-    # Сорта клубники ремонтантной
-    if any(s in text for s in ["альбион", "сан андреас", "монтерей"]):
-        candidates.add("клубника ремонтантная")
-
-    # Сорта клубники летней
-    if any(s in text for s in ["полка", "вима занта", "хоней"]):
-        candidates.add("клубника летняя")
-
-    # Сорта малины ремонтантной
-    if any(s in text for s in ["химбо топ", "полька", "джоан джей"]):
-        candidates.add("малина ремонтантная")
-
-    # Сорта малины летней
-    if any(s in text for s in ["патриция", "таруса", "гусар"]):
-        candidates.add("малина летняя")
+    # СОРТА УДАЛЕНЫ из fallback - теперь LLM сам определяет культуру по сорту
+    # Если пользователь называет только сорт без культуры - LLM вернет "не определено"
 
     # Клубника / земляника
     if "клубник" in text or "земляник" in text:
-        # ИЗМЕНЕНО: Проверяем летнюю/обычную ПЕРВОЙ (выше приоритет)
-        if "летн" in text or "традицион" in text or "обычн" in text or "июньск" in text:
-            candidates.add("клубника летняя")
-        # Проверяем ремонтантную ВТОРОЙ
-        elif "ремонтант" in text or ("нсд" in text or "nsd" in text) or "нейтральн" in text:
+        # Проверяем ТОЛЬКО явное указание ремонтантной
+        if "ремонтант" in text or "нсд" in text or "nsd" in text or "нейтральн" in text:
             # НСД = нейтрального светового дня = ремонтантная
             candidates.add("клубника ремонтантная")
         else:
-            # Без уточнения - добавляем общую категорию
-            candidates.add("клубника общая")
+            # DEFAULT: летняя (даже если тип не указан)
+            candidates.add("клубника летняя")
 
     # Малина
     if "малин" in text:
-        # ИЗМЕНЕНО: Проверяем летнюю/обычную ПЕРВОЙ (выше приоритет)
-        if "летн" in text or "традицион" in text or "обычн" in text:
-            candidates.add("малина летняя")
-        # Проверяем ремонтантную ВТОРОЙ
-        elif "ремонтант" in text or ("нсд" in text or "nsd" in text):
+        # Проверяем ТОЛЬКО явное указание ремонтантной
+        if "ремонтант" in text or "нсд" in text or "nsd" in text:
             candidates.add("малина ремонтантная")
         else:
-            candidates.add("малина общая")
+            # DEFAULT: летняя (даже если тип не указан)
+            candidates.add("малина летняя")
 
     # Смородина (единая категория)
     if "смородин" in text:
@@ -219,21 +214,29 @@ async def detect_culture_name(text: str) -> Tuple[str, float, int]:
         "ПРАВИЛА:\n"
         "  1) Верни ОДНУ короткую фразу — название культуры или 'общая информация' / 'не определено'.\n"
         "  2) Без кавычек и пояснений.\n"
-        "  3) КРИТИЧЕСКИ ВАЖНО: Для клубники и малины различай типы:\n"
-        "     - 'обычная', 'летняя', 'традиционная', 'июньская' → летняя (это ОДНО И ТО ЖЕ!)\n"
-        "       Примеры: 'клубника обычная' = 'клубника летняя', 'малина обычная' = 'малина летняя'\n"
-        "     - 'ремонтантная', 'НСД', 'NSD', 'нейтрального дня' → ремонтантная\n"
+        "  3) КРИТИЧЕСКИ ВАЖНО: Для клубники и малины:\n"
+        "     - Если явно указано 'ремонтантная', 'НСД', 'NSD', 'нейтрального дня' → 'клубника ремонтантная' или 'малина ремонтантная'\n"
+        "     - ВСЕ ОСТАЛЬНЫЕ СЛУЧАИ (включая тип не указан) → 'клубника летняя' или 'малина летняя'\n"
+        "     - ПРИМЕРЫ:\n"
+        "       * 'Какие удобрения нужны клубнике?' → 'клубника летняя' (default)\n"
+        "       * 'Подкормка клубники ремонтантной' → 'клубника ремонтантная' (явное указание)\n"
+        "       * 'Малина плохо растет' → 'малина летняя' (default)\n"
         "     - Если только 'ремонтантная'/'летняя'/'обычная' БЕЗ культуры → 'общая информация'\n"
-        "     - Если тип НЕ указан явно → 'клубника общая' или 'малина общая'\n"
+
         "  4) Если вопрос даёт общие рекомендации сразу по нескольким культурам\n"
         "     или не привязан к одной — выбери: общая информация.\n"
         "  5) Если вопрос вообще не про ягодные культуры — выбери: не определено.\n"
-        "  6) СОРТА:\n"
-        "     - Альбион, Сан Андреас, Монтерей → клубника ремонтантная\n"
-        "     - Полка, Вима Занта, Хоней → клубника летняя\n"
-        "     - Виктория (устаревшее название) → клубника общая\n"
-        "     - Химбо Топ, Полька, Джоан Джей → малина ремонтантная\n"
-        "     - Патриция, Таруса, Гусар → малина летняя\n"
+        "  6) СОРТА БЕЗ УКАЗАНИЯ КУЛЬТУРЫ:\n"
+        "     - Если пользователь упоминает ТОЛЬКО сорт (например: 'Альбион желтеет', 'Азия не растет')\n"
+        "       БЕЗ указания культуры (клубника/малина/смородина и т.д.)\n"
+        "     - ОБЯЗАТЕЛЬНО верни 'не определено'\n"
+        "     - Система попросит уточнить: 'О какой культуре идет речь?'\n"
+        "     ПРИМЕРЫ:\n"
+        "       * 'Альбион не цветет' → 'не определено' (сорт есть, культуры нет)\n"
+        "       * 'Клубника Азия желтеет' → 'клубника летняя' (культура + сорт = OK)\n"
+        "       * 'Полка дает мало ягод' → 'не определено' (только сорт)\n"
+        "       * 'Моя клубника сорта Полка желтеет' → 'клубника летняя' (OK)\n"
+
         "  7) ТЕХНИЧЕСКИЕ ТЕРМИНЫ:\n"
         "     - Фриго, усы → клубника\n"
         "     - Корневая поросль → малина\n"
@@ -265,8 +268,9 @@ async def detect_culture_name(text: str) -> Tuple[str, float, int]:
     try:
         response = await create_chat_completion_with_usage(
             messages=messages,
-            model=settings.openai_model_classification,
-            # temperature берётся из settings.openai_temperature
+            model=await get_model_for_task("classification"),
+            temperature=await get_temperature_for_task("classification"),
+            reasoning_effort=await get_reasoning_effort_for_task("classification"),
         )
 
         # Рассчитываем стоимость
@@ -323,6 +327,7 @@ async def detect_culture_name(text: str) -> Tuple[str, float, int]:
             "клубника nsd": "клубника ремонтантная",
             "клубника нейтрального дня": "клубника ремонтантная",
             "клубника нейтрального света": "клубника ремонтантная",
+            "клубника нейтрального светового дня": "клубника ремонтантная",
             "земляника ремонтантная": "клубника ремонтантная",
             "земляника нсд": "клубника ремонтантная",
             "земляника нейтрального дня": "клубника ремонтантная",
@@ -338,17 +343,20 @@ async def detect_culture_name(text: str) -> Tuple[str, float, int]:
             "земляника традиционная": "клубника летняя",
             "июньская клубника": "клубника летняя",
 
-            # Клубника без уточнения (общая)
+            # Клубника без уточнения (DEFAULT: общая)
             "клубника садовая": "клубника общая",
             "земляника садовая": "клубника общая",
             "земляника": "клубника общая",
             "клубника": "клубника общая",
             "виктория": "клубника общая",
+            "клубника общая": "клубника общая",  # Backward compatibility (LLM может вернуть старое значение)
 
             # Малина ремонтантная (приоритет выше)
             "малина ремонтантная": "малина ремонтантная",
             "малина нсд": "малина ремонтантная",
             "малина nsd": "малина ремонтантная",
+            "малина нейтрального дня": "малина ремонтантная",
+            "малина нейтрального светового дня": "малина ремонтантная",
             "ремонтантная малина": "малина ремонтантная",
 
             # Малина летняя
@@ -358,8 +366,10 @@ async def detect_culture_name(text: str) -> Tuple[str, float, int]:
             "летняя малина": "малина летняя",
             "обычная малина": "малина летняя",
 
-            # Малина без уточнения (общая)
+            # Малина без уточнения (DEFAULT: общая)
             "малина": "малина общая",
+            "малина садовая": "малина общая",
+            "малина общая": "малина общая",  # Backward compatibility (LLM может вернуть старое значение)
 
             # Смородина (единая)
             "смородина": "смородина",
@@ -370,9 +380,7 @@ async def detect_culture_name(text: str) -> Tuple[str, float, int]:
             "красная смородина": "смородина",
             "белая смородина": "смородина",
             "черная смородина": "смородина",
-            "черная": "смородина",
-            "красная": "смородина",
-            "белая": "смородина",
+            # УДАЛЕНЫ агрессивные маппинги "черная", "красная", "белая" → смородина
 
             # Голубика
             "голубика": "голубика",
@@ -513,7 +521,7 @@ def _keyword_category_fallback(raw_text: str) -> str:
     return "не определена"
 
 
-async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
+async def detect_category_and_culture(text: str) -> tuple[str, str, str | None, float, int]:
     """
     Определяет КАТЕГОРИЮ консультации И КУЛЬТУРУ из текста вопроса.
 
@@ -524,10 +532,11 @@ async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
         text: Текст вопроса пользователя
 
     Returns:
-        tuple[category, culture, cost_usd, tokens] where:
+        tuple[category, culture, correction_hint, cost_usd, tokens] where:
         - category: "питание растений", "посадка и уход", "защита растений",
                    "улучшение почвы", "подбор сорта", "другая тема" или "не определена"
         - culture: "клубника летняя", "малина общая", "не определено", etc.
+        - correction_hint: подсказка если пользователь написал несуществующую культуру, или None
         - cost_usd: стоимость LLM вызова в USD
         - tokens: общее количество токенов
     """
@@ -565,8 +574,8 @@ async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
         f"{categories_str}\n\n"
         "КУЛЬТУРЫ (примеры):\n"
         f"{cultures_str}\n"
-        "   - клубника общая / клубника летняя / клубника ремонтантная\n"
-        "   - малина общая / малина летняя / малина ремонтантная\n"
+        "   - клубника летняя (default) / клубника ремонтантная\n"
+        "   - малина летняя (default) / малина ремонтантная\n"
         "   - голубика, ежевика, смородина, жимолость, крыжовник\n"
         "   - общая информация (если про несколько культур)\n"
         "   - не определено (если культура неясна)\n\n"
@@ -579,26 +588,49 @@ async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
         "6. 'подбор сорта' - какой сорт выбрать, рекомендации по сортам\n"
         "7. 'другая тема' - всё остальное\n\n"
         "ПРАВИЛА КУЛЬТУР:\n"
-        "1. Для клубники и малины различай типы:\n"
-        "   - 'летняя'/'обычная'/'традиционная'/'июньская' → летняя\n"
-        "   - 'ремонтантная'/'НСД'/'NSD' → ремонтантная\n"
-        "   - Если тип не указан → 'клубника общая' или 'малина общая'\n"
-        "2. Сорта:\n"
-        "   - Альбион, Сан Андреас → клубника ремонтантная\n"
-        "   - Полка, Хоней → клубника летняя\n"
-        "   - Химбо Топ, Полька → малина ремонтантная\n"
-        "   - Патриция, Гусар → малина летняя\n"
+        "1. КРИТИЧЕСКИ ВАЖНО - Для клубники и малины:\n"
+        "   - Если явно указано 'ремонтантная', 'НСД', 'NSD', 'нейтрального дня' → 'клубника ремонтантная' или 'малина ремонтантная'\n"
+        "   - ВСЕ ОСТАЛЬНЫЕ СЛУЧАИ (включая тип не указан) → 'клубника летняя' или 'малина летняя' (DEFAULT)\n"
+        "   - ПРИМЕРЫ:\n"
+        "     * 'Питание клубники' → 'клубника летняя' (тип не указан, default)\n"
+        "     * 'Подкормка малины' → 'малина летняя' (тип не указан, default)\n"
+        "     * 'Обрезка клубники ремонтантной' → 'клубника ремонтантная' (явное указание)\n"
+        "2. СОРТА БЕЗ УКАЗАНИЯ КУЛЬТУРЫ:\n"
+        "   - Если пользователь называет ТОЛЬКО сорт БЕЗ культуры → 'не определено'\n"
+        "   - ПРИМЕРЫ:\n"
+        "     * 'Альбион желтеет' → culture='не определено' (только сорт, культуры нет)\n"
+        "     * 'Клубника Альбион желтеет' → culture='клубника ремонтантная' (культура + сорт ремонтантный)\n"
+        "     * 'Моя клубника Полка не растет' → culture='клубника летняя' (культура + сорт летний)\n"
         "3. ВАЖНО: Учитывай возможные опечатки в названиях культур:\n"
         "   - 'еживику', 'ежовика' → ежевика\n"
         "   - 'малену', 'малену' → малина\n"
         "   - 'клубнику', 'клупнику' → клубника\n"
         "   Если похоже на название культуры, исправь опечатку и верни правильное название.\n"
-        "4. Если культура явно названа (даже с опечаткой) → возвращай конкретную культуру\n"
+        "4. Если культура явно названа (даже с опечаткой) → возвращай конкретную культуру.\n"
+        "   ИСКЛЮЧЕНИЕ: выдуманные гибриды и несуществующие названия (например 'клубнико-малиновая',\n"
+        "   'малиново-клубничный гибрид') — это НЕ реальная культура. Для них culture='не определено'.\n"
         "5. Если несколько культур → 'общая информация'\n"
-        "6. Если культура неясна → 'не определено'\n\n"
+        "6. Если культура неясна → 'не определено'\n"
+        "7. КОРРЕКЦИЯ ВВОДА (ВЫСШИЙ ПРИОРИТЕТ — проверяй ДО правил 3-6):\n"
+        "   - Если пользователь написал название, которое НЕ является реальной культурой\n"
+        "     (выдуманные гибриды, несуществующие скрещивания, бессмыслица),\n"
+        "     ты ОБЯЗАН заполнить поле 'correction' И поставить culture='не определено'.\n"
+        "   - Формат: 'Культуры «X» не существует. Возможно, вы имели в виду Y.'\n"
+        "   - correction = null ТОЛЬКО если:\n"
+        "     а) простая опечатка (малену→малина, клупника→клубника)\n"
+        "     б) название правильное и существующее\n"
+        "     в) пользователь вообще не упоминал культуру\n"
+        "   ПРИМЕРЫ:\n"
+        "     * 'клубнико-малиновая' → culture: 'не определено', correction: 'Культуры «клубнико-малиновая» не существует. Возможно, вы имели в виду клубнику или малину?'\n"
+        "     * 'земляничко-ежевичная' → culture: 'не определено', correction: 'Культуры «земляничко-ежевичная» не существует. Возможно, вы имели в виду клубнику (землянику) или ежевику?'\n"
+        "     * 'малиново-клубничный гибрид' → culture: 'не определено', correction: 'Культуры «малиново-клубничный гибрид» не существует. Возможно, вы имели в виду малину или клубнику?'\n"
+        "     * 'малену' → correction: null (простая опечатка, culture='малина летняя')\n"
+        "     * 'клубника' → correction: null (всё верно)\n"
+        "     * 'бананы' → correction: null (реальное растение, просто не в нашем списке)\n"
+        "     * 'как посадить?' → correction: null (культура не упоминалась)\n\n"
         "ФОРМАТ ОТВЕТА:\n"
         "Верни ТОЛЬКО JSON в формате:\n"
-        '{"category": "название категории", "culture": "название культуры"}\n\n'
+        '{"category": "название категории", "culture": "название культуры", "correction": "текст коррекции или null"}\n\n'
         "БЕЗ комментариев, БЕЗ дополнительного текста!"
     )
 
@@ -616,8 +648,9 @@ async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
     try:
         response = await create_chat_completion_with_usage(
             messages=messages,
-            model=settings.openai_model_classification,
-            # temperature берётся из settings.openai_temperature
+            model=await get_model_for_task("classification"),
+            temperature=await get_temperature_for_task("classification"),
+            reasoning_effort=await get_reasoning_effort_for_task("classification"),
         )
 
         # Рассчитываем стоимость
@@ -637,7 +670,7 @@ async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
                 f"[detect_category_and_culture][FALLBACK] "
                 f"category={category!r}, culture={culture!r}"
             )
-            return (category, culture, cost_usd, tokens)
+            return (category, culture, None, cost_usd, tokens)
 
         # Пытаемся распарсить JSON
         try:
@@ -651,6 +684,7 @@ async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
             data = json.loads(json_str)
             category_raw = data.get("category", "").strip().lower()
             culture_raw = data.get("culture", "").strip().lower()
+            correction_hint = data.get("correction") or None
 
             # Нормализуем категорию
             category_mapping = {
@@ -697,26 +731,32 @@ async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
                     break
 
             # Проверяем keyword fallback для валидации или override
+            # НО: если LLM вернул correction_hint — значит он сознательно поставил
+            # "не определено" (выдуманный гибрид и т.п.), keyword НЕ должен переопределять
             keyword_culture = _keyword_fallback(raw_text)
 
-            # Если culture не нашлась в маппинге или неопределена, используем keyword
-            if culture in ("общая информация", "не определено", ""):
-                if keyword_culture not in ("не определено", "общая информация"):
-                    print(f"[detect_category_and_culture][KEYWORD_OVERRIDE_VAGUE] "
-                          f"LLM={culture!r} -> keyword={keyword_culture!r}")
+            if not correction_hint:
+                # Если culture не нашлась в маппинге или неопределена, используем keyword
+                if culture in ("общая информация", "не определено", ""):
+                    if keyword_culture not in ("не определено", "общая информация"):
+                        print(f"[detect_category_and_culture][KEYWORD_OVERRIDE_VAGUE] "
+                              f"LLM={culture!r} -> keyword={keyword_culture!r}")
+                        culture = keyword_culture
+                # Если keyword нашел КОНКРЕТНУЮ культуру, а LLM вернул другую - предпочитаем keyword
+                elif keyword_culture not in ("не определено", "общая информация", culture):
+                    print(f"[detect_category_and_culture][KEYWORD_CORRECTION] "
+                          f"LLM={culture!r} -> keyword={keyword_culture!r} (возможно опечатка)")
                     culture = keyword_culture
-            # Если keyword нашел КОНКРЕТНУЮ культуру, а LLM вернул другую - предпочитаем keyword
-            elif keyword_culture not in ("не определено", "общая информация", culture):
-                print(f"[detect_category_and_culture][KEYWORD_CORRECTION] "
-                      f"LLM={culture!r} -> keyword={keyword_culture!r} (возможно опечатка)")
-                culture = keyword_culture
+            else:
+                print(f"[detect_category_and_culture][SKIP_KEYWORD] "
+                      f"correction_hint present, keeping LLM culture={culture!r}")
 
             print(
                 f"[detect_category_and_culture][SUCCESS] text={raw_text!r} "
-                f"-> category={category!r}, culture={culture!r}"
+                f"-> category={category!r}, culture={culture!r}, correction={correction_hint!r}"
             )
 
-            return (category, culture, cost_usd, tokens)
+            return (category, culture, correction_hint, cost_usd, tokens)
 
         except json.JSONDecodeError as je:
             print(f"[detect_category_and_culture][JSON_ERROR] {je} | raw={raw!r}")
@@ -727,7 +767,7 @@ async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
                 f"[detect_category_and_culture][KEYWORD_FALLBACK] "
                 f"category={category!r}, culture={culture!r}"
             )
-            return (category, culture, cost_usd, tokens)
+            return (category, culture, None, cost_usd, tokens)
 
     except Exception as e:
         print(f"[detect_category_and_culture][ERROR] {e} | text={raw_text!r}")
@@ -737,7 +777,7 @@ async def detect_category_and_culture(text: str) -> tuple[str, str, float, int]:
             f"[detect_category_and_culture][ERROR_FALLBACK] "
             f"category={category!r}, culture={culture!r}"
         )
-        return (category, culture, 0.0, 0)
+        return (category, culture, None, 0.0, 0)
 
 
 async def compare_topics_for_change(
@@ -817,8 +857,9 @@ async def compare_topics_for_change(
     try:
         response = await create_chat_completion_with_usage(
             messages=messages,
-            model=settings.openai_model_classification,
-            # temperature берётся из settings.openai_temperature
+            model=await get_model_for_task("classification"),
+            temperature=await get_temperature_for_task("classification"),
+            reasoning_effort=await get_reasoning_effort_for_task("classification"),
         )
 
         # Рассчитываем стоимость

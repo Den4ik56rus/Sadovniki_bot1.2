@@ -332,7 +332,7 @@ async def _send_subscription_notification(
             "🎉 <b>Подписка активирована!</b>\n\n"
             f"📅 План: {plan['name']}\n"
             f"⏱ Действует до: {expires_str}\n"
-            f"🎁 Начислено токенов: {plan['tokens_included']}\n\n"
+            f"🎁 Начислено вопросов: {plan['tokens_included']}\n\n"
             "Спасибо за вашу поддержку! 🌱"
         )
 

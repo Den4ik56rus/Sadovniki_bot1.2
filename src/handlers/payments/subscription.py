@@ -12,6 +12,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardBut
 from src.services.db import subscription_plan_repo
 from src.services.payments import payment_service
 from src.config import settings
+from src.pricing import pluralize_questions
 
 logger = logging.getLogger(__name__)
 router = Router(name="payments_subscription")
@@ -94,11 +95,12 @@ async def buy_subscription_handler(callback: CallbackQuery):
             )]
         ])
 
+        qty = plan.get('tokens_included', 0)
         await callback.message.edit_text(
             f"📅 Подписка: {plan['name']}\n"
-            f"💰 Сумма: {int(plan['price_rub'])}₽\n"
+            f"💰 Сумма: {int(plan['price_rub'])}₽/мес\n"
             f"⏱ Срок: {plan['duration_days']} дней\n"
-            f"🎁 Включено токенов: {plan['tokens_included']} вопросов\n\n"
+            f"🎁 Лимит: {pluralize_questions(qty)} в месяц\n\n"
             f"Нажмите кнопку ниже для оплаты.\n"
             f"После успешной оплаты подписка будет активирована автоматически.\n\n"
             f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}",

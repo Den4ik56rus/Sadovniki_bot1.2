@@ -18,7 +18,7 @@
 """
 
 from aiogram import Router, F
-from aiogram.types import Message
+from aiogram.types import Message, CallbackQuery
 
 # Репозитории БД
 from src.services.db.users_repo import get_or_create_user
@@ -28,17 +28,17 @@ from src.services.db.topics_repo import (
 )
 from src.services.db.messages_repo import log_message
 from src.services.db.moderation_repo import moderation_add
-from src.services.db.tokens_repo import has_sufficient_tokens, deduct_tokens, get_token_balance
+from src.services.db.tokens_repo import has_sufficient_tokens, deduct_tokens, add_tokens, get_token_balance
 
-# Прайсы токенов
-from src.pricing import COST_NEW_TOPIC, COST_ADDITIONAL_QUESTIONS
+# Прайсы вопросов
+from src.pricing import COST_NEW_TOPIC, get_consultation_cost, pluralize_questions
 
 # LLM
 from src.services.llm.consultation_llm import ask_consultation_llm, compose_full_question
 from src.services.llm.classification_llm import detect_culture_name
 
 # Keyboards
-from src.keyboards.consultation.common import get_followup_keyboard
+from src.keyboards.consultation.common import get_followup_keyboard, CONSULTATION_ENTRY_TEXT, get_example_questions_keyboard
 
 # Утилита для session_id и управление состоянием
 from src.handlers.common import (
@@ -69,6 +69,7 @@ def _init_consultation_context(
     session_id: str,
     classification_cost_usd: float,
     classification_tokens: int,
+    correction_hint: str | None = None,
 ) -> dict:
     """
     Инициализирует контекст консультации с накоплением уточнений.
@@ -86,6 +87,7 @@ def _init_consultation_context(
         "telegram_user_id": telegram_user_id,
         "classification_cost_usd": classification_cost_usd,
         "classification_tokens": classification_tokens,
+        "correction_hint": correction_hint,
     }
     CONSULTATION_CONTEXT[telegram_user_id] = context
     return context
@@ -141,7 +143,7 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
 
     Логика:
     - CASE 1: Культура "не определено" → LLM спрашивает культуру (БЕЗ RAG, БЕЗ compose)
-    - CASE 2: Культура "общая" → бот спрашивает тип (БЕЗ RAG, БЕЗ compose)
+    - CASE 2: УДАЛЕН — "клубника общая" / "малина общая" больше не существует (default летняя)
     - CASE 3: Культура конкретная → финальный ответ (С RAG, С compose)
     """
     culture = context["culture"]
@@ -175,7 +177,8 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
-            reply_text = "Сейчас не получается обработать запрос. Попробуйте позже."
+            await status_mgr.complete()
+            raise  # Пробрасываем — unified_entry вернёт токены
         finally:
             await status_mgr.complete()
 
@@ -196,27 +199,7 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
             )
             return
 
-    # CASE 2: Культура общая → бот спрашивает тип (БЕЗ RAG, БЕЗ compose)
-    elif culture in ("клубника общая", "малина общая"):
-        print(f"[_process_culture] CASE 2: General culture - asking variety")
-
-        if culture == "клубника общая":
-            variety_question = "Какая у вас клубника: летняя (июньская) или ремонтантная (НСД)?"
-        else:
-            variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
-
-        CONSULTATION_STATE[telegram_user_id] = "waiting_variety_clarification"
-        _add_clarification(context, "variety", variety_question)
-
-        await message.answer(variety_question)
-        await log_message(
-            user_id=user_id,
-            direction="bot",
-            text=variety_question,
-            session_id=session_id,
-            topic_id=topic_id,
-        )
-        return
+    # CASE 2 УДАЛЕН: "клубника общая" / "малина общая" больше не существует
 
     # CASE 3: Культура конкретна → финальный ответ (С RAG, С compose)
     else:
@@ -255,16 +238,23 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
                 classification_cost_usd=context["classification_cost_usd"],
                 classification_tokens=context["classification_tokens"],
                 status_updater=status_mgr.update,
+                stream=True,
+                streaming_transition=status_mgr.start_streaming,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
-            reply_text = "Сейчас не получается обработать запрос. Попробуйте позже."
-        finally:
             await status_mgr.complete()
+            raise  # Пробрасываем — unified_entry вернёт токены
 
-        # Отправляем финальный ответ (разбиваем на части если длинный)
-        await send_long_message_with_keyboard(
-            message, reply_text, keyboard=get_followup_keyboard(category)
+        # Забираем стриминг-сообщение ДО complete() чтобы переиспользовать
+        streaming_msg = status_mgr.get_streaming_message()
+        await status_mgr.complete()
+
+        # Финализируем: edit стриминг-сообщения с полным отформатированным текстом
+        await finalize_streaming_message(
+            streaming_msg, message, reply_text,
+            keyboard=get_followup_keyboard(category),
+            show_followup_prompt=True,
         )
 
         # Логируем ответ бота
@@ -288,9 +278,8 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
         except Exception as e:
             print(f"ERROR in moderation_add: {e}")
 
-        # Очищаем состояние
-        CONSULTATION_STATE.pop(telegram_user_id, None)
-        CONSULTATION_CONTEXT.pop(telegram_user_id, None)
+        # Переводим в режим ожидания follow-up вопроса (остаёмся в консультации)
+        CONSULTATION_STATE[telegram_user_id] = "waiting_followup"
 
 
 # Константа: максимальная длина сообщения в Telegram
@@ -414,40 +403,56 @@ async def send_long_message_with_keyboard(
             await message.answer(part_text)
 
 
-async def send_followup_count_message(
+async def finalize_streaming_message(
+    streaming_msg: "Message | None",
     message: Message,
-    questions_left: int,
-    topic_id: int,
-    category: str = "питание растений"
+    text: str,
+    keyboard=None,
+    show_followup_prompt: bool = False,
 ) -> None:
     """
-    Отправляет информационное сообщение о количестве оставшихся уточняющих вопросов.
+    Финализирует стриминг-сообщение: делает edit с полным отформатированным текстом.
+
+    Если текст короткий (≤4070) — edit существующего сообщения (мгновенно).
+    Если текст длинный — удаляем стриминг-сообщение и отправляем частями.
+    Если streaming_msg=None — fallback на обычную отправку.
 
     Args:
-        message: Сообщение от пользователя
-        questions_left: Количество оставшихся вопросов (0-3)
-        topic_id: ID топика
-        category: Категория консультации для выбора текста кнопки
+        streaming_msg: Стриминг-сообщение из StatusMessageManager.get_streaming_message()
+        message: Оригинальное сообщение пользователя (для fallback ответа)
+        text: Полный текст ответа (markdown)
+        keyboard: Клавиатура для последнего сообщения
+        show_followup_prompt: Показывать ли подсказку "Выберите вариант следующего вопроса"
     """
-    if questions_left > 0:
-        # Склонение слова "вопрос"
-        if questions_left == 1:
-            word = "уточняющий вопрос"
-        elif questions_left in (2, 3, 4):
-            word = "уточняющих вопроса"
-        else:
-            word = "уточняющих вопросов"
+    html_text = markdown_to_telegram_html(text)
+    parts = split_long_message(html_text, max_length=4070)
 
-        text = f"Вы можете задать {questions_left} {word} на эту тему."
-        # Показываем клавиатуру с кнопками для дополнительных действий
-        await message.answer(text, reply_markup=get_followup_keyboard(category))
+    if streaming_msg and len(parts) == 1:
+        # Короткий ответ — edit стриминг-сообщения (мгновенно, без мигания)
+        try:
+            await streaming_msg.edit_text(parts[0])
+        except Exception:
+            # Если edit не удался — fallback на обычную отправку
+            try:
+                await streaming_msg.delete()
+            except Exception:
+                pass
+            await send_long_message(message, text)
     else:
-        # Показываем кнопку для получения дополнительных вопросов
-        from src.keyboards.consultation.common import get_more_questions_keyboard
-        text = "Уточняющие вопросы по этой теме исчерпаны."
-        await message.answer(text, reply_markup=get_more_questions_keyboard())
+        # Длинный ответ или fallback — удаляем стриминг и отправляем частями
+        if streaming_msg:
+            try:
+                await streaming_msg.delete()
+            except Exception:
+                pass
+        await send_long_message(message, text)
 
-    print(f"[followup_count] Sent: questions_left={questions_left}, topic_id={topic_id}, category={category}")
+    # Показываем подсказку с кнопками отдельным сообщением
+    if show_followup_prompt and keyboard:
+        await message.answer(
+            "Выберите вариант следующего вопроса:",
+            reply_markup=keyboard,
+        )
 
 
 async def get_message_context(topic_id: int, limit: int = 3) -> str:
@@ -465,19 +470,51 @@ def is_clarification_question(text: str) -> bool:
     """
     Определяет, является ли ответ LLM уточняющим вопросом.
 
-    Признаки уточняющего вопроса:
-    - Короткий ответ (< 300 символов)
-    - Содержит типичные фразы или вопросительный знак
+    Двухуровневая логика:
+    - Короткие ответы (<300): достаточно "?" или ключевой фразы
+    - Средние ответы (300-600): нужна ключевая фраза уточнения
+    - Длинные ответы (>600): всегда считаются финальным ответом
     """
-    return (
-        len(text) < 300 and
-        (
-            "уточните" in text.lower()
-            or "о какой культуре" in text.lower()
-            or "какая у вас" in text.lower()
-            or "?" in text
-        )
-    )
+    text_lower = text.lower()
+    text_len = len(text)
+
+    # Длинный ответ — точно не уточняющий вопрос
+    if text_len >= 600:
+        return False
+
+    clarification_keywords = [
+        "уточните",
+        "о какой культуре",
+        "какая у вас",
+        "какую культуру",
+        "подскажите, о какой",
+        "подскажите, какую",
+        "какое растение",
+        "какую ягоду",
+        "какая именно",
+        "что именно вы имеете в виду",
+        "что вы имеете в виду",
+        "имеете в виду",
+        "можете уточнить",
+        "не могу определить",
+        "не удалось определить",
+        "какой именно",
+        "какая конкретно",
+        "о каком растении",
+    ]
+
+    has_keyword = any(kw in text_lower for kw in clarification_keywords)
+    has_question_mark = "?" in text
+
+    # Короткий ответ: "?" или ключевая фраза
+    if text_len < 300 and (has_keyword or has_question_mark):
+        return True
+
+    # Средний ответ: только ключевая фраза
+    if has_keyword:
+        return True
+
+    return False
 
 
 def is_rejection_response(text: str) -> bool:
@@ -497,96 +534,160 @@ def is_rejection_response(text: str) -> bool:
 
 # ==== НОВЫЙ УНИФИЦИРОВАННЫЙ ОБРАБОТЧИК: Автоопределение категории + культуры ====
 
+async def run_consultation_pipeline(
+    message: Message,
+    telegram_user_id: int,
+    username: str | None,
+    first_name: str | None,
+    last_name: str | None,
+    question_text: str,
+) -> None:
+    """
+    Универсальный пайплайн консультации.
+    Вызывается из текстового хендлера и из callback инлайн-кнопок примеров.
+    """
+    print(f"[unified_entry] Получен вопрос от user {telegram_user_id}: {question_text!r}")
+
+    # Получаем внутренний user_id
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=telegram_user_id,
+        username=username,
+        first_name=first_name,
+        last_name=last_name,
+    )
+
+    # Быстрая проверка баланса (минимум 1 вопрос) — без LLM-вызова
+    if not await has_sufficient_tokens(internal_user_id, 1):
+        balance = await get_token_balance(internal_user_id)
+        await message.answer(
+            f"У вас недостаточно вопросов для консультации.\n\n"
+            f"Ваш баланс: {pluralize_questions(balance)}\n\n"
+            f"Для пополнения перейдите в «Мой профиль» → «Пополнить баланс»."
+        )
+        CONSULTATION_STATE.pop(telegram_user_id, None)
+        return
+
+    # Автоматически определяем категорию + культуру
+    from src.services.llm.classification_llm import detect_category_and_culture
+    category, culture, correction_hint, classification_cost, classification_tokens = await detect_category_and_culture(question_text)
+
+    print(f"[unified_entry] Detected category={category!r}, culture={culture!r}, correction={correction_hint!r}, cost=${classification_cost:.6f}, tokens={classification_tokens}")
+
+    # Определяем стоимость по категории
+    cost = get_consultation_cost(category)
+
+    # Точная проверка баланса с учётом категории
+    if not await has_sufficient_tokens(internal_user_id, cost):
+        balance = await get_token_balance(internal_user_id)
+        await message.answer(
+            f"Консультация по теме «{category}» стоит {pluralize_questions(cost)}.\n"
+            f"Ваш баланс: {pluralize_questions(balance)}.\n\n"
+            f"Для пополнения перейдите в «Мой профиль» → «Пополнить баланс»."
+        )
+        CONSULTATION_STATE.pop(telegram_user_id, None)
+        return
+
+    # Списываем вопросы за консультацию
+    await deduct_tokens(
+        internal_user_id,
+        cost,
+        "new_topic",
+        f"Консультация: {category}"
+    )
+
+    # Маршрутизация на основе категории
+    try:
+        if category == "питание растений":
+            # Специализированный обработчик для питания (с кнопками follow-up)
+            print(f"[unified_entry] Routing to NUTRITION handler")
+
+            from src.handlers.consultation.pitanie_rastenii import process_nutrition_consultation
+            await process_nutrition_consultation(
+                message=message,
+                user_id=internal_user_id,
+                category=category,
+                culture=culture,
+                root_question=question_text,
+                classification_cost_usd=classification_cost,
+                classification_tokens=classification_tokens,
+                correction_hint=correction_hint,
+            )
+        else:
+            # Общий обработчик для остальных категорий
+            print(f"[unified_entry] Routing to GENERAL handler")
+
+            await process_general_consultation(
+                message=message,
+                user_id=internal_user_id,
+                category=category,
+                culture=culture,
+                root_question=question_text,
+                classification_cost_usd=classification_cost,
+                classification_tokens=classification_tokens,
+                correction_hint=correction_hint,
+            )
+    except Exception as e:
+        print(f"[unified_entry] ERROR: {e}, returning questions to user {internal_user_id}")
+        await add_tokens(internal_user_id, cost, "refund", "Возврат: ошибка модели")
+        await message.answer(
+            "Произошла ошибка при обработке запроса. "
+            "Вопросы возвращены на ваш баланс. Попробуйте ещё раз."
+        )
+
+
+@router.message(
+    lambda m: m.from_user is not None
+    and CONSULTATION_STATE.get(m.from_user.id) == "waiting_example_details"
+)
+async def handle_example_details(message: Message) -> None:
+    """
+    Пользователь выбрал пример вопроса и теперь уточняет детали.
+    Объединяем пример + уточнения в полный вопрос и запускаем пайплайн.
+    """
+    user = message.from_user
+    if user is None or not message.text:
+        return
+
+    context = CONSULTATION_CONTEXT.get(user.id, {})
+    example = context.get("example_question", "")
+
+    # Собираем полный вопрос: пример + уточнения пользователя
+    details = message.text.strip()
+    full_question = f"{example}: {details}"
+
+    # Очищаем временный контекст примера
+    CONSULTATION_CONTEXT.pop(user.id, None)
+
+    await run_consultation_pipeline(
+        message=message,
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        question_text=full_question,
+    )
+
+
 @router.message(
     lambda m: m.from_user is not None
     and CONSULTATION_STATE.get(m.from_user.id) == "waiting_consultation_question"
 )
 async def handle_consultation_question_unified(message: Message) -> None:
     """
-    Единая точка входа для обработки вопроса консультации.
-    Автоматически определяет категорию + культуру и маршрутизирует в соответствующий обработчик.
-
-    После нажатия кнопки "Консультация" пользователь сразу пишет вопрос.
-    Бот определяет ОБЕ вещи:
-    - КАТЕГОРИЮ (питание растений, посадка и уход, etc.)
-    - КУЛЬТУРУ (клубника летняя, малина общая, etc.)
-
-    Затем маршрутизирует в:
-    - Специализированный обработчик для "питание растений" (с кнопками follow-up)
-    - Общий обработчик для всех остальных категорий
+    Единая точка входа для обработки вопроса консультации (текст от пользователя).
     """
     user = message.from_user
     if user is None or not message.text:
         return
 
-    question_text = message.text.strip()
-    telegram_user_id = user.id
-
-    print(f"[unified_entry] Получен вопрос от user {telegram_user_id}: {question_text!r}")
-
-    # Получаем внутренний user_id
-    internal_user_id = await get_or_create_user(
-        telegram_user_id=telegram_user_id,
+    await run_consultation_pipeline(
+        message=message,
+        telegram_user_id=user.id,
         username=user.username,
         first_name=user.first_name,
         last_name=user.last_name,
+        question_text=message.text.strip(),
     )
-
-    # Проверяем баланс токенов
-    if not await has_sufficient_tokens(internal_user_id, COST_NEW_TOPIC):
-        balance = await get_token_balance(internal_user_id)
-        await message.answer(
-            f"У вас недостаточно токенов для консультации.\n\n"
-            f"Стоимость: {COST_NEW_TOPIC} токен\n"
-            f"Ваш баланс: {balance} токенов\n\n"
-            f"Для пополнения обратитесь к администратору."
-        )
-        # Сбрасываем состояние ожидания
-        CONSULTATION_STATE.pop(telegram_user_id, None)
-        return
-
-    # Автоматически определяем категорию + культуру
-    from src.services.llm.classification_llm import detect_category_and_culture
-    category, culture, classification_cost, classification_tokens = await detect_category_and_culture(question_text)
-
-    print(f"[unified_entry] Detected category={category!r}, culture={culture!r}, cost=${classification_cost:.6f}, tokens={classification_tokens}")
-
-    # Списываем токен за консультацию
-    await deduct_tokens(
-        internal_user_id,
-        COST_NEW_TOPIC,
-        "new_topic",
-        f"Консультация: {category}"
-    )
-
-    # Маршрутизация на основе категории
-    if category == "питание растений":
-        # Специализированный обработчик для питания (с кнопками follow-up)
-        print(f"[unified_entry] Routing to NUTRITION handler")
-
-        from src.handlers.consultation.pitanie_rastenii import process_nutrition_consultation
-        await process_nutrition_consultation(
-            message=message,
-            user_id=internal_user_id,
-            category=category,
-            culture=culture,
-            root_question=question_text,
-            classification_cost_usd=classification_cost,
-            classification_tokens=classification_tokens,
-        )
-    else:
-        # Общий обработчик для остальных категорий
-        print(f"[unified_entry] Routing to GENERAL handler")
-
-        await process_general_consultation(
-            message=message,
-            user_id=internal_user_id,
-            category=category,
-            culture=culture,
-            root_question=question_text,
-            classification_cost_usd=classification_cost,
-            classification_tokens=classification_tokens,
-        )
 
 
 async def process_general_consultation(
@@ -597,13 +698,14 @@ async def process_general_consultation(
     root_question: str,
     classification_cost_usd: float = 0.0,
     classification_tokens: int = 0,
+    correction_hint: str | None = None,
 ) -> None:
     """
     Обрабатывает общую консультацию (не питание растений).
 
     Логика:
     - CASE 1: Культура неясна → уточняющие вопросы БЕЗ RAG, БЕЗ compose
-    - CASE 2: Культура общая (клубника/малина общая) → запрос типа БЕЗ RAG, БЕЗ compose
+    - CASE 2: УДАЛЕН (default летняя)
     - CASE 3: Культура конкретна → финальный ответ С RAG, С compose
     """
     user = message.from_user
@@ -644,6 +746,7 @@ async def process_general_consultation(
         session_id=session_id,
         classification_cost_usd=classification_cost_usd,
         classification_tokens=classification_tokens,
+        correction_hint=correction_hint,
     )
 
     print(f"[process_general] category={category!r}, culture={culture!r}")
@@ -793,22 +896,44 @@ async def handle_clarification_answer(message: Message) -> None:
     await _process_culture_and_respond(message, context)
 
 
-# ==== ОБРАБОТЧИК 3: Корневой обработчик (без активного состояния) ====
+# ==== ОБРАБОТЧИК 3: Follow-up вопросы (состояние waiting_followup) ====
 
-@router.message(F.text & ~F.text.startswith("/"))
-async def handle_consultation_root(message: Message) -> None:
+@router.message(
+    lambda m: m.from_user is not None
+    and CONSULTATION_STATE.get(m.from_user.id) == "waiting_followup"
+)
+async def handle_followup_question(message: Message) -> None:
     """
-    Обработка текстовых сообщений без активного состояния.
-    Это начальная точка входа для консультаций.
+    БЛОКИРУЕТ прямой текстовый ввод в состоянии waiting_followup.
+    Требует нажатия инлайн-кнопки "Уточняющий вопрос" или "Новая тема".
+    """
+    user = message.from_user
+    if user is None:
+        return
+
+    await message.answer(
+        "Пожалуйста, выберите один из вариантов:\n"
+        "• <b>Задать уточняющий вопрос</b> — продолжить текущую тему\n"
+        "• <b>Задать вопрос по новой теме</b> — начать новую консультацию",
+        reply_markup=get_followup_keyboard(),
+    )
+
+
+# ==== ОБРАБОТЧИК 3.1: Логика follow-up вопроса (вызывается из callback) ====
+
+async def process_followup_question_logic(message: Message) -> None:
+    """
+    Обработка follow-up вопросов в режиме консультации.
+    Вызывается только когда пользователь уже получил ответ и задаёт уточняющий вопрос.
 
     Логика:
-    1. Определяем культуру
-    2. CASE 1: Культура неясна (не определено / общая информация) → уточняющие вопросы БЕЗ RAG
-    3. CASE 2: Культура общая (клубника общая / малина общая) → запрос типа (летняя/ремонтантная)
+    1. Проверяем открытый топик с историей
+    2. Определяем смену темы через LLM
+    3. CASE 1: Культура неясна → уточняющие вопросы БЕЗ RAG
     4. CASE 3: Культура конкретна → финальный ответ С RAG
     """
 
-    print("DEBUG: handle_consultation_root получил сообщение:", message.text)
+    print("DEBUG: process_followup_question_logic получил сообщение:", message.text)
 
     user = message.from_user
     session_id = build_session_id_from_message(message)
@@ -824,9 +949,6 @@ async def handle_consultation_root(message: Message) -> None:
         first_name = None
         last_name = None
 
-    # Проверяем, есть ли у пользователя активное состояние консультации
-    has_active_state = telegram_user_id in CONSULTATION_STATE
-
     # Пользователь
     user_id = await get_or_create_user(
         telegram_user_id=telegram_user_id,
@@ -834,46 +956,6 @@ async def handle_consultation_root(message: Message) -> None:
         first_name=first_name,
         last_name=last_name,
     )
-
-    # Проверяем, есть ли открытый топик с сообщениями (активная консультация)
-    from src.services.db.topics_repo import get_topic_message_count
-    from src.services.db.pool import get_pool
-
-    pool = get_pool()
-    async with pool.acquire() as conn:
-        # Ищем открытый топик
-        row = await conn.fetchrow(
-            """
-            SELECT id FROM topics
-            WHERE user_id = $1 AND status = 'open'
-            ORDER BY created_at DESC
-            LIMIT 1
-            """,
-            user_id,
-        )
-
-    # Если нет активного состояния и нет открытого топика с историей — просим выбрать пункт меню
-    if not has_active_state:
-        if row is None:
-            # Нет открытого топика вообще
-            from src.keyboards.main.main_menu import get_main_keyboard
-            await message.answer(
-                "Пожалуйста, выберите пункт из меню.",
-                reply_markup=get_main_keyboard(),
-            )
-            return
-        else:
-            # Есть топик — проверяем, есть ли в нём сообщения
-            topic_id_check = row["id"]
-            msg_count = await get_topic_message_count(topic_id_check)
-            if msg_count == 0:
-                # Топик пустой — просим выбрать пункт меню
-                from src.keyboards.main.main_menu import get_main_keyboard
-                await message.answer(
-                    "Пожалуйста, выберите пункт из меню.",
-                    reply_markup=get_main_keyboard(),
-                )
-                return
 
     # Тема
     topic_id = await get_or_create_open_topic(
@@ -890,8 +972,6 @@ async def handle_consultation_root(message: Message) -> None:
         set_topic_culture,
         get_topic_category,
         set_topic_category,
-        get_follow_up_questions_left,
-        decrement_follow_up_questions,
         close_open_topics,
     )
     from src.services.llm.classification_llm import compare_topics_for_change, detect_category_and_culture
@@ -900,53 +980,45 @@ async def handle_consultation_root(message: Message) -> None:
     topic_status = await get_topic_status(topic_id)
     culture = await get_topic_culture(topic_id)
     saved_category = await get_topic_category(topic_id)
-    questions_left = await get_follow_up_questions_left(topic_id)
 
-    print(f"[entry] BEFORE: topic_id={topic_id}, msg_count={message_count_before}, status={topic_status}, culture={culture!r}, questions_left={questions_left}")
+    print(f"[followup] BEFORE: topic_id={topic_id}, msg_count={message_count_before}, status={topic_status}, culture={culture!r}")
 
-    # Определяем, является ли это потенциальным follow-up
+    # Определяем, является ли это потенциальным follow-up (есть история в топике)
     is_potential_followup = (
         topic_status == "open"
         and culture is not None
-        and telegram_user_id not in CONSULTATION_STATE
         and message_count_before > 0
     )
 
     # Переменная для отслеживания смены темы
     topic_changed = False
     creating_message = None
-    # Накапливаем стоимость классификации
+    correction_hint = None
     classification_cost_usd = 0.0
     classification_tokens = 0
 
-    # Если это потенциальный follow-up - проверяем смену темы через LLM
     if is_potential_followup:
-        print(f"[entry] Potential follow-up detected, checking topic change...")
-        print(f"[entry] Saved category: {saved_category!r}, saved culture: {culture!r}")
+        print(f"[followup] Potential follow-up detected, checking topic change...")
+        print(f"[followup] Saved category: {saved_category!r}, saved culture: {culture!r}")
 
-        # ВАЖНО: Категория НЕ меняется для follow-up, используем сохраненную
         detected_category = saved_category or "не определена"
 
-        # Если культура ещё не определена - НЕ проверяем смену темы,
-        # просто продолжаем как same_topic (уточняющий вопрос)
         if culture in ("не определено", "общая информация"):
-            print(f"[entry] Culture not yet defined - treating as same_topic, skipping topic change check")
+            print(f"[followup] Culture not yet defined - treating as same_topic, skipping topic change check")
             topic_change = "same_topic"
             new_culture = culture
+            new_correction_hint = None
         else:
-            # Получаем контекст предыдущих сообщений
             context_text = await get_message_context(topic_id, limit=3)
 
-            # Классифицируем новый вопрос ТОЛЬКО для определения культуры
-            new_category, new_culture, class_cost, class_tokens = await detect_category_and_culture(user_text)
+            new_category, new_culture, new_correction_hint, class_cost, class_tokens = await detect_category_and_culture(user_text)
             classification_cost_usd += class_cost
             classification_tokens += class_tokens
-            print(f"[entry] New classification: category={new_category!r}, culture={new_culture!r}, cost=${class_cost:.6f}")
-            print(f"[entry] BUT keeping saved category: {detected_category!r}")
+            print(f"[followup] New classification: category={new_category!r}, culture={new_culture!r}, cost=${class_cost:.6f}")
+            print(f"[followup] BUT keeping saved category: {detected_category!r}")
 
-            # Сравниваем ТОЛЬКО культуры (категория фиксирована)
             topic_change, compare_cost, compare_tokens = await compare_topics_for_change(
-                old_category=detected_category,  # Используем СОХРАНЕННУЮ категорию
+                old_category=detected_category,
                 old_culture=culture,
                 new_question=user_text,
                 context_messages=context_text,
@@ -954,61 +1026,52 @@ async def handle_consultation_root(message: Message) -> None:
             classification_cost_usd += compare_cost
             classification_tokens += compare_tokens
 
-        print(f"[entry] Culture change decision: {topic_change!r}")
+        print(f"[followup] Culture change decision: {topic_change!r}")
+
+        if new_correction_hint and topic_change != "clear_change":
+            print(f"[followup] CORRECTION HINT detected in follow-up — forcing clear_change")
+            topic_change = "clear_change"
+            new_culture = "не определено"
 
         if topic_change == "clear_change":
-            # ЯВНАЯ СМЕНА КУЛЬТУРЫ - создаем новый топик С ТОЙ ЖЕ КАТЕГОРИЕЙ
-            print(f"[entry] CLEAR CULTURE CHANGE - creating new topic with same category")
-
-            # Показываем сообщение о создании новой темы
+            print(f"[followup] CLEAR CULTURE CHANGE - creating new topic with same category")
             creating_message = await message.answer("📝 Создается новая тема консультации...")
-
-            # Закрываем старый топик
             await close_open_topics(user_id)
-
-            # Создаем новый топик (счётчик автоматически = 3)
             topic_id = await get_or_create_open_topic(
                 user_id=user_id,
                 session_id=session_id,
             )
-
-            # Устанавливаем ТУ ЖЕ категорию и новую культуру
-            await set_topic_category(topic_id, detected_category)  # СОХРАНЯЕМ категорию!
+            await set_topic_category(topic_id, detected_category)
             await set_topic_culture(topic_id, new_culture)
             culture = new_culture
+            correction_hint = new_correction_hint
             topic_changed = True
-
-            print(f"[entry] NEW topic created: topic_id={topic_id}, category={detected_category!r}, culture={culture!r}")
+            print(f"[followup] NEW topic created: topic_id={topic_id}, category={detected_category!r}, culture={culture!r}")
 
         elif topic_change == "same_topic":
-            # ТА ЖЕ ТЕМА - уточняющий вопрос
-            print(f"[entry] SAME TOPIC - follow-up question")
-            # Используем сохраненную категорию из топика
+            print(f"[followup] SAME TOPIC - follow-up question")
             detected_category = saved_category or "не определена"
 
         else:  # unclear
-            # НЕОПРЕДЕЛЕННО - остаемся на той же теме
-            print(f"[entry] UNCLEAR - staying on same topic")
-            # Используем сохраненную категорию из топика
+            print(f"[followup] UNCLEAR - staying on same topic")
             detected_category = saved_category or "не определена"
     else:
-        # Это первый вопрос - переопределяем культуру И категорию
-        print(f"[entry] First question or new consultation, detecting category and culture")
-        detected_category, detected_culture, class_cost, class_tokens = await detect_category_and_culture(user_text)
+        # Нет истории в топике — первый вопрос в этом follow-up (редкий случай)
+        print(f"[followup] No history in topic, detecting category and culture")
+        detected_category, detected_culture, correction_hint, class_cost, class_tokens = await detect_category_and_culture(user_text)
         classification_cost_usd += class_cost
         classification_tokens += class_tokens
 
-        # Сохраняем категорию в топике
         await set_topic_category(topic_id, detected_category)
 
         if detected_culture:
             await set_topic_culture(topic_id, detected_culture)
             culture = detected_culture
-            print(f"[entry] Detected: category={detected_category!r}, culture={culture}, cost=${class_cost:.6f}")
+            print(f"[followup] Detected: category={detected_category!r}, culture={culture}, cost=${class_cost:.6f}")
         else:
             await set_topic_culture(topic_id, "не определено")
             culture = "не определено"
-            print(f"[entry] Culture not detected, saved: {culture}")
+            print(f"[followup] Culture not detected, saved: {culture}")
 
     # Логируем сообщение пользователя
     await log_message(
@@ -1019,23 +1082,36 @@ async def handle_consultation_root(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    # ПОСЛЕ логирования: уменьшаем счётчик если это follow-up (НЕ смена темы)
+    # ПОСЛЕ логирования: списываем вопросы если это follow-up (НЕ смена темы)
     if is_potential_followup and not topic_changed:
-        questions_left = await decrement_follow_up_questions(topic_id)
-        print(f"[entry] Decremented counter: questions_left={questions_left}")
+        followup_cost = get_consultation_cost(detected_category)
+        if not await has_sufficient_tokens(user_id, followup_cost):
+            balance = await get_token_balance(user_id)
+            await message.answer(
+                f"У вас недостаточно вопросов.\n\n"
+                f"Стоимость: {pluralize_questions(followup_cost)}\n"
+                f"Ваш баланс: {pluralize_questions(balance)}\n\n"
+                f"Для пополнения перейдите в «Мой профиль» → «Пополнить баланс»."
+            )
+            return
+        await deduct_tokens(user_id, followup_cost, "follow_up", f"Уточняющий вопрос: {detected_category}")
+        print(f"[followup] Charged {followup_cost} questions for follow-up question")
 
     # ==== ГИБРИДНЫЙ ПОТОК: 3 варианта в зависимости от культуры ====
 
-    print(f"[HYBRID_FLOW] category={detected_category!r}, culture={culture!r}")
+    print(f"[HYBRID_FLOW_FOLLOWUP] category={detected_category!r}, culture={culture!r}")
 
     # CASE 1: Культура неясна → уточняющие вопросы БЕЗ RAG
     # НО: для follow-up вопросов НЕ задаем уточняющие вопросы повторно
     should_skip_clarification = is_potential_followup and not topic_changed
     if should_skip_clarification:
-        print(f"[HYBRID_FLOW] This is a follow-up question - skipping clarification, using CASE 3")
+        print(f"[HYBRID_FLOW_FOLLOWUP] This is a follow-up question - skipping clarification, using CASE 3")
 
     if culture in ("не определено", "общая информация") and not should_skip_clarification:
-        print(f"[HYBRID_FLOW] CASE 1: Vague culture - asking clarification WITHOUT RAG")
+        print(f"[HYBRID_FLOW_FOLLOWUP] CASE 1: Vague culture - asking clarification WITHOUT RAG")
+
+        if correction_hint:
+            await message.answer(f"💡 {correction_hint}")
 
         status_mgr = StatusMessageManager(message, use_rag=False)
         await status_mgr.start()
@@ -1049,29 +1125,27 @@ async def handle_consultation_root(message: Message) -> None:
                 topic_id=topic_id,
                 consultation_category=detected_category,
                 culture=culture,
-                skip_rag=True,  # БЕЗ RAG для уточняющих вопросов!
+                skip_rag=True,
                 classification_cost_usd=classification_cost_usd,
                 classification_tokens=classification_tokens,
                 status_updater=status_mgr.update,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
+            await status_mgr.complete()
             reply_text = (
-                "Сейчас не получается обработать запрос через модель. "
-                "Попробуйте ещё раз чуть позже."
+                "Произошла ошибка при обращении к модели. "
+                "Попробуйте отправить вопрос ещё раз."
             )
         finally:
             await status_mgr.complete()
 
-        # Отправляем ответ (уточняющий вопрос или финальный ответ)
         await send_long_message(message, reply_text)
 
-        # Если LLM задал уточняющий вопрос - переводим в состояние ожидания ответа
         if is_clarification_question(reply_text):
-            print(f"[HYBRID_FLOW] LLM asked clarification question, setting state")
+            print(f"[HYBRID_FLOW_FOLLOWUP] LLM asked clarification question, setting state")
             CONSULTATION_STATE[telegram_user_id] = "waiting_clarification_answer"
 
-            # Используем новую структуру контекста с clarifications
             context = _init_consultation_context(
                 telegram_user_id=telegram_user_id,
                 root_question=user_text,
@@ -1085,7 +1159,6 @@ async def handle_consultation_root(message: Message) -> None:
             )
             _add_clarification(context, "culture", reply_text)
 
-            # Логируем только ответ бота (уточняющий вопрос)
             await log_message(
                 user_id=user_id,
                 direction="bot",
@@ -1093,58 +1166,18 @@ async def handle_consultation_root(message: Message) -> None:
                 session_id=session_id,
                 topic_id=topic_id,
             )
-
-            # НЕ добавляем в moderation для уточняющих вопросов
-            # Завершаем обработку - ждём ответа пользователя
             return
-
-        # Если это был финальный ответ (не уточняющий вопрос) - продолжаем логирование ниже
-
-    # CASE 2: Культура общая (клубника общая / малина общая) → запрос типа
-    # НО: для follow-up вопросов НЕ задаем уточняющие вопросы повторно
-    elif culture in ("клубника общая", "малина общая") and not should_skip_clarification:
-        print(f"[HYBRID_FLOW] CASE 2: General culture - asking variety")
-
-        if culture == "клубника общая":
-            variety_question = "Какая у вас клубника: летняя (июньская) или ремонтантная (НСД)?"
-        else:  # малина общая
-            variety_question = "Какая у вас малина: летняя (обычная) или ремонтантная?"
-
-        # Сохраняем контекст с новой структурой clarifications
-        CONSULTATION_STATE[telegram_user_id] = "waiting_variety_clarification"
-        context = _init_consultation_context(
-            telegram_user_id=telegram_user_id,
-            root_question=user_text,
-            category=detected_category,
-            culture=culture,
-            user_id=user_id,
-            topic_id=topic_id,
-            session_id=session_id,
-            classification_cost_usd=classification_cost_usd,
-            classification_tokens=classification_tokens,
-        )
-        _add_clarification(context, "variety", variety_question)
-
-        await message.answer(variety_question)
-        # Логируем уточняющий вопрос бота
-        await log_message(
-            user_id=user_id,
-            direction="bot",
-            text=variety_question,
-            session_id=session_id,
-            topic_id=topic_id,
-        )
-        return
 
     # CASE 3: Культура конкретна → финальный ответ С RAG
     else:
-        print(f"[HYBRID_FLOW] CASE 3: Specific culture - final answer WITH RAG")
+        print(f"[HYBRID_FLOW_FOLLOWUP] CASE 3: Specific culture - final answer WITH RAG")
+
+        if correction_hint:
+            await message.answer(f"💡 {correction_hint}")
 
         status_mgr = StatusMessageManager(message)
         await status_mgr.start()
 
-        # Формируем красивый вопрос для RAG (даже без уточнений)
-        # Для follow-up вопросов добавляем культурный контекст
         culture_context = culture if (is_potential_followup and not topic_changed) else None
         composed_q, compose_cost, compose_tokens = await compose_full_question(
             user_text,
@@ -1161,31 +1194,38 @@ async def handle_consultation_root(message: Message) -> None:
                 topic_id=topic_id,
                 consultation_category=detected_category,
                 culture=culture,
-                skip_rag=False,  # С RAG для финального ответа!
-                composed_question=composed_q,  # Красиво сформированный вопрос
-                compose_cost_usd=compose_cost,  # Стоимость формирования вопроса
-                compose_tokens=compose_tokens,  # Токены формирования вопроса
+                skip_rag=False,
+                composed_question=composed_q,
+                compose_cost_usd=compose_cost,
+                compose_tokens=compose_tokens,
                 classification_cost_usd=classification_cost_usd,
                 classification_tokens=classification_tokens,
                 status_updater=status_mgr.update,
+                stream=True,
+                streaming_transition=status_mgr.start_streaming,
             )
         except Exception as e:
             print(f"ERROR in ask_consultation_llm: {e}")
-            reply_text = (
-                "Сейчас не получается обработать запрос через модель. "
-                "Попробуйте ещё раз чуть позже."
-            )
-        finally:
             await status_mgr.complete()
+            reply_text = (
+                "Произошла ошибка при обращении к модели. "
+                "Попробуйте отправить вопрос ещё раз."
+            )
 
-            # Удаляем сообщение "Создается новая тема" если оно есть
-            if creating_message:
-                try:
-                    await creating_message.delete()
-                except Exception as e:
-                    print(f"[entry] Failed to delete creating_message: {e}")
+        streaming_msg = status_mgr.get_streaming_message()
+        await status_mgr.complete()
 
-        await send_long_message(message, reply_text)
+        if creating_message:
+            try:
+                await creating_message.delete()
+            except Exception as e:
+                print(f"[followup] Failed to delete creating_message: {e}")
+
+        await finalize_streaming_message(
+            streaming_msg, message, reply_text,
+            keyboard=get_followup_keyboard(detected_category),
+            show_followup_prompt=True,
+        )
 
     # Логируем ответ бота
     await log_message(
@@ -1208,27 +1248,40 @@ async def handle_consultation_root(message: Message) -> None:
     except Exception as e:
         print(f"ERROR in moderation_add: {e}")
 
-    # Отправляем информацию о количестве оставшихся вопросов
-    # ТОЛЬКО если это финальный ответ (не уточняющий вопрос LLM из CASE 1)
-    if culture not in ("не определено", "общая информация"):
-        questions_left = await get_follow_up_questions_left(topic_id)
-        await send_followup_count_message(message, questions_left, topic_id, detected_category)
+    # Переводим в состояние ожидания выбора типа вопроса (инлайн-кнопки)
+    CONSULTATION_STATE[telegram_user_id] = "waiting_followup"
 
 
-# ===== CALLBACK ОБРАБОТЧИКИ ДЛЯ КНОПОК =====
+# ==== CALLBACK ОБРАБОТЧИКИ ДЛЯ FOLLOW-UP КНОПОК =====
 
-from aiogram.types import CallbackQuery
-
-@router.callback_query(F.data == "get_more_followup_questions")
-async def handle_get_more_questions(callback: CallbackQuery) -> None:
-    """Обработчик кнопки "Получить еще 3 уточняющих вопроса"."""
+@router.callback_query(F.data == "followup_type:clarification")
+async def handle_followup_clarification_callback(callback: CallbackQuery) -> None:
+    """Обработчик кнопки "Задать уточняющий вопрос"."""
     if callback.from_user is None:
         await callback.answer("Ошибка: пользователь не определен")
         return
 
     telegram_user_id = callback.from_user.id
 
-    # Получаем внутренний user_id
+    # Переводим в состояние ожидания уточняющего вопроса
+    CONSULTATION_STATE[telegram_user_id] = "waiting_followup_text"
+
+    if callback.message:
+        await callback.message.answer("Напишите уточняющий вопрос:")
+
+    await callback.answer()
+
+
+@router.callback_query(F.data == "followup_type:new_topic")
+async def handle_followup_new_topic_callback(callback: CallbackQuery) -> None:
+    """Обработчик кнопки "Задать вопрос по новой теме"."""
+    if callback.from_user is None:
+        await callback.answer("Ошибка: пользователь не определен")
+        return
+
+    telegram_user_id = callback.from_user.id
+
+    # Получаем user_id
     user_id = await get_or_create_user(
         telegram_user_id=telegram_user_id,
         username=callback.from_user.username,
@@ -1236,55 +1289,49 @@ async def handle_get_more_questions(callback: CallbackQuery) -> None:
         last_name=callback.from_user.last_name,
     )
 
-    # Проверяем баланс токенов
-    if not await has_sufficient_tokens(user_id, COST_ADDITIONAL_QUESTIONS):
-        balance = await get_token_balance(user_id)
-        await callback.answer(
-            f"Недостаточно токенов! Нужно: {COST_ADDITIONAL_QUESTIONS}, у вас: {balance}",
-            show_alert=True
-        )
-        return
+    # Закрываем все топики
+    from src.services.db.topics_repo import close_open_topics
+    await close_open_topics(user_id)
 
-    # Списываем токен
-    success = await deduct_tokens(
-        user_id,
-        COST_ADDITIONAL_QUESTIONS,
-        "buy_questions",
-        "3 дополнительных вопроса"
-    )
-    if not success:
-        await callback.answer("Ошибка списания токенов", show_alert=True)
-        return
+    # Очищаем контекст и состояние
+    CONSULTATION_CONTEXT.pop(telegram_user_id, None)
+    CONSULTATION_STATE[telegram_user_id] = "waiting_consultation_question"
 
-    # Получаем session_id из callback.message
-    if callback.message is None:
-        await callback.answer("Ошибка: сообщение не найдено")
-        return
-
-    session_id = build_session_id_from_message(callback.message)
-
-    # Получаем топик
-    from src.services.db.topics_repo import reset_follow_up_questions
-    topic_id = await get_or_create_open_topic(user_id=user_id, session_id=session_id)
-
-    # Сбрасываем счётчик
-    await reset_follow_up_questions(topic_id)
-    questions_left = await get_follow_up_questions_left(topic_id)
-
-    print(f"[get_more_questions] Reset: user={telegram_user_id}, topic={topic_id}, left={questions_left}")
-
-    # Подтверждение
-    await callback.answer(f"✅ Получено 3 вопроса за {COST_ADDITIONAL_QUESTIONS} токен!")
-
-    # Обновляем сообщение
+    # Запрос нового вопроса с инлайн-кнопками примеров
     if callback.message:
-        try:
-            await callback.message.edit_text(
-                f"{callback.message.text}\n\n✅ Получено еще 3 уточняющих вопроса."
-            )
-        except Exception as e:
-            print(f"[get_more_questions] Failed to edit: {e}")
+        await callback.message.answer(CONSULTATION_ENTRY_TEXT, reply_markup=get_example_questions_keyboard())
 
+    await callback.answer("✅ Начинаем новую тему")
+
+
+# ==== ОБРАБОТЧИК 3.2: Текст уточняющего вопроса после нажатия кнопки ====
+
+@router.message(
+    lambda m: m.from_user is not None
+    and CONSULTATION_STATE.get(m.from_user.id) == "waiting_followup_text"
+)
+async def handle_followup_text(message: Message) -> None:
+    """Обработка текста уточняющего вопроса после нажатия кнопки."""
+    await process_followup_question_logic(message)
+
+
+# ==== ОБРАБОТЧИК 4: Корневой обработчик (без активного состояния — НЕ вызывает LLM) ====
+
+@router.message(F.text & ~F.text.startswith("/"))
+async def handle_consultation_root(message: Message) -> None:
+    """
+    Catch-all для текстовых сообщений без активного состояния консультации.
+    НЕ вызывает LLM — просто просит выбрать пункт меню.
+    """
+    from src.keyboards.main.main_menu import get_main_keyboard
+    await message.answer(
+        "Пожалуйста, выберите пункт из меню.",
+        reply_markup=get_main_keyboard(),
+    )
+
+
+
+# ===== CALLBACK ОБРАБОТЧИКИ ДЛЯ КНОПОК =====
 
 @router.callback_query(F.data == "new_consultation_topic")
 async def handle_new_topic_callback(callback: CallbackQuery) -> None:
@@ -1311,16 +1358,9 @@ async def handle_new_topic_callback(callback: CallbackQuery) -> None:
     CONSULTATION_CONTEXT.pop(telegram_user_id, None)
     CONSULTATION_STATE[telegram_user_id] = "waiting_consultation_question"
 
-    # Запрос нового вопроса
-    text = (
-        "Опишите, пожалуйста, ваш вопрос одним сообщением:\n"
-        "— какая культура (и сорт, если знаете);\n"
-        "— в каком регионе/климате вы находитесь;\n"
-        "— что именно вас волнует (питание, посадка, болезни и т.п.)."
-    )
-
+    # Запрос нового вопроса с инлайн-кнопками примеров
     if callback.message:
-        await callback.message.answer(text)
+        await callback.message.answer(CONSULTATION_ENTRY_TEXT, reply_markup=get_example_questions_keyboard())
 
     await callback.answer("✅ Начинаем новую тему")
     print(f"[new_topic_callback] New topic for user {telegram_user_id}")

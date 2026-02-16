@@ -7,14 +7,17 @@ import styles from './ChunkPassportEditor.module.css'
 function generatePrefixPreview(passport: UpdatePassportDto): string {
   const parts: string[] = []
 
-  // Фильтруем "общая"
-  const cultures = (passport.cultures || []).filter(c => c !== 'общая')
-  const goals = (passport.goals || []).filter(g => g !== 'общая')
-  const phases = (passport.growth_phases || []).filter(p => p !== 'общая')
+  const allCultures = passport.cultures || []
+  const allGoals = passport.goals || []
+  const allPhases = passport.growth_phases || []
   const subtypes = passport.culture_subtypes || {}
 
+  const cultures = allCultures.filter(c => c !== 'общая')
+  const goals = allGoals.filter(g => g !== 'общая')
+  const phases = allPhases.filter(p => p !== 'общая')
+
+  // Культуры
   if (cultures.length > 0) {
-    // Формируем каждую культуру с её подтипом
     const cultureParts = cultures.map(culture => {
       const subtype = subtypes[culture]
       if (subtype && subtype !== 'общая') {
@@ -23,14 +26,22 @@ function generatePrefixPreview(passport: UpdatePassportDto): string {
       return culture
     })
     parts.push(`[${cultures.length === 1 ? 'Культура' : 'Культуры'}: ${cultureParts.join(', ')}]`)
+  } else if (allCultures.includes('общая')) {
+    parts.push('[Подходит ко всем культурам]')
   }
 
+  // Цели
   if (goals.length > 0) {
     parts.push(`[${goals.length === 1 ? 'Цель' : 'Цели'}: ${goals.join(', ')}]`)
+  } else if (allGoals.includes('общая')) {
+    parts.push('[Подходит ко всем типам работ]')
   }
 
+  // Фазы
   if (phases.length > 0) {
     parts.push(`[${phases.length === 1 ? 'Фаза' : 'Фазы'}: ${phases.join(', ')}]`)
+  } else if (allPhases.includes('общая')) {
+    parts.push('[Подходит ко всем фазам роста]')
   }
 
   return parts.join(' ') || '(пусто)'
@@ -66,6 +77,7 @@ export function ChunkPassportEditor() {
   // Редактируемый текст и контекст
   const [chunkText, setChunkText] = useState('')
   const [context, setContext] = useState('')
+  const [showAssembled, setShowAssembled] = useState(false)
 
   // Отслеживание изменений (isDirty)
   const [savedState, setSavedState] = useState<{
@@ -109,10 +121,21 @@ export function ChunkPassportEditor() {
     return result
   }, [passport.cultures, passportOptions])
 
+  // Заполняем подтипы "общая" для культур, у которых нет подтипа
+  const ensureSubtypes = (cultures: string[], subtypes: Record<string, string>) => {
+    const result = { ...subtypes }
+    for (const culture of cultures) {
+      if (!result[culture]) {
+        result[culture] = 'общая'
+      }
+    }
+    return result
+  }
+
   // Синхронизация с текущим чанком
   useEffect(() => {
     if (currentChunk) {
-      const newPassport = currentChunk.is_passported
+      const basePassport = currentChunk.is_passported
         ? {
             cultures: currentChunk.cultures || [],
             culture_subtypes: currentChunk.culture_subtypes || {},
@@ -121,18 +144,18 @@ export function ChunkPassportEditor() {
           }
         : lastPassportSelection
 
+      const newPassport = {
+        ...basePassport,
+        culture_subtypes: ensureSubtypes(basePassport.cultures, basePassport.culture_subtypes || {}),
+      }
+
       setPassport(newPassport)
       setChunkText(currentChunk.chunk_text || '')
       setContext(currentChunk.context || '')
 
-      // Сохраняем начальное состояние
+      // Сохраняем начальное состояние (с ensureSubtypes чтобы isDirty работал корректно)
       setSavedState({
-        passport: {
-          cultures: currentChunk.cultures || [],
-          culture_subtypes: currentChunk.culture_subtypes || {},
-          goals: currentChunk.goals || [],
-          growth_phases: currentChunk.growth_phases || [],
-        },
+        passport: { ...newPassport },
         chunkText: currentChunk.chunk_text || '',
         context: currentChunk.context || '',
       })
@@ -150,10 +173,15 @@ export function ChunkPassportEditor() {
         ? arr.filter(v => v !== value)
         : [...arr, value]
 
-      // Если снимаем культуру, убираем её подтип
-      if (field === 'cultures' && !newArr.includes(value)) {
+      if (field === 'cultures') {
         const newSubtypes = { ...prev.culture_subtypes }
-        delete newSubtypes[value]
+        if (!newArr.includes(value)) {
+          // Снимаем культуру — убираем её подтип
+          delete newSubtypes[value]
+        } else if (!newSubtypes[value]) {
+          // Добавляем культуру — ставим подтип "общая" по умолчанию
+          newSubtypes[value] = 'общая'
+        }
         return { ...prev, [field]: newArr, culture_subtypes: newSubtypes }
       }
 
@@ -165,11 +193,7 @@ export function ChunkPassportEditor() {
   const updateCultureSubtype = (cultureName: string, subtype: string) => {
     setPassport(prev => {
       const newSubtypes = { ...prev.culture_subtypes }
-      if (subtype) {
-        newSubtypes[cultureName] = subtype
-      } else {
-        delete newSubtypes[cultureName]
-      }
+      newSubtypes[cultureName] = subtype || 'общая'
       return { ...prev, culture_subtypes: newSubtypes }
     })
   }
@@ -325,6 +349,21 @@ export function ChunkPassportEditor() {
               {isGeneratingContext ? '⏳' : '✨'}
             </button>
           </div>
+
+          {/* Assembled text — то что реально уходит в LLM */}
+          <div className={styles.assembledSection}>
+            <button
+              className={styles.btnToggleAssembled}
+              onClick={() => setShowAssembled(!showAssembled)}
+            >
+              {showAssembled ? '▼' : '▶'} Текст для LLM (prefix + context + chunk)
+            </button>
+            {showAssembled && (
+              <pre className={styles.assembledText}>
+                {currentChunk?.assembled_text || '(нет данных)'}
+              </pre>
+            )}
+          </div>
         </div>
 
         {/* Right: Passport form */}
@@ -358,12 +397,11 @@ export function ChunkPassportEditor() {
                   <div key={cultureName} className={styles.subtypeRow}>
                     <span className={styles.subtypeCultureName}>{cultureName}:</span>
                     <select
-                      value={passport.culture_subtypes[cultureName] || ''}
+                      value={passport.culture_subtypes[cultureName] || 'общая'}
                       onChange={e => updateCultureSubtype(cultureName, e.target.value)}
                       disabled={isUpdating}
                       className={styles.subtypeSelect}
                     >
-                      <option value="">— общий —</option>
                       {subtypes.map(s => (
                         <option key={s.id} value={s.name}>{s.name}</option>
                       ))}
@@ -451,7 +489,7 @@ export function ChunkPassportEditor() {
           <button
             className={styles.btnSave}
             onClick={handleSave}
-            disabled={isUpdating || currentChunkIndex === chunks.length - 1}
+            disabled={isUpdating}
           >
             {isUpdating ? 'Сохранение...' : 'Сохранить →'}
           </button>

@@ -1,1406 +1,1520 @@
-# Session Summary — 2026-02-12
+# Session Summary — 2026-02-16
 
 ## Project Context
 
 **Sadovniki-bot** — Telegram-бот для профессиональных консультаций по ягодным культурам с RAG-системой на базе PostgreSQL + pgvector и OpenAI GPT.
 
-**Current Stage:** Production-ready system (v1.2.2) with troubleshooting OpenAI API configuration.
+**Current Stage:** Production system (v1.2.2 → v1.2.3) with massive feature enhancements and system improvements.
 
 **Tech Stack:**
 - Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
 - Frontend: React + TypeScript (Admin Panel), Vite
 - Database: PostgreSQL 16 + pgvector
-- AI: OpenAI GPT models with configurable temperature, database-driven prompts
+- AI: OpenAI GPT models with flexible configuration, database-driven prompts
 
 ## Session Goal
 
-**Primary Goal:** Diagnose and resolve OpenAI API connection errors preventing the bot from functioning.
+**Primary Goal:** Complete major system enhancements including prompt system redesign, RAG document management v2.0, admin settings infrastructure, pricing system integration, and answer logic configuration.
 
 ## Accomplishments
 
-### 1. OpenAI API Configuration Troubleshooting
+### 1. Complete Prompt System Redesign & Database Migration
 
-**Initial Problem:**
-- Bot startup failed with `APIConnectionError: Connection error` when trying to use OpenAI API
-- Error message indicated connection issue rather than authentication problem
+**Problem:**
+- Outdated prompt system with hardcoded category prompts
+- No database-driven prompt management for consultation categories
+- Culture-specific prompts split across multiple Python files
+- No unified system for prompt versioning and editing
 
-**Investigation Process:**
+**Solution:**
+- Migrated all category prompts to unified database system
+- Created comprehensive schema migration (schema_41) with all category prompts
+- Split culture-specific rules into dedicated database table
+- Implemented prompt preview functionality in admin panel
 
-1. **Examined .env file:**
-   - Located OpenAI model configuration settings
-   - Discovered typo: `OPENAI_MODEL_CLASSIFICATION=gpt-55` (should be `gpt-4o-mini` or similar)
+**Database Changes:**
 
-2. **Checked core_llm.py:**
-   - Verified how model names are loaded from environment variables
-   - Confirmed that invalid model name causes connection error (not model-not-found error)
+1. **`db/schema_40_culture_rules_split.sql`** — Culture rules table
+   - New table: `culture_rules` with fields: culture, nutrition, planting, protection, soil, varieties
+   - Separated culture-specific knowledge from prompt templates
+   - Enables dynamic culture context injection
 
-3. **User Fixed Typo:**
-   - Changed `gpt-55` to `gpt-5`
-   - Revealed the real underlying issue: `insufficient_quota` (429 error)
-   - OpenAI account had run out of balance
+2. **`db/schema_41_category_prompts_migration.sql`** (34KB)
+   - Migrated all category prompts to database
+   - Created prompts for: питание, посадка, защита, почва, сорта, обрезка, другая тема
+   - Culture-specific variants: strawberry, raspberry, currant groups
+   - Total: 20+ prompts covering all consultation scenarios
 
-**Root Causes Identified:**
+**Backend Changes:**
 
-1. **Typo in .env:** `OPENAI_MODEL_CLASSIFICATION=gpt-55`
-   - Non-existent model caused connection error
-   - Misleading error message (connection vs invalid model)
+1. **`src/prompts/consultation_prompts.py`** (553 lines, +400 lines)
+   - Complete rewrite of prompt loading logic
+   - Database-first approach with Python fallback
+   - Dynamic culture context composition
+   - Support for both group-based and culture-specific prompts
 
-2. **OpenAI Account Quota Exhausted:**
-   - After fixing typo, real error emerged: HTTP 429 `insufficient_quota`
-   - Account balance depleted, cannot make API calls
+2. **`src/prompts/base_prompt.py`** (195 lines, +100 lines)
+   - Added minimal base prompt variant
+   - Separated formatting rules from core instructions
+   - Support for database-driven base prompts
 
-**Solution Implemented by User:**
+3. **`src/services/db/prompt_repo.py`** (121 lines, +80 lines)
+   - Enhanced prompt retrieval functions
+   - Added culture-specific prompt selection
+   - Version management for prompts
+   - Active/disabled prompt filtering
 
-User switched to more economical model configuration in `.env`:
+**Frontend Changes:**
 
-```bash
-# Previous configuration (expensive models):
-OPENAI_MODEL_CONSULTATION=gpt-4o
-OPENAI_MODEL_ARTICLE=gpt-4o
-OPENAI_MODEL_CLASSIFICATION=gpt-55  # typo
-OPENAI_MODEL_UTILITY=gpt-4o
+1. **`admin-webapp/src/components/promptPreview/`** (new directory)
+   - `PromptPreview.tsx` — Prompt preview modal
+   - `PromptPreview.module.css` — Styling
+   - Allows admins to preview full composed prompt with culture context
+   - Shows exact prompt that will be sent to LLM
 
-# New configuration (budget-friendly):
-OPENAI_MODEL_CONSULTATION=gpt-5-mini
-OPENAI_MODEL_ARTICLE=gpt-4.1-mini
-OPENAI_MODEL_CLASSIFICATION=gpt-4.1-mini  # fixed typo + cheaper model
-OPENAI_MODEL_UTILITY=gpt-4.1-mini
-```
-
-**Files Examined (No Code Changes Made):**
-
-1. **`.env`** — Environment configuration
-   - Contains OpenAI API key and model settings
-   - User fixed typo and updated to cheaper models
-
-2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/llm/core_llm.py`**
-   - Loads model names from environment variables
-   - Creates OpenAI client and makes API calls
-   - No changes needed (configuration issue, not code issue)
+2. **`admin-webapp/src/services/api.ts`** (+99 lines)
+   - Added prompt preview API endpoint
+   - Added culture rules retrieval
+   - Enhanced prompt management APIs
 
 **Impact:**
-- Bot startup no longer crashes with connection error
-- OpenAI API calls will work (assuming account has balance)
-- More cost-effective model usage reduces API costs
-- System can continue functioning with cheaper GPT models
+- All consultation prompts now manageable via admin UI
+- Instant prompt updates without code deployment
+- Culture-specific context dynamically composed
+- Version history tracking for all prompts
+- A/B testing capability for prompt optimization
 
-**Lessons Learned:**
-1. Model name typos cause misleading `APIConnectionError` instead of "invalid model" error
-2. OpenAI API quota exhaustion returns HTTP 429 `insufficient_quota`
-3. Switching to mini models (gpt-4.1-mini, gpt-5-mini) significantly reduces costs
-4. Always check both model configuration AND account balance when troubleshooting OpenAI errors
-
-## Key Decisions
-
-### Diagnostic Approach
-
-1. **Start with Configuration, Not Code:**
-   - **Decision:** Examine .env file first before diving into source code
-   - **Rationale:**
-     - Connection errors often stem from configuration issues
-     - Environment variables are easier to check than code logic
-     - Misconfigurations are more common than code bugs in mature systems
-   - **Outcome:** Quickly identified typo in model name
-
-2. **Verify Error Message Accuracy:**
-   - **Decision:** After fixing typo, re-run to see if error persists or changes
-   - **Rationale:**
-     - First error might mask underlying issues
-     - OpenAI API error messages can be misleading
-     - Sequential troubleshooting reveals root cause
-   - **Outcome:** Discovered quota exhaustion after fixing typo
-
-3. **Cost Optimization Over Performance:**
-   - **Decision:** User chose cheaper models (mini variants) instead of topping up account
-   - **Rationale:**
-     - Budget constraints
-     - Mini models still provide good quality for most tasks
-     - Consultation bot doesn't need cutting-edge models for all operations
-   - **Trade-offs:**
-     - Slightly lower quality responses possible
-     - Acceptable for classification and utility tasks
-     - Consultation quality may need monitoring
-
-## Problems & Limitations
-
-### Configuration Issues Discovered
-
-1. **Model Name Typo in .env:**
-   - **Issue:** `OPENAI_MODEL_CLASSIFICATION=gpt-55` (typo: should be `gpt-4o-mini` or `gpt-5`)
-   - **Impact:** Bot crashed on startup, unable to make any OpenAI API calls
-   - **Root Cause:** Manual editing of .env file introduced typo
-   - **Solution:** User corrected to `gpt-4.1-mini`
-   - **Prevention:** Add .env validation script to check model names at startup
-
-2. **OpenAI Account Quota Exhausted:**
-   - **Issue:** HTTP 429 `insufficient_quota` error after fixing typo
-   - **Impact:** All OpenAI API calls fail until account is topped up
-   - **Root Cause:** High usage with expensive models (gpt-4o) depleted balance
-   - **Solution:** Switched to cheaper models (gpt-5-mini, gpt-4.1-mini)
-   - **Long-term:** Monitor API usage and set up billing alerts
-
-3. **Misleading Error Messages:**
-   - **Issue:** Invalid model name caused `APIConnectionError` instead of "model not found"
-   - **Impact:** Wasted time investigating network/connection issues
-   - **Root Cause:** OpenAI API error handling doesn't distinguish connection vs model errors
-   - **Learning:** Always check configuration first, even for connection errors
-
-### Technical Debt Identified
-
-1. **No .env Validation:**
-   - **Current State:** .env values loaded without validation
-   - **Risk:** Typos or invalid values cause runtime errors
-   - **Better Approach:** Add startup validation script:
-     ```python
-     # Proposed: src/config/validator.py
-     def validate_openai_models():
-         valid_models = ["gpt-4o", "gpt-4o-mini", "gpt-5", "gpt-5-mini", "gpt-4.1-mini"]
-         for key in ["OPENAI_MODEL_CONSULTATION", "OPENAI_MODEL_CLASSIFICATION", ...]:
-             model = os.getenv(key)
-             if model not in valid_models:
-                 raise ValueError(f"Invalid model {model} for {key}")
-     ```
-   - **Priority:** MEDIUM (prevents startup failures)
-
-2. **No API Usage Monitoring:**
-   - **Current State:** No tracking of OpenAI API costs or usage
-   - **Risk:** Surprise bills, quota exhaustion without warning
-   - **Better Approach:** Log API usage to database, create dashboard
-   - **Priority:** HIGH (cost control)
-
-3. **No Fallback for API Failures:**
-   - **Current State:** Bot crashes if OpenAI API unavailable
-   - **Risk:** Complete service outage during API issues
-   - **Better Approach:** Implement graceful degradation (cached responses, fallback logic)
-   - **Priority:** LOW (OpenAI uptime is generally high)
-
-## Rejected Ideas
-
-### Why Not Top Up OpenAI Account Instead of Switching Models?
-
-- **Proposal:** Add funds to OpenAI account to continue using gpt-4o
-- **Reasons for rejection:**
-  1. Budget constraints: User prefers cost optimization
-  2. Mini models sufficient: Quality difference acceptable for this use case
-  3. Temporary solution: Would deplete again without usage optimization
-  4. Better long-term: Cheaper models reduce ongoing costs
-- **Chosen solution:** Switch to gpt-4.1-mini and gpt-5-mini
-
-### Why Not Add Automatic Model Fallback Logic?
-
-- **Proposal:** If API call fails, automatically try cheaper model
-- **Reasons for rejection:**
-  1. Complexity: Requires retry logic and model hierarchy
-  2. Hidden costs: Users might not know which model was used
-  3. Quality inconsistency: Responses vary between models
-  4. Better approach: Fix configuration properly rather than add workarounds
-- **Chosen solution:** User fixes .env manually
-
-### Why Not Cache OpenAI Responses?
-
-- **Proposal:** Cache common questions to reduce API calls
-- **Reasons for rejection:**
-  1. Not addressing root cause: Typo and quota issue need fixing first
-  2. Complexity: Requires cache invalidation logic
-  3. Staleness: Agriculture advice may change seasonally
-  4. Future consideration: Could implement later for cost optimization
-- **Chosen solution:** Fix configuration first, consider caching later
-
-## Current Code State
-
-### Files Examined (No Changes)
-
-1. **`.env`** (modified by user, not by assistant)
-   - Contains OpenAI API key and model configuration
-   - User fixed typo: `gpt-55` → `gpt-4.1-mini`
-   - User updated all model settings to cheaper variants
-
-2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/llm/core_llm.py`**
-   - Loads model names from environment variables
-   - Creates OpenAI AsyncClient
-   - Makes API calls with error handling
-   - No changes needed (configuration issue, not code bug)
-
-### What's Working
-
-**Configuration:**
-1. **Model Names:** Now valid after user corrections
-2. **API Key:** Valid (quota was the issue, not authentication)
-3. **Environment Loading:** `settings.py` correctly reads .env
-
-**Code:**
-1. **LLM Services:** core_llm.py logic is correct
-2. **Error Handling:** Properly catches and logs OpenAI errors
-3. **Model Loading:** Environment variables correctly passed to OpenAI client
-
-### What Needs Attention
-
-**Configuration:**
-
-1. **OpenAI Account Balance:**
-   - Current status: Depleted (insufficient_quota error)
-   - Action needed: Top up account OR continue with cheaper models
-   - Monitoring needed: Set up billing alerts
-
-2. **Model Configuration Verification:**
-   - New models: gpt-5-mini, gpt-4.1-mini
-   - Need to verify: These model names are correct and supported by OpenAI API
-   - Test: Make test API call to confirm model availability
-
-**Code (Future Enhancements):**
-
-3. **Add .env Validation:**
-   - Create startup validation script
-   - Check model names against known valid models
-   - Fail fast with clear error messages
-
-4. **Add API Usage Tracking:**
-   - Log token usage per request
-   - Calculate costs per consultation
-   - Create usage dashboard in admin panel
-
-## Next Steps
-
-### Immediate (HIGH PRIORITY)
-
-1. **Verify New Model Configuration:**
-   - **Action:** Test bot startup with new model names
-   - **Command:** `python -m src`
-   - **Expected:** Bot starts without errors
-   - **If fails:** Check OpenAI documentation for correct model names
-   - **Risk:** HIGH (bot won't work if model names invalid)
-
-2. **Test OpenAI API Calls:**
-   - **Action:** Send test message to bot to trigger classification
-   - **Test question:** "Когда сажать клубнику?"
-   - **Expected:** Bot responds with consultation answer
-   - **If fails:** Check OpenAI account balance, add funds if needed
-   - **Risk:** HIGH (core functionality)
-
-3. **Monitor Response Quality:**
-   - **Action:** Compare responses from gpt-4.1-mini vs previous gpt-4o responses
-   - **Test categories:**
-     - Classification accuracy (12 culture types)
-     - Consultation quality (detailed advice)
-     - Formatting (markdown rendering)
-   - **Decision:** If quality unacceptable, consider topping up account for premium models
-   - **Risk:** MEDIUM (quality vs cost trade-off)
-
-### Short-term (MEDIUM PRIORITY)
-
-4. **Implement .env Validation Script:**
-   - **File:** `src/config/validator.py`
-   - **Logic:**
-     - Load all required env vars
-     - Check model names against OpenAI supported models list
-     - Validate API key format
-     - Run at startup (call from `src/__main__.py`)
-   - **Benefit:** Catch configuration errors before runtime
-   - **Priority:** MEDIUM (prevents future issues)
-
-5. **Add API Usage Logging:**
-   - **Database:** Add fields to `consultation_logs` table
-     - `model_used` (text)
-     - `tokens_used` (integer)
-     - `cost_usd` (numeric)
-   - **Code:** Update `core_llm.py` to log usage data
-   - **Admin Panel:** Create usage dashboard page
-   - **Benefit:** Track costs, optimize usage
-   - **Priority:** MEDIUM (cost control)
-
-6. **Set Up OpenAI Billing Alerts:**
-   - **Action:** Configure alerts in OpenAI dashboard
-   - **Thresholds:**
-     - Warning at 80% of monthly budget
-     - Critical at 95% of budget
-   - **Benefit:** Prevent surprise quota exhaustion
-   - **Priority:** HIGH (cost control)
-
-### Long-term (FUTURE)
-
-7. **Implement Response Caching:**
-   - **Strategy:** Cache responses for identical questions
-   - **TTL:** 7 days (seasonal advice may change)
-   - **Invalidation:** Manual cache clear in admin panel
-   - **Storage:** Redis or PostgreSQL with JSONB
-   - **Benefit:** Reduce API costs for common questions
-   - **Priority:** LOW (optimization)
-
-8. **Add Fallback Logic for API Failures:**
-   - **Strategy:** If OpenAI unavailable, return cached response or generic message
-   - **User message:** "Сервис временно недоступен, попробуйте позже"
-   - **Benefit:** Graceful degradation instead of crash
-   - **Priority:** LOW (OpenAI uptime is high)
-
-9. **Optimize Model Selection by Task:**
-   - **Strategy:** Use different models based on task complexity
-     - Simple classification: gpt-4.1-mini
-     - Complex consultations: gpt-5 or gpt-4o
-     - Embeddings: continue with text-embedding-3-large
-   - **Implementation:** Task-based model routing in core_llm.py
-   - **Benefit:** Balance quality and cost
-   - **Priority:** MEDIUM (optimization)
-
-## Environment Variables
-
-**Modified by User:**
-
-```bash
-# .env changes (user-modified, not assistant)
-
-# Before (with typo + expensive models):
-OPENAI_MODEL_CONSULTATION=gpt-4o
-OPENAI_MODEL_ARTICLE=gpt-4o
-OPENAI_MODEL_CLASSIFICATION=gpt-55  # TYPO
-OPENAI_MODEL_UTILITY=gpt-4o
-
-# After (fixed + budget-friendly):
-OPENAI_MODEL_CONSULTATION=gpt-5-mini
-OPENAI_MODEL_ARTICLE=gpt-4.1-mini
-OPENAI_MODEL_CLASSIFICATION=gpt-4.1-mini  # FIXED
-OPENAI_MODEL_UTILITY=gpt-4.1-mini
-```
-
-**No other environment variables changed.**
-
-## Session Statistics
-
-- **Duration:** ~30 minutes (diagnosis and troubleshooting)
-- **Files Examined:** 2 (.env, core_llm.py)
-- **Files Modified:** 0 (user modified .env, not assistant)
-- **Code Changes:** 0 lines (configuration issue, not code bug)
-- **Issues Identified:** 2 (typo + quota exhaustion)
-- **Issues Resolved:** 2 (user fixed both)
-- **Tests Run:** 0 (diagnostic session only)
-- **Documentation Updated:** 1 (this session summary)
-
----
-
-**Session completed:** 2026-02-12
-**Session type:** Troubleshooting / Diagnostics
-**Status:** Issues identified and resolved by user
-**User Action Required:** Verify bot startup with new model configuration, test API calls
-**Version:** Still 1.2.2 (no code changes, configuration only)
-
----
-
-# Previous Sessions
-
-## Session Summary — 2025-12-23 (Pruning Category + Prompt System)
+### 2. RAG Documents Management System v2.0
 
 **Problem:**
-- Admin panel had separate "Промт документы" section (legacy, 8 documents)
-- Unified prompt system introduced but old section remained
-- Duplicate UI/UX, confusing for admins
-- Need to consolidate into single prompt management interface
+- Basic document upload without chunk-level control
+- No semantic chunking visibility
+- Missing chunk metadata (titles, boundaries)
+- No manual chunk editing capabilities
 
 **Solution:**
-- Removed entire "Промт документы" section from admin panel
-- Integrated existing prompt_documents into unified prompts system as "prompt_docs" group
-- Deleted 7 frontend component files
-- Updated sidebar to remove prompt_docs menu item
+- Implemented semantic chunking with configurable parameters
+- Added chunk passport editor for manual refinement
+- Enhanced document list with chunk statistics
+- Improved document processing pipeline
 
-**Files Deleted (7 files):**
+**Backend Changes:**
 
-1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocPreview.tsx`
-2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocPreview.module.css`
-3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocUpload.tsx`
-4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocUpload.module.css`
-5. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocsFilters.tsx`
-6. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocsFilters.module.css`
-7. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocsList.tsx`
-8. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocsPage.module.css`
-9. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/PromptDocsPage.tsx`
-10. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/promptDocs/index.ts`
+1. **`src/services/documents/semantic_chunker.py`** (960 lines, +600 lines)
+   - Complete semantic chunking implementation
+   - Boundary detection with configurable thresholds
+   - Chunk size optimization (target 800-1200 chars)
+   - Title generation for each chunk
+   - Preserves document structure (sections, paragraphs)
 
-**Files Deleted (Store):**
+2. **`src/services/documents/boundary_detector.py`** (26 lines)
+   - Sentence boundary detection
+   - Semantic break identification
+   - Configurable sensitivity levels
 
-11. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/store/promptDocumentStore.ts`
+3. **`src/services/documents/processor.py`** (110 lines, +50 lines)
+   - Enhanced DOCX processing
+   - Markdown extraction improvements
+   - Metadata preservation
 
-**Files Modified:**
+4. **`src/services/db/document_chunks_repo.py`** (56 lines, +30 lines)
+   - Chunk CRUD operations
+   - Batch chunk updates
+   - Chunk metadata management
 
-1. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/layout/Sidebar.tsx`**
-   - Removed "Промт документы" menu item
-   - Kept only "Промпты" (unified system)
+5. **`src/api/handlers/rag_documents.py`** (95 lines, +60 lines)
+   - Chunk passport endpoints
+   - Document reprocessing API
+   - Chunk statistics endpoints
 
-2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/App.tsx`**
-   - Removed PromptDocsPage import
-   - Removed routing for prompt_docs section
-   - Simplified view switching logic
+**Database Changes:**
 
-**Migration Path:**
-- Existing prompt_documents migrated to unified prompts via schema_33-36.sql
-- No data loss: 8 documents → prompt_docs group in unified system
-- Admins continue managing all prompts in one place
+1. **`db/schema_37_documents_full_text.sql`**
+   - Added full-text search indices for documents
+   - Improved search performance
 
-**Benefits:**
-- Single source of truth for prompt management
-- Cleaner UI with one prompt section
-- Reduced code maintenance burden
-- Consistent UX across all prompt types
+2. **`db/schema_38_embedding_nullable.sql`**
+   - Made embedding column nullable
+   - Allows incremental embedding generation
+   - Prevents failed uploads due to embedding errors
 
-### 3. Berry Culture-Specific Prompts
+**Frontend Changes:**
+
+1. **`admin-webapp/src/components/ragDocuments/RagDocsPage.tsx`** (52 lines modified)
+   - Enhanced layout with chunk statistics
+   - Document processing status indicators
+   - Reprocessing controls
+
+2. **`admin-webapp/src/components/ragDocuments/ChunkPassportEditor.tsx`** (86 lines, completely rewritten)
+   - Full chunk metadata editor
+   - Title editing
+   - Content editing
+   - Boundary visualization
+   - Save/cancel functionality
+
+3. **`admin-webapp/src/components/ragDocuments/RagDocumentList.tsx`** (79 lines, +40 lines)
+   - Chunk count display
+   - Processing status badges
+   - Edit chunk passport button
+   - Delete confirmation dialogs
+
+4. **`admin-webapp/src/components/ragDocuments/*.module.css`** (enhanced styling)
+   - Improved visual hierarchy
+   - Better spacing and alignment
+   - Chunk editor modal styling
+
+5. **`admin-webapp/src/store/ragDocumentStore.ts`** (+20 lines)
+   - Chunk passport state management
+   - Editor modal controls
+
+**Impact:**
+- Semantic chunking produces higher quality RAG results
+- Admins can manually refine chunk boundaries
+- Better document structure preservation
+- Chunk-level metadata improves retrieval accuracy
+
+### 3. Admin Settings Infrastructure
 
 **Problem:**
-- Generic prompts for berry cultures (Raspberry, Currant, Blueberry, Honeysuckle)
-- Needed detailed culture-specific and subtype-specific prompts (summer, remontant, etc.)
-- Database had no structure for culture subtypes
+- No centralized settings management
+- LLM parameters hardcoded in .env
+- No UI for configuration changes
+- Settings changes required code deployment
 
 **Solution:**
-- Created 4 migration scripts with culture-specific prompts
-- Added subtypes support (summer, remontant, general, blackberry)
-- Populated prompts for Nutrition and Planting categories
-- Used hierarchical slug naming: `{subtype}_{category}_{culture}`
+- Created admin settings table and API
+- Built settings page in admin panel
+- Implemented LLM configuration UI
+- Added RAG toggle controls
 
-**Migration Files Created:**
+**Database Changes:**
 
-1. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_33_raspberry_blackberry_prompts.sql`**
+1. **`db/schema_39_admin_settings.sql`**
+   - New table: `admin_settings` (key-value store)
+   - JSON value support for complex settings
+   - Default values for all settings
+   - Settings: `rag_enabled`, `llm_temperature`, `max_rag_snippets`
 
-   **Purpose:** Add Raspberry + Blackberry culture-specific prompts
+2. **`db/schema_42_llm_settings.sql`**
+   - Extended settings schema
+   - Added model configuration fields
+   - Response format settings
 
-   **Prompts added:**
-   - Subgroup: `raspberry` (Малина + Ежевика)
-   - Subtypes: `blackberry`, `summer`, `remontant`, `general`
-   - Categories: `nutrition`, `planting_care`
-   - Total: 8 prompts (4 subtypes × 2 categories)
+**Backend Changes:**
 
-   **Example slugs:**
-   - `blackberry_nutrition_raspberry` — Питание ежевики
-   - `summer_nutrition_raspberry` — Питание малины летней
-   - `remontant_planting_raspberry` — Посадка малины ремонтантной
+1. **`src/services/db/settings_repo.py`** (new file)
+   - Settings CRUD operations
+   - Type-safe setting retrieval
+   - Default value fallbacks
 
-   **Content quality:**
-   - Detailed fertilization schedules by culture type
-   - Specific planting techniques for each subtype
-   - Covers blackberry's different growth habit (trailing vs erect)
+2. **`src/api/handlers/settings.py`** (new file)
+   - Settings management endpoints
+   - Validation and type checking
+   - Batch update support
 
-2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_34_currant_honeysuckle_prompts.sql`**
+3. **`src/config.py`** (16 lines modified)
+   - Added settings database integration
+   - Fallback to .env for missing settings
+   - Runtime configuration reload
 
-   **Purpose:** Add Currant + Honeysuckle culture-specific prompts
+**Frontend Changes:**
 
-   **Prompts added:**
-   - Subgroup: `currant_honeysuckle` (Смородина + Жимолость)
-   - Subtypes: `currant`, `honeysuckle`
-   - Categories: `nutrition`, `planting_care`
-   - Total: 4 prompts (2 subtypes × 2 categories)
+1. **`admin-webapp/src/components/settings/`** (new directory)
+   - `SettingsPage.tsx` — Main settings UI
+   - `SettingsPage.module.css` — Styling
+   - Sections: LLM Configuration, RAG Settings, System Settings
+   - Real-time save with loading states
 
-   **Example slugs:**
-   - `currant_nutrition_currant` — Питание смородины
-   - `honeysuckle_planting_currant` — Посадка жимолости
+2. **`admin-webapp/src/App.tsx`** (+15 lines)
+   - Added settings route
+   - Settings page integration
 
-   **Content quality:**
-   - Currant-specific: nitrogen needs, potassium for berries
-   - Honeysuckle-specific: minimal feeding, early flowering
+3. **`admin-webapp/src/components/layout/Sidebar.tsx`** (+1 line)
+   - Settings menu item
 
-3. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_35_currant_honeysuckle_subtypes.sql`**
+**Impact:**
+- Configuration changes without code deployment
+- Visual interface for LLM tuning
+- RAG enable/disable toggle
+- Safer configuration management (validation, defaults)
 
-   **Purpose:** Add culture subtypes to metadata for UI grouping
-
-   **Changes:**
-   - Updated `prompt_subgroups.culture_subtypes` JSONB field
-   - Added subtypes for `currant_honeysuckle` subgroup:
-     ```json
-     ["currant", "honeysuckle"]
-     ```
-
-4. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_36_blueberry_prompts.sql`**
-
-   **Purpose:** Add Blueberry culture-specific prompts
-
-   **Prompts added:**
-   - Subgroup: `blueberry` (Голубика)
-   - Subtypes: none (no subtypes for blueberry)
-   - Categories: `nutrition`, `planting_care`
-   - Total: 2 prompts
-
-   **Example slugs:**
-   - `nutrition_blueberry` — Питание голубики
-   - `planting_care_blueberry` — Посадка и уход голубики
-
-   **Content quality:**
-   - Acidic soil requirements (pH 4.0-5.5)
-   - Sulfur-based fertilizers
-   - Mulching with pine bark/needles
-
-**Database Structure:**
-
-```
-prompt_groups
-  └─ id=1 "Консультации"
-      └─ prompt_subgroups
-          ├─ raspberry (culture_subtypes: ["blackberry", "summer", "remontant", "general"])
-          │   └─ prompts
-          │       ├─ blackberry_nutrition_raspberry
-          │       ├─ blackberry_planting_raspberry
-          │       ├─ summer_nutrition_raspberry
-          │       ├─ summer_planting_raspberry
-          │       └─ ... (8 total)
-          ├─ currant_honeysuckle (culture_subtypes: ["currant", "honeysuckle"])
-          │   └─ prompts
-          │       ├─ currant_nutrition_currant
-          │       ├─ currant_planting_currant
-          │       └─ ... (4 total)
-          └─ blueberry (culture_subtypes: null)
-              └─ prompts
-                  ├─ nutrition_blueberry
-                  └─ planting_care_blueberry
-```
-
-**Rationale:**
-- Different berry types have vastly different care requirements
-- Subtypes (summer vs remontant) need distinct advice
-- Generic prompts were giving suboptimal recommendations
-- Culture-specific prompts improve answer quality
-
-### 4. 3-Level Hierarchical Prompt Tree
+### 4. Pricing System Display & Integration
 
 **Problem:**
-- Admin panel showed 2-level tree: Group → Subgroup → Prompt
-- New prompts have subtypes (blackberry, summer, remontant)
-- Flat display would show 8+ prompts under "Малина" (confusing)
-- Needed 3rd level: Group → Subgroup → Culture Type → Prompt
+- Payment data stored but not visible
+- No subscription plan management UI
+- Token packages not displayed to admins
+- No pricing configuration interface
 
 **Solution:**
-- Added culture type grouping layer for specific subgroups
-- Implemented expand/collapse for culture types
-- Smart naming: show short prompt names when grouped by type
-- Only applies to subgroups with culture_subtypes metadata
+- Implemented complete pricing management UI
+- Integrated subscription plans display
+- Added token package configuration
+- Built pricing section in settings
 
-**Files Modified:**
+**Database Changes:**
 
-1. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptGroupTree.tsx`**
+1. **`db/schema_45_pricing_update.sql`**
+   - Updated subscription plans with new tiers
+   - Added token package configurations
+   - Price adjustments and feature updates
+   - Trial period settings
 
-   **New constants:**
-   ```typescript
-   // Culture type display names
-   const CULTURE_TYPE_LABELS: Record<string, string> = {
-     summer: 'Летняя',
-     remontant: 'Ремонтантная',
-     general: 'Общее',
-     blackberry: 'Ежевика',
-     currant: 'Смородина',
-     honeysuckle: 'Жимолость',
-   }
+**Backend Changes:**
 
-   // Display order
-   const CULTURE_TYPE_ORDER = [
-     'blackberry', 'summer', 'general', 'remontant',
-     'currant', 'honeysuckle'
-   ]
+1. **`src/services/db/subscription_plan_repo.py`** (+85 lines)
+   - Subscription plan CRUD
+   - Active plans retrieval
+   - Plan feature management
 
-   // Subgroups that need culture type grouping
-   const CULTURE_SUBGROUPS = [
-     'strawberry', 'raspberry', 'currant', 'blueberry'
-   ]
-   ```
+2. **`src/services/db/token_package_repo.py`** (+83 lines)
+   - Token package CRUD
+   - Package sorting by token count
+   - Pricing calculations
 
-   **New function: `groupPromptsByCultureType()`**
-   - Groups prompts by slug prefix (e.g., `summer_`, `blackberry_`)
-   - Returns Map<cultureType, Prompt[]>
-   - Handles prompts without prefix → 'other' group
+3. **`src/pricing.py`** (60 lines, +30 lines)
+   - Unified pricing constants
+   - Price calculations
+   - Discount logic
 
-   **New function: `getShortPromptName()`**
-   - Extracts short name from full name: "Ежевика — Питание" → "Питание"
-   - Used when displaying prompts under culture type groups
-   - Reduces redundancy: "Ежевика" label already shows type
+4. **`src/services/payments/payment_service.py`** (+9 lines)
+   - Enhanced payment processing
+   - Pricing integration
 
-   **Modified function: `renderPromptItem()`**
-   - Added `showShortName` parameter
-   - When true: displays only category name ("Питание")
-   - When false: displays full name ("Ежевика — Питание")
+**Frontend Changes:**
 
-   **New rendering logic:**
-   ```typescript
-   // Check if subgroup needs culture type grouping
-   if (CULTURE_SUBGROUPS.includes(subgroup.slug)) {
-     const grouped = groupPromptsByCultureType(subgroupPrompts)
+1. **`admin-webapp/src/components/settings/` (pricing section)**
+   - Subscription plans editor
+   - Token packages editor
+   - Price configuration UI
+   - Feature toggles
 
-     // Render each culture type group
-     for (const [cultureType, prompts] of grouped) {
-       if (cultureType === 'other') {
-         // Render prompts without culture type directly
-         renderPromptItem(prompt, false)
-       } else {
-         // Render expandable culture type group
-         <div className={styles.cultureTypeGroup}>
-           <div onClick={() => toggleCultureTypeExpanded(subgroup.id, cultureType)}>
-             {CULTURE_TYPE_LABELS[cultureType]} {expandIcon}
-           </div>
-           {isExpanded && prompts.map(p => renderPromptItem(p, true))}
-         </div>
-       }
-     }
-   }
-   ```
+2. **`admin-webapp/src/types/index.ts`** (+64 lines)
+   - SubscriptionPlan interface
+   - TokenPackage interface
+   - Pricing-related types
 
-   **Example UI structure:**
-   ```
-   ┌─ Консультации (group)
-   │  ┌─ Малина + Ежевика (subgroup)
-   │  │  ┌─ Ежевика (culture type) ▼
-   │  │  │  ├─ Питание (prompt)
-   │  │  │  └─ Посадка и уход (prompt)
-   │  │  ┌─ Летняя (culture type) ▼
-   │  │  │  ├─ Питание (prompt)
-   │  │  │  └─ Посадка и уход (prompt)
-   │  │  └─ Ремонтантная (culture type) ▼
-   │  │     ├─ Питание (prompt)
-   │  │     └─ Посадка и уход (prompt)
-   ```
+**Impact:**
+- Admins can modify pricing without code changes
+- Subscription tiers visible and editable
+- Token packages configurable
+- Pricing updates take effect immediately
 
-2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/store/promptStore.ts`**
+### 5. Knowledge Base Hierarchy & Trial Questions
 
-   **New state:**
-   ```typescript
-   interface PromptStore {
-     // ...
-     expandedCultureTypes: Set<string>  // "subgroupId-cultureType" keys
-   }
-   ```
+**Problem:**
+- Flat KB structure without hierarchy
+- No question prioritization
+- Trial users getting same experience as paid
+- Missing trial question limits
 
-   **New action:**
-   ```typescript
-   toggleCultureTypeExpanded: (subgroupId: number, cultureType: string) => {
-     const key = `${subgroupId}-${cultureType}`
-     // Toggle key in expandedCultureTypes Set
-   }
-   ```
+**Solution:**
+- Implemented KB hierarchy system
+- Added question priority levels
+- Created trial questions restriction
+- Built priority-based retrieval
 
-   **Usage:**
-   - Each culture type has unique key: `"5-blackberry"`, `"5-summer"`
-   - Separate expansion state per subgroup
-   - Persists during session (lost on reload, acceptable UX)
+**Database Changes:**
 
-3. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptGroupTree.module.css`**
+1. **`db/schema_43_kb_hierarchy_update.sql`**
+   - Added `priority` field to knowledge_base table
+   - Priority levels: high, medium, low
+   - Indexed for fast retrieval
+   - Migrated existing questions to appropriate priorities
 
-   **New styles:**
-   ```css
-   .cultureTypeGroup {
-     /* Indentation for 3rd level */
-   }
+2. **`db/schema_44_trial_questions.sql`**
+   - Added `trial_questions_asked` to users table
+   - Trial limit: 3 questions
+   - Reset mechanism for paid upgrades
 
-   .cultureTypeHeader {
-     /* Clickable culture type label */
-   }
-   ```
+**Backend Changes:**
 
-**Benefits:**
-- Clean organization: Prompts grouped logically by culture subtype
-- Scalability: Can add more subtypes without UI clutter
-- User-friendly: Expand only relevant sections
-- Reduced visual noise: Short names when context is clear
+1. **`src/services/rag/unified_retriever.py`** (+5 lines)
+   - Priority-aware KB retrieval
+   - Higher priority questions ranked first
+   - Configurable priority weights
 
-**Testing needed:**
-- Expand "Малина + Ежевика" → should show 4 culture types
-- Click "Ежевика" → should expand to show 2 prompts (Питание, Посадка)
-- Prompt names should be short ("Питание") not full ("Ежевика — Питание")
-- Verify other subgroups (Strawberry) still work if they have culture_subtypes
+2. **`src/services/db/users_repo.py`** (+70 lines)
+   - Trial question tracking
+   - Limit enforcement
+   - Usage statistics
 
-### 5. Additional Refinements
+3. **`src/handlers/consultation/entry.py`** (780 lines, massive refactor)
+   - Trial limit checks before consultation
+   - Upgrade prompts for trial users
+   - Question counting logic
 
-**Files Modified (Minor Changes):**
+**Impact:**
+- High-quality KB answers prioritized
+- Trial users have clear upgrade path
+- Better monetization through trial limits
+- Improved answer quality through hierarchy
 
-1. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/services/api.ts`**
-   - Removed promptDocument-related API methods
-   - Kept only unified prompt API methods
+### 6. Answer Logic Configuration System
 
-2. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`**
-   - Removed PromptDocument interface
-   - Kept Prompt, PromptGroup, PromptSubgroup types
+**Problem:**
+- Answer format rules hardcoded in prompts
+- No way to adjust answer structure without redeploying
+- Rules scattered across multiple prompt files
+- Difficult to A/B test answer formats
 
-3. **`/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/db/prompt_repo.py`**
-   - No changes to repository functions (DB schema already supports subtypes)
-   - Existing `get_all_groups_with_structure()` returns culture_subtypes in metadata
+**Solution:**
+- Created dedicated answer_logic settings table
+- Built answer logic editor in settings
+- Extracted answer rules from prompts
+- Made answer structure configurable
 
-4. **Other CRM/RAG files** (unrelated to this session's goals)
-   - Modified: KanbanBoard.tsx, ChunkPassportEditor.tsx, etc.
-   - Changes: UI refinements, styling improvements
-   - Not core to session objectives (separate work)
+**Database Changes:**
+
+1. **`db/schema_47_answer_logic_section.sql`**
+   - New table: `answer_logic_settings`
+   - Fields: section_name, rules (JSONB), enabled
+   - Sections: structure, formatting, content_rules, examples
+   - Full migration of existing answer rules
+
+**Backend Changes:**
+
+1. **`src/services/llm/consultation_llm.py`** (116 lines, +50 lines)
+   - Answer logic loading from database
+   - Dynamic rule composition
+   - Fallback to defaults if DB unavailable
+
+2. **`src/services/llm/context_generator.py`** (170 lines, +80 lines)
+   - Context composition with answer rules
+   - Rule formatting for LLM
+   - Section-based rule injection
+
+**Frontend Changes:**
+
+1. **Settings page answer logic section**
+   - Answer structure editor
+   - Formatting rules editor
+   - Enable/disable toggles per section
+   - Preview functionality
+
+**Documentation:**
+
+1. **`ANSWER_LOGIC_RULES.md`** (new file)
+   - Complete documentation of answer logic system
+   - Rule format specifications
+   - Examples and best practices
+
+**Impact:**
+- Answer format changes without code deployment
+- A/B testing different answer structures
+- Consistent answer quality across all categories
+- Easy experimentation with LLM instructions
+
+### 7. Referral System Foundation
+
+**Problem:**
+- No referral tracking mechanism
+- Missing viral growth infrastructure
+- No referral rewards system
+
+**Solution:**
+- Created referral tracking database schema
+- Built referral code generation
+- Prepared backend for referral rewards
+
+**Database Changes:**
+
+1. **`db/schema_46_referrals.sql`**
+   - New table: `referrals`
+   - Fields: referrer_id, referred_id, status, reward_given
+   - Referral code generation system
+   - Reward tracking structure
+
+**Backend Changes:**
+
+1. **`src/services/db/referral_repo.py`** (new file)
+   - Referral CRUD operations
+   - Code generation and validation
+   - Referral statistics
+
+**Status:** Database ready, UI implementation pending
+
+### 8. CRM & Expenses System Enhancements
+
+**Problem:**
+- CRM main tab missing key information
+- Expenses page needed visual improvements
+- Payment activity not visible in CRM
+
+**Solution:**
+- Enhanced CRM main tab with activity summary
+- Improved expenses page layout
+- Integrated payment events into CRM
+
+**Frontend Changes:**
+
+1. **`admin-webapp/src/components/crm/LeftPanel/MainTab.tsx`** (+28 lines)
+   - Added recent activity summary
+   - Payment status indicators
+   - Subscription info display
+
+2. **`admin-webapp/src/components/crm/LeftPanel/MainTab.module.css`** (+21 lines)
+   - Enhanced styling
+   - Activity card layouts
+
+3. **`admin-webapp/src/components/expenses/ExpensesPage.tsx`** (+67 lines)
+   - Improved date navigation
+   - Category filtering enhancements
+   - Better statistics display
+
+4. **`admin-webapp/src/components/expenses/ExpensesPage.module.css`** (+32 lines)
+   - Visual refinements
+   - Better spacing and alignment
+
+**Backend Changes:**
+
+1. **`src/api/handlers/crm.py`** (+41 lines)
+   - Added activity summary endpoint
+   - Payment events integration
+   - Enhanced client statistics
+
+**Impact:**
+- Better visibility of client activity
+- Clearer expense tracking
+- Payment information accessible in CRM
+
+### 9. LLM Service Layer Improvements
+
+**Problem:**
+- LLM service code duplication
+- No centralized error handling
+- Missing usage tracking
+- Temperature configuration scattered
+
+**Solution:**
+- Refactored core LLM services
+- Centralized configuration
+- Enhanced error handling and logging
+- Unified usage tracking
+
+**Backend Changes:**
+
+1. **`src/services/llm/core_llm.py`** (178 lines, +80 lines)
+   - Unified API call function
+   - Centralized error handling
+   - Token usage tracking
+   - Cost calculation
+   - Retry logic with exponential backoff
+
+2. **`src/services/llm/consultation_llm.py`** (116 lines, refactored)
+   - Cleaner prompt composition
+   - Better context management
+   - Database-driven configuration
+
+3. **`src/services/llm/classification_llm.py`** (213 lines, +50 lines)
+   - Enhanced classification logic
+   - Better culture detection
+   - Fallback improvements
+
+4. **`src/services/llm/embeddings_llm.py`** (41 lines, +15 lines)
+   - Batch embedding support
+   - Error recovery
+   - Usage tracking
+
+5. **`src/services/llm/article_llm.py`** (19 lines modified)
+   - Updated to use core_llm
+   - Configuration from settings
+
+6. **`src/services/llm/gemini_embeddings.py`** (2 lines)
+   - Minor improvements
+
+7. **`src/services/llm/question_builder_llm.py`** (6 lines)
+   - Updated API calls
+
+**Impact:**
+- More reliable LLM operations
+- Better error recovery
+- Consistent usage tracking
+- Easier maintenance
+
+### 10. Bot Handlers Refactoring
+
+**Problem:**
+- Massive monolithic handler files
+- Difficult to maintain and test
+- State management complexity
+- Unclear consultation flow
+
+**Solution:**
+- Refactored consultation entry handler
+- Improved state management
+- Clearer flow control
+- Better error handling
+
+**Backend Changes:**
+
+1. **`src/handlers/consultation/entry.py`** (780 lines, massive refactor)
+   - Modular function structure
+   - Clear state transitions
+   - Trial limit enforcement
+   - Better error messages
+   - Improved logging
+
+2. **`src/handlers/consultation/pitanie_rastenii.py`** (401 lines, refactored)
+   - Cleaned up deprecated code
+   - Aligned with new prompt system
+   - Better error handling
+
+3. **`src/handlers/consultation/culture_callback.py`** (+32 lines)
+   - Enhanced culture selection
+   - Better validation
+   - Clear user feedback
+
+4. **`src/handlers/menu.py`** (174 lines, +80 lines)
+   - New menu structure
+   - Settings integration
+   - Improved navigation
+
+5. **`src/handlers/payments/*.py`** (minor updates)
+   - Pricing integration
+   - Better payment flow
+
+6. **`src/handlers/admin/moderation.py`** (+8 lines)
+   - KB priority handling
+   - Improved moderation workflow
+
+**Impact:**
+- More maintainable codebase
+- Easier to add new features
+- Better user experience
+- Clearer error messages
+
+### 11. Keyboard & UI Improvements
+
+**Problem:**
+- Cluttered inline keyboards
+- Inconsistent button layouts
+- Missing navigation shortcuts
+
+**Solution:**
+- Redesigned consultation keyboards
+- Added quick action buttons
+- Improved navigation flow
+
+**Backend Changes:**
+
+1. **`src/keyboards/consultation/common.py`** (83 lines, +40 lines)
+   - Streamlined button layouts
+   - Added quick actions
+   - Better emoji usage
+
+2. **`src/keyboards/main/main_menu.py`** (-5 lines)
+   - Cleaned up unused buttons
+   - Simplified main menu
+
+3. **`src/keyboards/main/bot_commands.py`** (+2 lines)
+   - Updated command descriptions
+
+**Impact:**
+- Cleaner user interface
+- Faster navigation
+- Better UX
+
+### 12. Database Connection & Performance
+
+**Problem:**
+- Connection pool exhaustion under load
+- No connection monitoring
+- Missing query optimization
+
+**Solution:**
+- Enhanced connection pooling
+- Added connection monitoring
+- Query optimization
+
+**Backend Changes:**
+
+1. **`src/services/db/pool.py`** (+13 lines)
+   - Connection health checks
+   - Pool size monitoring
+   - Automatic reconnection
+
+2. **`src/services/db/documents_repo.py`** (+32 lines)
+   - Optimized document queries
+   - Better indexing usage
+
+**Impact:**
+- More stable under load
+- Better performance
+- Fewer connection errors
+
+### 13. Status Manager & Utilities
+
+**Problem:**
+- Status manager outdated
+- Missing utility functions
+- Poor code organization
+
+**Solution:**
+- Refactored status manager
+- Added new utilities
+- Better code structure
+
+**Backend Changes:**
+
+1. **`src/utils/status_manager.py`** (347 lines, completely refactored)
+   - Modern async/await patterns
+   - Better error handling
+   - Cleaner API
+
+**Impact:**
+- More reliable status tracking
+- Better code maintainability
+
+### 14. Testing & Documentation
+
+**Created Test Files:**
+
+1. **`test_answer_logic.py`** (new file)
+   - Answer logic system tests
+   - Rule composition tests
+   - Database integration tests
+
+2. **`test_chunker_v3.py`** (new file)
+   - Semantic chunking tests
+   - Boundary detection tests
+   - Chunk quality validation
+
+3. **`test_category_classification.py`** (+2 lines)
+   - Updated for new prompt system
+
+4. **`test_culture_classification.py`** (+49 lines)
+   - Enhanced culture detection tests
+   - Edge case coverage
+
+**Created Documentation:**
+
+1. **`ANSWER_LOGIC_RULES.md`** (8.9KB)
+   - Complete answer logic documentation
+   - Rule format specs
+   - Usage examples
+
+2. **`ENV_MODELS_FIXED.md`** (9KB)
+   - Environment configuration guide
+   - Model settings documentation
+   - Troubleshooting guide
+
+3. **`LAUNCH_READINESS.md`** (40KB)
+   - Pre-launch checklist
+   - System validation guide
+   - Deployment procedures
+
+4. **`MIGRATION_APPLIED.md`** (6.2KB)
+   - Migration tracking log
+   - Schema evolution history
+
+5. **`TESTING_CHECKLIST.md`** (27KB)
+   - Comprehensive testing guide
+   - Test case documentation
+
+6. **`SESSION_STATUS_2025-12-29.md`** (12KB)
+   - Previous session summary
+
+7. **`session-summary-answer-logic.md`** (10.4KB)
+   - Answer logic session notes
+
+**Screenshots Created:**
+- `rag-toggle-screenshot.png` — RAG toggle in settings
+- `reasoning-settings-screenshot.png` — LLM reasoning settings
+- `settings-page-screenshot.png` — Settings page overview
+- `settings-pricing-screenshot.png` — Pricing section
+- `pricing-section-final.png` — Final pricing UI
+- `pricing-subscriptions.png` — Subscription management
+
+**Impact:**
+- Better test coverage
+- Comprehensive documentation
+- Clear development history
+- Visual documentation
+
+### 15. Scripts & Utilities
+
+**Created Scripts:**
+
+1. **`scripts/reembed_kb.py`** (new file)
+   - Re-embed knowledge base entries
+   - Batch processing
+   - Progress tracking
+
+2. **`scripts/import_documents.py`** (+2 lines)
+   - Enhanced document import
+   - Better error handling
+
+3. **`db/fix_model_names.sql`** (new file)
+   - Model name correction script
+   - Data cleanup utility
+
+**Impact:**
+- Easier maintenance tasks
+- Better data management
+- Automation support
 
 ## Key Decisions
 
 ### Architectural Decisions
 
-1. **Separate Pruning Category (Not Subcategory):**
-   - **Decision:** Make "обрезка" a top-level category (7th category)
+1. **Database-Driven Configuration Over Environment Variables:**
+   - **Decision:** Move all runtime configuration to database (admin_settings table)
    - **Rationale:**
-     - Pruning is domain-specific: Different timing, tools, techniques
-     - Cross-cutting concern: Applies to all berry cultures
-     - Consultation complexity: Warrants dedicated LLM prompt
-     - User expectations: Pruning questions are distinct from general care
-   - **Alternative rejected:** Make pruning a subcategory of "посадка и уход"
-     - Would still share same prompt (less specific advice)
-     - Classification confusion persists
+     - Hot-reload capability without restarts
+     - Version control for configuration changes
+     - Multi-environment support
+     - Admin UI for non-technical users
+   - **Trade-offs:**
+     - Slight performance overhead (negligible with caching)
+     - Database becomes critical dependency
+     - Need fallback to .env for bootstrap
+   - **Outcome:** Much more flexible system, easier operations
 
-2. **Remove Prompt Documents Section (Not Merge UI):**
-   - **Decision:** Delete entire promptDocs UI, force migration to unified system
+2. **Unified Prompt System in Database:**
+   - **Decision:** Migrate all category prompts from Python files to database
    - **Rationale:**
-     - Two UIs for prompts confuses admins
-     - Data already migrated via backend
-     - Maintenance burden: 10+ component files for 8 documents
-     - Unified system is superior: versioning, history, structure
-   - **Alternative rejected:** Keep both UIs, add "deprecated" badge
-     - Still confusing, requires explaining to users
-     - Delayed cleanup creates tech debt
+     - Enable prompt editing without code deployment
+     - Version history and A/B testing support
+     - Easier experimentation
+     - Non-developers can improve prompts
+   - **Trade-offs:**
+     - Database becomes single source of truth (backup critical)
+     - Need robust fallback system
+     - More complex loading logic
+   - **Outcome:** Faster iteration, better prompt quality
 
-3. **3-Level Tree Only for Specific Subgroups:**
-   - **Decision:** Apply culture type grouping only to subgroups with culture_subtypes
+3. **Semantic Chunking Over Fixed-Size Chunking:**
+   - **Decision:** Implement semantic boundary detection for document chunking
    - **Rationale:**
-     - Not all subgroups need it (e.g., generic prompts have no subtypes)
-     - Conditional logic: Check `CULTURE_SUBGROUPS` array
-     - Future-proof: Easy to add new subgroups to the list
-     - Avoids over-engineering: Don't group when unnecessary
-   - **Alternative rejected:** Always show 3-level tree
-     - Adds empty groups for subgroups without subtypes
-     - More clicks to reach prompts (poor UX)
+     - Preserves context within chunks
+     - Better RAG retrieval accuracy
+     - Respects document structure
+     - Higher quality embeddings
+   - **Trade-offs:**
+     - More complex processing
+     - Slightly slower document upload
+     - Variable chunk sizes
+   - **Outcome:** Significantly better RAG results
+
+4. **Priority-Based KB Hierarchy:**
+   - **Decision:** Add priority levels to knowledge base questions
+   - **Rationale:**
+     - High-quality answers surface first
+     - Better control over answer quality
+     - Enables curation
+     - Supports freemium model (trial users get fewer KB results)
+   - **Trade-offs:**
+     - Manual curation required
+     - Subjectivity in priority assignment
+   - **Outcome:** Improved answer quality, better trial UX
+
+5. **Trial Question Limits:**
+   - **Decision:** Restrict trial users to 3 questions
+   - **Rationale:**
+     - Encourages upgrades
+     - Prevents abuse
+     - Demonstrates value
+     - Standard freemium practice
+   - **Trade-offs:**
+     - May lose some potential customers
+     - Need clear upgrade prompts
+   - **Outcome:** Better monetization path
 
 ### Logic/Algorithm Decisions
 
-1. **Pruning Keywords Run Before Planting:**
-   - **Decision:** Check pruning_keywords first in fallback function
+1. **Prompt Composition Strategy:**
+   - **Decision:** base_prompt + culture_context + category_prompt + answer_logic
    - **Rationale:**
-     - Keyword overlap: "обрез" could match planting if checked later
-     - Specificity: Pruning is more specific than planting
-     - Fallback order: Most specific → least specific
-   - **Implementation order:**
+     - Modular prompt construction
+     - Easy to update components independently
+     - Culture context injected dynamically
+     - Answer logic configurable
+   - **Implementation:**
      ```python
-     1. Nutrition keywords
-     2. Protection keywords
-     3. Pruning keywords  # NEW (before planting)
-     4. Planting keywords
-     5. Soil keywords
-     6. Default: "другая тема"
+     full_prompt = (
+         get_base_prompt(use_minimal=category.use_minimal_base)
+         + get_culture_context(culture)
+         + category_prompt
+         + get_answer_logic_rules()
+     )
      ```
 
-2. **Culture Type Grouping by Slug Prefix:**
-   - **Decision:** Parse slug prefix (`summer_`, `blackberry_`) to determine culture type
+2. **Chunk Boundary Detection:**
+   - **Decision:** Multi-level boundary detection (paragraph > sentence > character)
    - **Rationale:**
-     - Slugs are unique identifiers: Reliable parsing
-     - No additional metadata needed: Self-documenting
-     - Flexible naming: Can add new prefixes easily
-     - Fallback to 'other': Handles prompts without prefix gracefully
-   - **Alternative rejected:** Add culture_type field to prompts table
-     - Requires schema migration (more complex)
-     - Redundant with slug (violates DRY)
+     - Preserves semantic coherence
+     - Respects document structure
+     - Avoids mid-sentence breaks
+     - Configurable sensitivity
+   - **Algorithm:**
+     ```
+     1. Find optimal split point near target size
+     2. Check for paragraph boundary (highest priority)
+     3. If not found, check for sentence boundary
+     4. If not found, split at nearest word
+     ```
 
-3. **Short Names When Grouped by Type:**
-   - **Decision:** Show "Питание" instead of "Ежевика — Питание" under "Ежевика" group
+3. **Settings Fallback Chain:**
+   - **Decision:** Database → .env → hardcoded defaults
    - **Rationale:**
-     - Redundancy: Culture type label already visible
-     - Cleaner UI: Shorter text, easier to scan
-     - Consistent with user expectations: iTunes/Finder-style trees
-   - **Implementation:** Split on " — ", take second part
-   - **Fallback:** Use full name if no " — " separator
+     - Database first for hot-reload
+     - .env for bootstrap and overrides
+     - Defaults prevent crashes
+   - **Implementation:**
+     ```python
+     value = (
+         await settings_repo.get("key")
+         or os.getenv("KEY")
+         or DEFAULT_VALUE
+     )
+     ```
+
+4. **Trial Limit Enforcement:**
+   - **Decision:** Check before consultation, not after
+   - **Rationale:**
+     - Better UX (user knows limit upfront)
+     - Prevents wasted API calls
+     - Clear upgrade prompt at right moment
+   - **Flow:**
+     ```
+     1. User asks question
+     2. Check trial status
+     3. If at limit → show upgrade prompt
+     4. If under limit → proceed + increment counter
+     ```
 
 ### Data Format/API Decisions
 
-1. **Culture Subtypes in JSONB Array:**
-   - **Decision:** Store subtypes as `["blackberry", "summer", "remontant"]` in JSONB
+1. **Answer Logic as JSONB:**
+   - **Decision:** Store answer rules in JSONB column
    - **Rationale:**
-     - Flexible: Array can grow (add more subtypes)
-     - JSON-queryable: Can use PostgreSQL JSON operators if needed
-     - Frontend-friendly: Parses directly to TypeScript string[]
-     - No JOIN needed: Embedded in subgroup row
-   - **Alternative rejected:** Separate culture_subtypes table with FK
-     - Over-normalization for simple list
-     - Requires JOIN in every query (slower)
+     - Flexible schema
+     - Easy to add new rule types
+     - No JOIN needed
+     - Frontend can parse directly
+   - **Format:**
+     ```json
+     {
+       "structure": ["intro", "main", "recommendations"],
+       "formatting": ["markdown", "lists", "emphasis"],
+       "examples": true
+     }
+     ```
 
-2. **Prompt Slug Naming Convention:**
-   - **Decision:** Use `{subtype}_{category}_{subgroup}` format
-   - **Examples:**
-     - `blackberry_nutrition_raspberry`
-     - `summer_planting_raspberry`
-     - `currant_nutrition_currant`
+2. **Chunk Metadata Structure:**
+   - **Decision:** Store title, boundaries, sequence in separate fields
    - **Rationale:**
-     - Self-documenting: Slug tells full story
-     - Unique: No collisions across cultures/categories
-     - Sortable: Alphabetical order groups by subtype
-     - Parseable: Easy to extract subtype prefix
-   - **Alternative rejected:** UUID or numeric slugs
-     - Not human-readable
-     - Harder to debug/understand
+     - Query optimization (index on title)
+     - Clear data model
+     - Easy to update individual fields
+   - **Schema:**
+     ```sql
+     chunk_title TEXT
+     chunk_sequence INT
+     chunk_boundaries JSONB  -- {start: 0, end: 1200}
+     ```
 
-3. **ExpandedCultureTypes as Set\<string\>:**
-   - **Decision:** Use `Set<"subgroupId-cultureType">` format
+3. **Settings API Response Format:**
+   - **Decision:** Flat key-value pairs, not nested sections
    - **Rationale:**
-     - Unique keys: Prevents duplicates automatically
-     - Fast lookup: O(1) has() checks
-     - Easy toggle: add/delete operations
-     - Composite key: Scopes expansion per subgroup
-   - **Example keys:** `"5-blackberry"`, `"5-summer"`, `"6-currant"`
-   - **Alternative rejected:** Map<subgroupId, Set<cultureType>>
-     - More complex structure
-     - Same functionality, harder to serialize
+     - Simpler frontend consumption
+     - Easier to update individual settings
+     - No complex merge logic
+   - **Format:**
+     ```json
+     {
+       "rag_enabled": true,
+       "llm_temperature": 0.3,
+       "max_rag_snippets": 5
+     }
+     ```
 
 ## Problems & Limitations
 
 ### Known Issues
 
-1. **No Database Migration Applied Yet:**
-   - **Issue:** schema_33-36.sql files created but not applied to database
-   - **Impact:** Backend won't find new prompts (404 errors)
-   - **Solution:** Apply migrations in order:
-     ```bash
-     psql -h localhost -U bot_user -d garden_bot -f db/schema_33_raspberry_blackberry_prompts.sql
-     psql -h localhost -U bot_user -d garden_bot -f db/schema_34_currant_honeysuckle_prompts.sql
-     psql -h localhost -U bot_user -d garden_bot -f db/schema_35_currant_honeysuckle_subtypes.sql
-     psql -h localhost -U bot_user -d garden_bot -f db/schema_36_blueberry_prompts.sql
-     ```
-   - **Risk:** High (feature won't work without migrations)
+1. **Massive Git Commit Size:**
+   - **Issue:** 61 files changed, 4436 insertions, 1541 deletions
+   - **Impact:** Difficult to review, large commit history entry
+   - **Root Cause:** Multiple feature branches merged into one session
+   - **Mitigation:** This session summary provides detailed breakdown
+   - **Priority:** LOW (documentation compensates)
 
-2. **No Tests for Pruning Classification:**
-   - **Issue:** Added pruning category but no test coverage
-   - **Impact:** Regression risk if someone changes keywords
-   - **Example tests needed:**
-     - "Когда обрезать малину?" → "обрезка"
-     - "Как формировать куст смородины?" → "обрезка"
-     - "Как сажать клубнику?" → "посадка и уход" (ensure not pruning)
-   - **Solution:** Add to `test_culture_classification_advanced.py`
-   - **Priority:** HIGH (core functionality)
+2. **Missing Migration Verification:**
+   - **Issue:** Schema 37-47 created but not verified in production
+   - **Impact:** Unknown if migrations apply cleanly
+   - **Risk:** Potential data loss or corruption
+   - **Solution:** Apply migrations one-by-one in test environment first
+   - **Priority:** HIGH (critical before deployment)
 
-3. **Culture Type Expansion State Not Persisted:**
-   - **Issue:** Expanded culture types reset on page refresh
-   - **Impact:** Minor annoyance (admins re-expand groups)
-   - **Workaround:** Keep page open during work session
-   - **Solution:** Store in localStorage like expandedGroups/expandedSubgroups
-   - **Priority:** LOW (UX improvement, not blocker)
+3. **No Automated Tests for New Features:**
+   - **Issue:** Answer logic, semantic chunking, settings need tests
+   - **Impact:** Regression risk
+   - **Created:** test_answer_logic.py, test_chunker_v3.py but not comprehensive
+   - **Solution:** Expand test coverage before production deployment
+   - **Priority:** HIGH (quality assurance)
+
+4. **Prompt Preview Performance:**
+   - **Issue:** Full prompt composition on every preview
+   - **Impact:** Slow for large prompts (2-3 seconds)
+   - **Solution:** Add caching layer for culture contexts
+   - **Priority:** MEDIUM (UX improvement)
+
+5. **No Rollback Mechanism for Settings:**
+   - **Issue:** Bad setting change could break bot
+   - **Impact:** No easy undo
+   - **Solution:** Add settings history table with rollback function
+   - **Priority:** MEDIUM (operational safety)
 
 ### Technical Debt
 
-1. **Hardcoded Culture Type Labels:**
-   - **Location:** `PromptGroupTree.tsx` → `CULTURE_TYPE_LABELS`
-   - **Issue:** Adding new subtypes requires frontend code change
-   - **Better approach:** Store labels in database (culture_subtypes_metadata JSONB)
-   - **Example structure:**
-     ```json
-     {
-       "summer": {"label": "Летняя", "order": 2},
-       "remontant": {"label": "Ремонтантная", "order": 3}
-     }
-     ```
-   - **Impact:** Medium (limits non-dev admins from adding subtypes)
+1. **Prompt System Complexity:**
+   - **Location:** `consultation_prompts.py`
+   - **Issue:** 553 lines with complex fallback logic
+   - **Better approach:** Split into separate service classes
+   - **Impact:** MEDIUM (maintainability)
 
-2. **Pruning Prompt Not Culture-Specific:**
-   - **Location:** `pruning.py` → single generic prompt
-   - **Issue:** Strawberry pruning differs from raspberry (no woody stems)
-   - **Current workaround:** Prompt includes culture-specific notes in text
-   - **Better approach:** Split into culture groups (like nutrition.py)
-   - **Impact:** Medium (prompt quality could be higher)
+2. **Large Handler Files:**
+   - **Location:** `entry.py` (780 lines), `pitanie_rastenii.py` (401 lines)
+   - **Issue:** Monolithic handlers hard to test
+   - **Better approach:** Extract functions into service layer
+   - **Impact:** MEDIUM (testability)
 
-3. **No Prompt Docs Migration Verification:**
-   - **Issue:** Assumed 8 prompt_documents migrated successfully
-   - **Risk:** If migration failed, data might be lost
-   - **Solution:** Query database to verify:
-     ```sql
-     SELECT COUNT(*) FROM prompts
-     WHERE subgroup_id = (SELECT id FROM prompt_subgroups WHERE slug = 'prompt_docs');
-     -- Should return 8
-     ```
-   - **Priority:** HIGH (data integrity check)
+3. **Settings Without Validation:**
+   - **Location:** `settings_repo.py`
+   - **Issue:** No validation when saving settings
+   - **Risk:** Invalid values could break system
+   - **Better approach:** Add JSON schema validation
+   - **Impact:** HIGH (data integrity)
 
-4. **PromptGroupTree Component Getting Large:**
-   - **Lines:** ~300+ lines with new grouping logic
-   - **Issue:** Multiple responsibilities (grouping, rendering, state)
-   - **Better approach:** Extract subcomponents:
-     - `CultureTypeGroup.tsx` — Renders culture type section
-     - `PromptItem.tsx` — Renders single prompt
-     - `SubgroupSection.tsx` — Renders subgroup with logic
-   - **Impact:** Low (maintainability issue, not urgent)
+4. **No Migration Testing:**
+   - **Location:** All schema_*.sql files
+   - **Issue:** Migrations not tested before production
+   - **Risk:** Failed migrations, data loss
+   - **Better approach:** Staging environment with migration tests
+   - **Impact:** HIGH (reliability)
+
+5. **Frontend State Management:**
+   - **Location:** Various Zustand stores
+   - **Issue:** Some stores getting large and complex
+   - **Better approach:** Split into domain-specific stores
+   - **Impact:** LOW (works fine, just harder to maintain)
 
 ### Temporary Workarounds
 
-1. **Manual Slug Prefix Parsing:**
-   - **Current:** Split on `_`, check if starts with known prefix
-   - **Issue:** Fragile if slug format changes
-   - **Proper solution:** Add `culture_type` field to prompts table
-   - **Why acceptable:** Slug format is enforced by migrations, unlikely to change
-   - **Impact:** Minimal (works reliably)
+1. **Hardcoded Default Values:**
+   - **Current:** Default settings in multiple places (code + DB)
+   - **Issue:** Duplication, potential inconsistency
+   - **Proper solution:** Single source of truth for defaults
+   - **Why acceptable:** Defaults rarely change
+   - **Impact:** MINIMAL (works reliably)
 
-2. **Fallback to Full Name if Split Fails:**
-   - **Current:** `getShortPromptName()` returns full name if no " — "
-   - **Issue:** Inconsistent display (some prompts long, some short)
-   - **Root cause:** Inconsistent naming in migrations
-   - **Solution:** Enforce " — " separator in all culture-specific prompts
-   - **Impact:** Low (rare case, doesn't break functionality)
+2. **Manual Priority Assignment:**
+   - **Current:** KB priorities assigned manually
+   - **Issue:** No automated quality detection
+   - **Proper solution:** ML-based quality scoring
+   - **Why acceptable:** Small KB, manual curation feasible
+   - **Impact:** LOW (scales to hundreds of questions)
+
+3. **Fallback to Python Prompts:**
+   - **Current:** If DB prompt unavailable, use Python fallback
+   - **Issue:** Two sources of truth
+   - **Proper solution:** Make DB fully redundant (backup/restore)
+   - **Why acceptable:** Ensures bot never breaks
+   - **Impact:** MINIMAL (safety net)
 
 ## Rejected Ideas
 
-### Why Not Make Pruning a Subcategory of Planting?
+### Why Not Keep All Prompts in Python Files?
 
-- **Proposal:** Add "обрезка" as subcategory under "посадка и уход"
+- **Proposal:** Leave prompts in Python, use config files instead
 - **Reasons for rejection:**
-  1. Classification complexity: LLM would need to distinguish category vs subcategory
-  2. Prompt reuse: Would share planting prompt (less specific)
-  3. User mental model: Pruning feels distinct from planting
-  4. Category count: 7 categories is still manageable (not too many)
-- **Chosen solution:** Top-level category with dedicated prompt
+  1. Config files still require deployment
+  2. No version history tracking
+  3. No UI for non-developers
+  4. Harder to A/B test
+  5. Can't hot-reload changes
+- **Chosen solution:** Database with Python fallback
 
-### Why Not Keep Prompt Documents Section?
+### Why Not Use Fixed-Size Chunking?
 
-- **Proposal:** Keep both promptDocs and unified prompts sections
+- **Proposal:** Simple 1000-character chunks with overlap
 - **Reasons for rejection:**
-  1. Confusion: Admins don't know which to use
-  2. Duplication: Data already migrated, no need for old UI
-  3. Maintenance: 10+ files for 8 documents (high cost)
-  4. Versioning: Old section doesn't support version history
-  5. Future: All prompts should be in unified system
-- **Chosen solution:** Delete old section, force migration
+  1. Breaks semantic coherence
+  2. Lower RAG accuracy
+  3. Splits sentences/paragraphs awkwardly
+  4. Industry moving to semantic chunking
+- **Chosen solution:** Semantic boundary detection
 
-### Why Not Use React Context for Expansion State?
+### Why Not Unlimited Trial Questions?
 
-- **Proposal:** Use React Context instead of Zustand store for expanded state
+- **Proposal:** No limits for trial users, monetize differently
 - **Reasons for rejection:**
-  1. Existing pattern: Project uses Zustand for all state management
-  2. Consistency: expandedGroups/expandedSubgroups already in Zustand
-  3. DevTools: Zustand has better debugging tools
-  4. Boilerplate: Context requires Provider wrapping (more code)
-- **Chosen solution:** Add to existing promptStore
+  1. No clear conversion point
+  2. Users may never upgrade
+  3. API costs unsustainable
+  4. Standard freemium practice is to limit trial
+- **Chosen solution:** 3-question trial limit
 
-### Why Not Infer Culture Types from Prompts?
+### Why Not Put Answer Logic in Prompt Text?
 
-- **Proposal:** Dynamically infer culture types by parsing all prompt slugs
+- **Proposal:** Include answer format rules directly in category prompts
 - **Reasons for rejection:**
-  1. Performance: Requires parsing every prompt on each render
-  2. Reliability: What if no prompts exist for a subtype?
-  3. Metadata purpose: culture_subtypes explicitly declares intent
-  4. UI control: Admins can define display order/labels in metadata
-- **Chosen solution:** Use culture_subtypes JSONB field
+  1. Duplicated across all category prompts
+  2. Hard to change consistently
+  3. No way to A/B test answer formats
+  4. Increases prompt token cost
+- **Chosen solution:** Separate answer_logic table
+
+### Why Not Use Environment Variables for All Settings?
+
+- **Proposal:** Keep using .env for all configuration
+- **Reasons for rejection:**
+  1. Requires restart for changes
+  2. No UI for non-developers
+  3. No version tracking
+  4. Hard to manage multi-environment
+- **Chosen solution:** Database with .env fallback
 
 ## Current Code State
 
-### Files Created (5 files)
+### Files Created (50+ files)
 
 **Backend:**
-1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/category_prompts/pruning.py` (57 lines)
-   - Pruning category prompt function
-   - Culture-specific guidance for pruning
+1. `src/api/handlers/settings.py` — Settings management API
+2. `src/api/handlers/prompt_preview.py` — Prompt preview endpoint
+3. `src/services/db/settings_repo.py` — Settings repository
+4. `src/services/db/referral_repo.py` — Referral tracking
+5. `src/services/documents/boundary_detector.py` — Semantic boundaries
+6. `test_answer_logic.py` — Answer logic tests
+7. `test_chunker_v3.py` — Chunking tests
+8. `scripts/reembed_kb.py` — Re-embedding script
+9. `db/fix_model_names.sql` — Data cleanup script
 
 **Database Migrations:**
-2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_33_raspberry_blackberry_prompts.sql`
-   - Raspberry + Blackberry prompts (8 prompts)
-   - Subtypes: blackberry, summer, remontant, general
+10-19. `db/schema_37.sql` through `db/schema_47.sql` — 11 new migrations
 
-3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_34_currant_honeysuckle_prompts.sql`
-   - Currant + Honeysuckle prompts (4 prompts)
-   - Subtypes: currant, honeysuckle
+**Frontend:**
+20. `admin-webapp/src/components/settings/SettingsPage.tsx`
+21. `admin-webapp/src/components/settings/SettingsPage.module.css`
+22. `admin-webapp/src/components/promptPreview/PromptPreview.tsx`
+23. `admin-webapp/src/components/promptPreview/PromptPreview.module.css`
 
-4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_35_currant_honeysuckle_subtypes.sql`
-   - Updates culture_subtypes metadata for currant_honeysuckle subgroup
+**Documentation:**
+24. `ANSWER_LOGIC_RULES.md`
+25. `ENV_MODELS_FIXED.md`
+26. `LAUNCH_READINESS.md`
+27. `MIGRATION_APPLIED.md`
+28. `SESSION_STATUS_2025-12-29.md`
+29. `TESTING_CHECKLIST.md`
+30. `session-summary-answer-logic.md`
 
-5. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/db/schema_36_blueberry_prompts.sql`
-   - Blueberry prompts (2 prompts)
-   - No subtypes
+**Screenshots:** 10+ PNG files documenting UI changes
 
-### Files Modified (Backend: 4 files)
+### Files Modified (61 files)
 
-1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/services/llm/classification_llm.py`
-   - Added pruning_keywords list
-   - Removed "обрез", "формиров" from planting_keywords
-   - Updated `detect_category_and_culture()` to include "обрезка" category
-   - Added category_mapping for pruning
+**Backend Core:**
+- `src/handlers/consultation/entry.py` (780 lines, massive refactor)
+- `src/handlers/consultation/pitanie_rastenii.py` (401 lines)
+- `src/handlers/consultation/culture_callback.py` (+32 lines)
+- `src/handlers/menu.py` (174 lines, +80 lines)
+- `src/handlers/payments/*.py` (minor updates)
+- `src/handlers/admin/moderation.py` (+8 lines)
 
-2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/consultation_prompts.py`
-   - Imported `get_pruning_category_prompt`
-   - Added pruning to DB category mapping
-   - Added pruning to Python fallback mapping
+**LLM Services:**
+- `src/services/llm/core_llm.py` (178 lines, +80 lines)
+- `src/services/llm/consultation_llm.py` (116 lines, refactored)
+- `src/services/llm/classification_llm.py` (213 lines, +50 lines)
+- `src/services/llm/context_generator.py` (170 lines, +80 lines)
+- `src/services/llm/embeddings_llm.py` (41 lines, +15 lines)
+- `src/services/llm/article_llm.py` (19 lines)
+- `src/services/llm/gemini_embeddings.py` (2 lines)
+- `src/services/llm/question_builder_llm.py` (6 lines)
 
-3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/src/prompts/category_prompts/__init__.py`
-   - Exported `get_pruning_category_prompt`
+**RAG & Documents:**
+- `src/services/rag/unified_retriever.py` (+5 lines)
+- `src/services/documents/semantic_chunker.py` (960 lines, +600 lines)
+- `src/services/documents/processor.py` (110 lines, +50 lines)
+- `src/services/documents/boundary_detector.py` (new)
 
-4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/README.md`
-   - Minor updates (not session-related)
+**Database:**
+- `src/services/db/prompt_repo.py` (121 lines, +80 lines)
+- `src/services/db/users_repo.py` (+70 lines)
+- `src/services/db/document_chunks_repo.py` (56 lines, +30 lines)
+- `src/services/db/documents_repo.py` (+32 lines)
+- `src/services/db/pool.py` (+13 lines)
+- `src/services/db/subscription_plan_repo.py` (+85 lines)
+- `src/services/db/token_package_repo.py` (+83 lines)
 
-### Files Modified (Frontend: 8+ files)
+**API:**
+- `src/api/handlers/crm.py` (+41 lines)
+- `src/api/handlers/documents.py` (+1 line)
+- `src/api/handlers/rag_documents.py` (95 lines, +60 lines)
+- `src/api/routes.py` (+23 lines)
 
-**Core Changes:**
-1. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/prompts/PromptGroupTree.tsx`
-   - Added 3-level hierarchical grouping
-   - Culture type grouping logic
-   - Short name display for grouped prompts
+**Configuration:**
+- `src/config.py` (16 lines)
+- `src/pricing.py` (60 lines, +30 lines)
 
-2. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/store/promptStore.ts`
-   - Added expandedCultureTypes state
-   - Added toggleCultureTypeExpanded action
+**Prompts:**
+- `src/prompts/base_prompt.py` (195 lines, +100 lines)
+- `src/prompts/consultation_prompts.py` (553 lines, +400 lines)
+- `src/prompts/category_prompts/nutrition.py` (+4 lines)
 
-3. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/components/layout/Sidebar.tsx`
-   - Removed "Промт документы" menu item
+**Keyboards:**
+- `src/keyboards/consultation/common.py` (83 lines, +40 lines)
+- `src/keyboards/main/main_menu.py` (-5 lines)
+- `src/keyboards/main/bot_commands.py` (+2 lines)
 
-4. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/App.tsx`
-   - Removed PromptDocsPage routing
+**Utilities:**
+- `src/utils/status_manager.py` (347 lines, refactored)
 
-5. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/services/api.ts`
-   - Removed promptDocument API methods
+**Payments:**
+- `src/services/payments/payment_service.py` (+9 lines)
+- `src/services/payments/subscription_service.py` (+2 lines)
 
-6. `/Users/denis/Desktop/Main/Sadovniki-bot/Sadovniki_bot1.2/admin-webapp/src/types/index.ts`
-   - Removed PromptDocument interface
+**Frontend:**
+- `admin-webapp/src/App.tsx` (+15 lines)
+- `admin-webapp/src/components/layout/Sidebar.tsx` (+1 line)
+- `admin-webapp/src/services/api.ts` (+99 lines)
+- `admin-webapp/src/store/ragDocumentStore.ts` (+20 lines)
+- `admin-webapp/src/types/index.ts` (+64 lines)
 
-**Other Changes (Not Core to Session):**
-7-14. Various CRM/RAG component refinements (KanbanBoard, ChunkPassportEditor, etc.)
+**CRM Components:**
+- `admin-webapp/src/components/crm/LeftPanel/MainTab.tsx` (+28 lines)
+- `admin-webapp/src/components/crm/LeftPanel/MainTab.module.css` (+21 lines)
 
-### Files Deleted (11 files)
+**Expenses:**
+- `admin-webapp/src/components/expenses/ExpensesPage.tsx` (+67 lines)
+- `admin-webapp/src/components/expenses/ExpensesPage.module.css` (+32 lines)
 
-**Prompt Documents Section:**
-1. `admin-webapp/src/components/promptDocs/PromptDocPreview.tsx`
-2. `admin-webapp/src/components/promptDocs/PromptDocPreview.module.css`
-3. `admin-webapp/src/components/promptDocs/PromptDocUpload.tsx`
-4. `admin-webapp/src/components/promptDocs/PromptDocUpload.module.css`
-5. `admin-webapp/src/components/promptDocs/PromptDocsFilters.tsx`
-6. `admin-webapp/src/components/promptDocs/PromptDocsFilters.module.css`
-7. `admin-webapp/src/components/promptDocs/PromptDocsList.tsx`
-8. `admin-webapp/src/components/promptDocs/PromptDocsList.module.css`
-9. `admin-webapp/src/components/promptDocs/PromptDocsPage.tsx`
-10. `admin-webapp/src/components/promptDocs/PromptDocsPage.module.css`
-11. `admin-webapp/src/components/promptDocs/index.ts`
-12. `admin-webapp/src/store/promptDocumentStore.ts`
+**RAG Documents:**
+- `admin-webapp/src/components/ragDocuments/RagDocsPage.tsx` (+52 lines)
+- `admin-webapp/src/components/ragDocuments/RagDocsPage.module.css` (+81 lines)
+- `admin-webapp/src/components/ragDocuments/ChunkPassportEditor.tsx` (86 lines, rewrite)
+- `admin-webapp/src/components/ragDocuments/ChunkPassportEditor.module.css` (+40 lines)
+- `admin-webapp/src/components/ragDocuments/RagDocumentList.tsx` (+79 lines)
+- `admin-webapp/src/components/ragDocuments/RagDocumentList.module.css` (+69 lines)
+
+**Tests:**
+- `test_category_classification.py` (+2 lines)
+- `test_culture_classification.py` (+49 lines)
+
+**Dependencies:**
+- `requirements.txt` (updated)
+
+**Scripts:**
+- `scripts/import_documents.py` (+2 lines)
 
 ### What's Working
 
-**Backend:**
-1. **Pruning Classification:**
-   - Keywords properly separated from planting
-   - Fallback function prioritizes pruning over planting
-   - Category mapping includes "обрезка"
+**Core Systems:**
+1. **Prompt System:** Database-driven with Python fallback
+2. **RAG v2.0:** Semantic chunking with chunk editor
+3. **Settings:** Full admin UI for configuration
+4. **Pricing:** Display and management working
+5. **KB Hierarchy:** Priority-based retrieval functional
+6. **Trial Limits:** 3-question restriction enforced
+7. **Answer Logic:** Configurable answer rules
+8. **LLM Services:** Refactored and reliable
+9. **Bot Handlers:** Cleaner structure
+10. **CRM Integration:** Activity tracking working
+11. **Expenses:** Enhanced UI functional
+12. **Database:** All repositories updated
 
-2. **Pruning Prompt:**
-   - Python fallback prompt exists
-   - Covers all major pruning topics
-   - Returns correct tuple format
-
-3. **Consultation Flow:**
-   - Pruning category integrates with existing flow
-   - No breaking changes to other categories
-
-**Frontend:**
-1. **Prompt Documents Removal:**
-   - All components deleted successfully
-   - No compilation errors
-   - Sidebar cleaned up
-
-2. **3-Level Tree Logic:**
-   - Culture type grouping function works
-   - Expansion state management functional
-   - Short name extraction works
-
-**Database:**
-1. **Migration Scripts:**
-   - All 4 migrations syntactically correct
-   - Ready to apply to database
-   - No foreign key conflicts
+**Admin Panel:**
+1. **Settings Page:** Full configuration UI
+2. **Prompt Preview:** Composition visualization
+3. **RAG Documents:** Chunk editor working
+4. **Pricing Section:** Display and editing
+5. **CRM Main Tab:** Enhanced information
+6. **Expenses:** Improved layout
 
 ### What Needs Tests
 
-**Backend Testing:**
+**High Priority:**
 
-1. **Classification Tests:**
-   - Test pruning questions classify correctly:
-     - "Когда обрезать малину?" → "обрезка"
-     - "Как формировать куст?" → "обрезка"
-     - "Нужно ли прищипывать клубнику?" → "обрезка"
+1. **Migration Testing:**
+   - Apply schema 37-47 in test environment
+   - Verify data integrity
+   - Test rollback procedures
+   - Validate foreign key constraints
 
-   - Test planting questions don't classify as pruning:
-     - "Когда сажать клубнику?" → "посадка и уход"
-     - "Как пересадить смородину?" → "посадка и уход"
+2. **Prompt System:**
+   - Test database-driven prompt loading
+   - Test fallback to Python prompts
+   - Test culture context composition
+   - Test prompt versioning
 
-   - Test edge cases:
-     - "Обрезать листья перед посадкой?" → (ambiguous, could be either)
+3. **Semantic Chunking:**
+   - Test boundary detection accuracy
+   - Test chunk quality
+   - Test edge cases (very short/long docs)
+   - Test reprocessing
 
-2. **Prompt Generation Tests:**
-   - Call `get_pruning_category_prompt("малина")`
-   - Verify returns tuple (str, bool)
-   - Verify prompt contains pruning-specific guidance
+4. **Settings System:**
+   - Test settings validation
+   - Test fallback chain
+   - Test hot-reload
+   - Test invalid value handling
 
-3. **Integration Tests:**
-   - Submit pruning question via bot
-   - Verify uses pruning prompt (not planting prompt)
-   - Check response quality
+5. **Trial Limits:**
+   - Test question counting
+   - Test limit enforcement
+   - Test upgrade flow
+   - Test reset on payment
 
-**Frontend Testing (Manual):**
+**Medium Priority:**
 
-4. **Prompt Tree Navigation:**
-   - Open Admin Panel → Промпты
-   - Expand "Консультации" group
-   - Expand "Малина + Ежевика" subgroup
-   - Verify shows 4 culture type groups (Ежевика, Летняя, Ремонтантная, Общее)
-   - Click "Ежевика" → verify expands
-   - Verify shows 2 prompts: "Питание", "Посадка и уход" (short names)
-   - Click "Питание" → verify loads prompt details
+6. **Answer Logic:**
+   - Test rule composition
+   - Test section enable/disable
+   - Test fallback to defaults
 
-5. **Prompt Docs Migration:**
-   - Search for old "Промт документы" section
-   - Verify removed from sidebar
-   - Navigate to "Промпты" → verify prompt_docs group exists
-   - Verify 8 prompts present
+7. **KB Hierarchy:**
+   - Test priority sorting
+   - Test priority-aware retrieval
 
-**Database Testing:**
+8. **Integration Tests:**
+   - Full consultation flow with new prompt system
+   - End-to-end RAG with semantic chunking
+   - Settings changes reflected in consultations
 
-6. **Migration Application:**
-   - Apply schema_33-36.sql in order
-   - Query prompts table:
-     ```sql
-     SELECT slug, name FROM prompts WHERE slug LIKE '%raspberry%';
-     -- Should return 8 rows
-     ```
-   - Verify culture_subtypes populated:
-     ```sql
-     SELECT slug, culture_subtypes FROM prompt_subgroups
-     WHERE slug IN ('raspberry', 'currant_honeysuckle');
-     ```
+**Low Priority:**
+
+9. **UI Tests:**
+   - Settings page functionality
+   - Chunk editor workflow
+   - Pricing management
+
+### What Needs Documentation
+
+**High Priority:**
+
+1. **Migration Guide:**
+   - Step-by-step migration instructions
+   - Rollback procedures
+   - Data backup requirements
+
+2. **Settings Documentation:**
+   - All settings explained
+   - Recommended values
+   - Impact of each setting
+
+3. **Prompt System Guide:**
+   - How to create new prompts
+   - Culture context system
+   - Versioning workflow
+
+4. **Admin Panel User Manual:**
+   - Settings page usage
+   - RAG document management
+   - Chunk editing workflow
+
+**Medium Priority:**
+
+5. **API Documentation:**
+   - New endpoints documented
+   - Request/response examples
+   - Authentication requirements
+
+6. **Development Guide:**
+   - How to add new features
+   - Code organization patterns
+   - Testing requirements
 
 ## Next Steps
 
-### Immediate (HIGH PRIORITY)
+### Immediate (CRITICAL - Before Deployment)
 
-1. **Apply Database Migrations:**
-   - **Action:** Run schema_33-36.sql migrations
+1. **Apply and Verify All Migrations:**
+   - **Action:** Apply schema_37.sql through schema_47.sql in test environment
    - **Commands:**
      ```bash
-     psql -h localhost -U bot_user -d garden_bot -f db/schema_33_raspberry_blackberry_prompts.sql
-     psql -h localhost -U bot_user -d garden_bot -f db/schema_34_currant_honeysuckle_prompts.sql
-     psql -h localhost -U bot_user -d garden_bot -f db/schema_35_currant_honeysuckle_subtypes.sql
-     psql -h localhost -U bot_user -d garden_bot -f db/schema_36_blueberry_prompts.sql
+     psql -h localhost -U bot_user -d garden_bot_test -f db/schema_37_documents_full_text.sql
+     psql -h localhost -U bot_user -d garden_bot_test -f db/schema_38_embedding_nullable.sql
+     # ... continue for all migrations
      ```
-   - **Verify:**
-     ```sql
-     SELECT COUNT(*) FROM prompts WHERE slug LIKE 'blackberry_%';
-     -- Should return 2
-     SELECT COUNT(*) FROM prompts WHERE slug LIKE 'summer_%raspberry';
-     -- Should return 2
-     SELECT culture_subtypes FROM prompt_subgroups WHERE slug = 'currant_honeysuckle';
-     -- Should return ["currant", "honeysuckle"]
-     ```
-   - **Risk:** HIGH (feature won't work without this)
+   - **Verify:** Check tables exist, data intact, indices created
+   - **Test:** Run full consultation flow in test
+   - **Risk:** CRITICAL (data loss if migrations fail)
 
-2. **Test Pruning Classification:**
-   - **Action:** Add test cases to `test_culture_classification_advanced.py`
-   - **Test questions:**
-     ```python
-     test_cases = [
-         ("Когда обрезать малину?", "обрезка"),
-         ("Как формировать куст смородины?", "обрезка"),
-         ("Нужно ли прищипывать ежевику?", "обрезка"),
-         ("Когда сажать клубнику?", "посадка и уход"),  # ensure not pruning
-     ]
-     ```
-   - **Run:** `python test_culture_classification_advanced.py`
-   - **Risk:** MEDIUM (regression prevention)
+2. **Backup Production Database:**
+   - **Action:** Full pg_dump before applying migrations
+   - **Command:** `pg_dump -h localhost -U bot_user garden_bot > backup_pre_v1.2.3.sql`
+   - **Store:** Multiple locations (local + cloud)
+   - **Verify:** Restore test successful
+   - **Risk:** CRITICAL (only safety net)
 
-3. **Restart Backend:**
-   - **Action:** Restart backend to load new pruning category code
-   - **Command:** `python -m src`
-   - **Verify:** Check logs for no errors on startup
-   - **Test:** Send "Когда обрезать малину?" → should classify as "обрезка"
+3. **Test Prompt System End-to-End:**
+   - **Action:** Send test questions covering all categories
+   - **Test cases:**
+     - Nutrition question for strawberry → check prompt composition
+     - Planting question for raspberry → verify culture context
+     - Pruning question → ensure correct prompt selected
+     - Generic question → test fallback logic
+   - **Verify:** Responses are correct, no errors
+   - **Risk:** HIGH (core functionality)
 
-4. **Test Prompt Tree UI:**
-   - **Action:** Open Admin Panel and navigate to Промпты
-   - **Steps:**
-     1. Expand "Консультации"
-     2. Expand "Малина + Ежевика"
-     3. Verify 4 culture type groups appear
-     4. Click "Ежевика" → verify expands
-     5. Verify prompts show short names ("Питание")
-     6. Click prompt → verify loads
-   - **Check for:** Console errors, visual glitches
-   - **Risk:** MEDIUM (UI functionality)
+4. **Validate Settings System:**
+   - **Action:** Change each setting via UI and verify effect
+   - **Tests:**
+     - Toggle RAG on/off → check consultation uses/doesn't use RAG
+     - Change temperature → verify in logs
+     - Modify max snippets → check RAG result count
+   - **Check:** Fallback to .env works if DB unavailable
+   - **Risk:** HIGH (misconfiguration could break bot)
 
-### Short-term (MEDIUM PRIORITY)
+5. **Test Semantic Chunking:**
+   - **Action:** Upload test documents and verify chunks
+   - **Tests:**
+     - Small doc (2 pages) → verify chunk boundaries
+     - Large doc (20 pages) → check performance
+     - Document with tables → test structure preservation
+   - **Edit:** Try chunk editor, verify saves
+   - **Risk:** MEDIUM (RAG quality)
 
-5. **Write Pruning Prompt Content Tests:**
-   - **File:** `test_pruning_prompt.py`
-   - **Test:** Verify prompt contains key terms:
-     - Types: формирующая, санитарная, омолаживающая
-     - Tools: секатор, сучкорез
-     - Culture-specific: малина ремонтантная, смородина
-   - **Verify:** Returns correct tuple format
+### Short-term (Week 1 After Deployment)
 
-6. **Add Culture-Specific Pruning Prompts:**
-   - **Current state:** Single generic pruning prompt
-   - **Enhancement:** Split into culture groups (like nutrition.py)
-   - **Files to create:**
-     - `pruning_strawberry.txt` — Strawberry-specific (remove runners, leaves)
-     - `pruning_raspberry.txt` — Raspberry-specific (two-year cycle)
-     - `pruning_currant.txt` — Currant-specific (old branch removal)
-   - **Implementation:** Modify `get_pruning_category_prompt()` to check culture
-   - **Priority:** MEDIUM (quality improvement)
+6. **Monitor System Metrics:**
+   - **Metrics to track:**
+     - Consultation latency (should be <5s)
+     - LLM token usage (watch for spikes)
+     - RAG retrieval accuracy (user feedback)
+     - Error rate (should be <1%)
+     - Trial conversion rate
+   - **Tools:** Check admin panel, logs
+   - **Alerts:** Set up for anomalies
 
-7. **Persist Culture Type Expansion State:**
-   - **Current issue:** Expansion resets on page reload
-   - **Solution:** Add to localStorage
-   - **Code location:** `promptStore.ts`
-   - **Pattern:** Same as expandedGroups/expandedSubgroups
-   - **Impact:** UX improvement (convenience)
+7. **Gather User Feedback:**
+   - **Focus areas:**
+     - Answer quality with new prompt system
+     - Trial experience (is 3 questions enough to evaluate?)
+     - RAG relevance (are answers using correct sources?)
+   - **Method:** User surveys, support tickets
+   - **Iterate:** Adjust prompts/settings based on feedback
 
-8. **Document Prompt System Changes:**
-   - **File:** `docs/features/PROMPTS.md`
-   - **Update sections:**
-     - Add "обрезка" to categories list
-     - Document culture subtypes feature
-     - Explain 3-level tree in admin panel
-     - Migration guide from prompt_documents
-   - **Also update:** `docs/PROJECT_MAP.md` with new category count (7 categories)
+8. **Optimize Performance:**
+   - **Identify bottlenecks:**
+     - Slow queries (check pg_stat_statements)
+     - Large prompt composition time
+     - Semantic chunking performance
+   - **Optimize:**
+     - Add caching for culture contexts
+     - Index optimization
+     - Query tuning
 
-### Long-term (FUTURE)
+9. **Complete Test Coverage:**
+   - **Write tests for:**
+     - All new features (answer logic, settings, etc.)
+     - Critical paths (consultation flow)
+     - Edge cases (invalid inputs)
+   - **Target:** 80% code coverage for new code
+   - **Tools:** pytest, pytest-cov
 
-9. **Move Culture Type Labels to Database:**
-   - **Current:** Hardcoded in `CULTURE_TYPE_LABELS` constant
-   - **Better:** Store in culture_subtypes_metadata JSONB
-   - **Schema change:**
-     ```sql
-     ALTER TABLE prompt_subgroups
-     ADD COLUMN culture_subtypes_metadata JSONB;
+### Medium-term (Month 1)
 
-     UPDATE prompt_subgroups SET culture_subtypes_metadata =
-     '{
-       "summer": {"label": "Летняя", "order": 2},
-       "remontant": {"label": "Ремонтантная", "order": 3}
-     }'
-     WHERE slug = 'raspberry';
-     ```
-   - **Frontend:** Fetch labels from API, use in tree
-   - **Benefit:** Admins can add subtypes without code changes
+10. **Referral System Implementation:**
+    - **Complete:** Frontend UI for referral codes
+    - **Implement:** Reward distribution logic
+    - **Test:** Full referral flow
+    - **Launch:** Beta test with select users
 
-10. **Refactor PromptGroupTree Component:**
-    - **Extract subcomponents:**
-      - `CultureTypeGroup.tsx` (60 lines)
-      - `PromptItem.tsx` (40 lines)
-      - `SubgroupSection.tsx` (80 lines)
-    - **Main component reduced to:** ~120 lines (orchestration only)
-    - **Benefits:** Better testability, clearer responsibilities
-    - **Priority:** LOW (maintainability, not urgent)
+11. **A/B Test Prompt Variants:**
+    - **Create:** Alternative prompt versions
+    - **Split:** 50/50 traffic
+    - **Measure:** Answer quality, user satisfaction
+    - **Winner:** Roll out best-performing prompts
 
-11. **Add Pruning Prompt Version in Database:**
-    - **Action:** Insert pruning prompt content into database
-    - **Migration:** `schema_37_pruning_prompts.sql`
-    - **Content:** Copy from `pruning.py` Python fallback
-    - **Benefit:** Admins can edit pruning prompt via UI
-    - **Enables:** A/B testing, version history for pruning category
+12. **Settings History & Rollback:**
+    - **Implement:** Settings change history table
+    - **Build:** Rollback UI in admin panel
+    - **Test:** Rollback workflow
+    - **Document:** Usage guide
 
-12. **Create Automated E2E Test:**
-    - **Tool:** Playwright (already used for webapp testing)
-    - **Test flow:**
-      1. Send "Когда обрезать малину?" to bot
-      2. Capture bot's response
-      3. Verify contains pruning-specific terms (обрезка, секатор, срез)
-      4. Verify does NOT contain planting terms (посадка, саженец)
-    - **CI integration:** Run on every commit
-    - **Priority:** LOW (comprehensive testing)
+13. **Enhanced Analytics:**
+    - **Build:** Usage dashboards in admin panel
+    - **Metrics:**
+      - Consultation volume by category/culture
+      - Popular topics
+      - Trial conversion funnel
+      - Revenue metrics
+    - **Alerts:** Anomaly detection
 
-## Dependencies
+### Long-term (Quarter 1)
 
-**No new dependencies added** — All features use existing libraries:
-- Backend: asyncpg (database), aiogram (Telegram)
-- Frontend: React, TypeScript, Zustand (state)
-- Database: PostgreSQL 16 + pgvector
+14. **Machine Learning Enhancements:**
+    - **KB Quality Scoring:** Auto-assign priorities based on answer quality
+    - **Question Clustering:** Identify common question patterns
+    - **Prompt Optimization:** Automated prompt testing
 
-## Database Changes
+15. **Scale Preparation:**
+    - **Load Testing:** Simulate 1000+ concurrent users
+    - **Caching Layer:** Redis for hot data
+    - **CDN:** Static assets optimization
+    - **Database:** Read replicas for admin panel
 
-**New Migrations Created (4 files):**
-
-1. **`db/schema_33_raspberry_blackberry_prompts.sql`**
-   - Adds 8 prompts for Raspberry + Blackberry
-   - Subtypes: blackberry, summer, remontant, general
-   - Categories: nutrition, planting_care
-
-2. **`db/schema_34_currant_honeysuckle_prompts.sql`**
-   - Adds 4 prompts for Currant + Honeysuckle
-   - Subtypes: currant, honeysuckle
-   - Categories: nutrition, planting_care
-
-3. **`db/schema_35_currant_honeysuckle_subtypes.sql`**
-   - Updates culture_subtypes metadata for currant_honeysuckle subgroup
-
-4. **`db/schema_36_blueberry_prompts.sql`**
-   - Adds 2 prompts for Blueberry
-   - No subtypes
-   - Categories: nutrition, planting_care
-
-**Tables Modified:**
-- `prompts` — 14 new rows inserted
-- `prompt_subgroups` — culture_subtypes field updated for 1 row
-
-**No schema changes** — Only data insertions/updates
+16. **Mobile Admin App:**
+    - **Platform:** React Native or Flutter
+    - **Features:** Moderation, monitoring, notifications
+    - **Target:** Enable mobile administration
 
 ## Environment Variables
 
-**No new environment variables** — All features work with existing configuration.
+**New Required Variables:**
+
+```bash
+# No new required variables - all configuration moved to database
+```
+
+**Optional Variables (Database Fallbacks):**
+
+```bash
+# LLM Configuration (fallback if DB unavailable)
+OPENAI_MODEL_CONSULTATION=gpt-4o
+OPENAI_MODEL_ARTICLE=gpt-4o
+OPENAI_MODEL_CLASSIFICATION=gpt-4o-mini
+OPENAI_MODEL_UTILITY=gpt-4o-mini
+LLM_TEMPERATURE=0.3
+
+# RAG Configuration
+RAG_ENABLED=true
+MAX_RAG_SNIPPETS=5
+
+# Trial Configuration
+TRIAL_QUESTION_LIMIT=3
+```
+
+**Migration Notes:**
+- Most settings now loaded from `admin_settings` table
+- .env still used for bootstrap and emergency fallback
+- Database values take precedence over .env
 
 ## Session Statistics
 
-- **Duration:** ~4-5 hours (classification fix, prompt migrations, UI tree)
-- **Files Created:** 5 (1 Python, 4 SQL)
-- **Files Modified:** 12+ (4 backend, 8+ frontend)
-- **Files Deleted:** 12 (prompt documents section removal)
-- **Lines Added:** ~500 lines (pruning prompt, tree grouping logic, migrations)
-- **Lines Deleted:** ~800 lines (removed promptDocs components)
-- **Net change:** -300 lines (code cleanup)
-- **Database Rows:** 14 new prompts
-- **Categories:** 6 → 7 (added "обрезка")
-- **Tests Written:** 0 (testing needed)
-- **Documentation Updated:** 0 (this summary only)
-- **Commits Ready:** 1 (session end commit pending)
+- **Duration:** ~2 weeks (multiple sessions)
+- **Files Created:** 50+ files
+- **Files Modified:** 61 files
+- **Lines Added:** 4,436 lines
+- **Lines Deleted:** 1,541 lines
+- **Net Change:** +2,895 lines
+- **Database Migrations:** 11 new schemas (37-47)
+- **New Features:** 7 major features
+- **Bug Fixes:** Multiple
+- **Tests Created:** 2 new test files
+- **Documentation:** 7 new markdown files
+- **Screenshots:** 10+ UI documentation images
+- **Commits:** Pending (will be single large commit)
 
 ---
 
-**Session completed:** 2025-12-23
-**Ready for:** Database migrations, backend restart, classification testing, UI verification
-**Status:** Code complete, migrations ready, testing pending
-**Pending:** Apply schema_33-36.sql, test pruning classification, verify 3-level tree UI
-**Version:** Still 1.2.2 (internal feature enhancements, no public-facing changes)
+**Session completed:** 2026-02-16
+**Session type:** Major feature release
+**Status:** Code complete, testing pending, ready for migration application
+**User Action Required:** Apply migrations, test thoroughly, deploy to production
+**Version:** 1.2.2 → 1.2.3
+**Breaking Changes:** None (all changes backward compatible with fallbacks)
+**Migration Required:** YES (11 database schema updates)
 
 ---
-
-# Previous Sessions
-
-## Session Summary — 2025-12-20 (Payment System Display)
-
-**Accomplishments:**
-- Complete payment display system in Admin Panel
-- Backend: 4 JOIN functions in payment_repo, 3 new API endpoints
-- Frontend: BillingTab rewrite, PaymentsList component, activity events
-- CRM Integration: Payments visible in client card billing tab
-- Activity Feed: Payment events with icons and status badges
-- Statistics: Total received, pending, payment counts
-- No schema changes, no version bump
-
-**Key Changes:**
-- Payment repository with JOIN queries for product names
-- Dedicated Payments list page with filters and pagination
-- Activity events for payment lifecycle (pending → succeeded)
-- Real-time payment visibility in CRM
-
-_Full session history available in git log_
-
-## Session Summary — 2025-12-19 (Prompt System Enhancement)
-
-**Accomplishments:**
-- Migrated prompt_documents to unified prompts system (8 documents → prompt_docs group)
-- Implemented version diff functionality with visual comparison UI
-- Fixed disabled prompt logic (distinguish DB unavailable vs intentionally disabled)
-- Backend: diff generation endpoint, enhanced prompt_repo.py
-- Frontend: Completely rewrote PromptHistory component (two-column layout with diff viewer)
-- No schema changes, no version bump
-
-**Key Changes:**
-- Unified prompt management: All prompts in single system with version control
-- Visual diff: Side-by-side comparison with green/red highlighting
-- Proper disabled handling: None vs "" semantics for fallback logic
-
-_Full session history available in git log_
-
-## Session Summary — 2025-12-18 (Major Refactoring)
-
-**Accomplishments:**
-- Unified funnel system architecture (CRM + Buyers)
-- Expenses tracking system (complete feature)
-- RAG v2.0 with semantic chunking and Gemini embeddings
-- Admin articles feature
-- 38 new API endpoints
-- 33 new files, ~7500+ lines of code
-
-**Key Changes:**
-- Merged separate CRM and Buyers into unified `funnels` architecture
-- Added semantic chunking for DOCX files
-- Switched to Gemini API for embeddings (cost savings)
-- Spendee-style expense tracking UI
-- Dynamic funnel submenu in sidebar
-
-_Full session history available in git log_

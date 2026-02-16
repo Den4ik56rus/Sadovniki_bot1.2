@@ -40,7 +40,7 @@ from src.services.documents.chunker import chunk_text
 # RAG v2.0: Semantic chunking
 from src.services.documents.semantic_chunker import chunk_text_semantic
 from src.services.documents.docx_parser import extract_text_from_docx_v2
-from src.services.documents.boundary_detector import detect_list_boundaries
+from src.services.documents.boundary_detector import detect_list_boundaries, detect_headings
 
 # Embeddings
 from src.services.llm.embeddings_llm import get_text_embedding, get_batch_embeddings_with_usage
@@ -57,6 +57,7 @@ from src.services.db.document_chunks_repo import (
     bulk_update_chunk_embeddings,
     bulk_update_chunk_contexts,
     get_chunks_by_document,
+    assemble_chunk_text,
 )
 from src.services.llm.core_llm import calculate_embedding_cost
 from src.services.llm.context_generator import generate_contexts_for_document
@@ -494,12 +495,15 @@ async def process_document(
     force_update: bool = False,
     chunking_mode: ChunkingMode = "semantic",
     use_gemini_embeddings: bool = True,
+    generate_context: bool = False,
 ) -> Dict[str, any]:
     """
     Обрабатывает документ: извлекает текст, разбивает на чанки,
     генерирует embeddings и сохраняет в БД.
 
     Поддерживаемые форматы: PDF, TXT, MD, DOCX
+
+    RAG v2.5: Добавлен параметр generate_context для опциональной генерации контекста.
 
     Параметры:
         file_path: Путь к файлу (PDF, TXT, MD, DOCX)
@@ -508,6 +512,8 @@ async def process_document(
         force_update: Если True, перезаписывает существующий документ
         chunking_mode: "semantic" (RAG v2.0) или "fixed" (legacy)
         use_gemini_embeddings: True = Gemini API, False = OpenAI API
+        generate_context: True = генерировать контекст при импорте (старое поведение)
+                         False = не генерировать (новое поведение, экономия токенов)
 
     Возвращает:
         {
@@ -560,6 +566,7 @@ async def process_document(
 
     # RAG v2.0: Используем улучшенный парсер для DOCX
     list_boundaries = []
+    headings = []
     if ext == ".docx" and chunking_mode == "semantic":
         extraction_result = extract_text_from_docx_v2(file_path)
         if extraction_result["error"]:
@@ -567,6 +574,7 @@ async def process_document(
             return result
         full_text = extraction_result["full_text"]
         list_boundaries = extraction_result.get("lists", [])
+        headings = extraction_result.get("headings", [])
         pages = [{"page_number": 1, "text": full_text}]  # DOCX как одна страница
     else:
         extraction_result = extract_text_from_file(file_path)
@@ -575,9 +583,10 @@ async def process_document(
             return result
         full_text = extraction_result["full_text"]
         pages = extraction_result["pages"]
-        # Для не-DOCX файлов детектируем списки из текста
+        # Для не-DOCX файлов детектируем списки и заголовки из текста
         if chunking_mode == "semantic":
             list_boundaries = detect_list_boundaries(full_text)
+            headings = detect_headings(full_text)
 
     # 6. Проверка минимальной длины текста
     if len(full_text.strip()) < MIN_TEXT_LENGTH:
@@ -594,6 +603,7 @@ async def process_document(
             category=category or "общая_информация",
             subcategory=subcategory,
             processing_status="processing",
+            full_text=full_text,  # RAG v2.5: сохраняем полный текст
         )
         print(f"[process_document] Created document record ID: {document_id}")
     except Exception as e:
@@ -604,19 +614,24 @@ async def process_document(
     chunking_stats = {"sentences_count": 0, "chunking_tokens": 0, "chunking_cost_usd": 0.0}
     try:
         if chunking_mode == "semantic":
-            # RAG v2.0: Semantic chunking с Gemini
-            # threshold_percentile=60 — меньше точек разрыва, более крупные чанки
-            # min_chunk_size=300 — предотвращает чанки из 1-2 предложений
-            print(f"[process_document] Using semantic chunking (lists detected: {len(list_boundaries)})")
+            # RAG v3: Structure-first semantic chunking с Gemini
+            # merge_threshold=0.5 — абсолютный порог similarity для слияния блоков
+            # min_chunk_size=200 — предотвращает чанки из 1-2 предложений
+            # max_chunk_size=1200 — оптимально для RAG (60-350 tokens)
+            # overlap_sentences=2 — контекст между чанками
+            print(f"[process_document] Using semantic chunking v3 (lists: {len(list_boundaries)}, headings: {len(headings)})")
             chunks, chunking_stats = await chunk_text_semantic(
                 text=full_text,
                 list_boundaries=list_boundaries,
-                threshold_percentile=60,
-                min_chunk_size=300,
-                max_chunk_size=2000,
+                headings=headings,
+                merge_threshold=0.5,
+                min_chunk_size=200,
+                max_chunk_size=1200,
+                overlap_sentences=2,
             )
             print(
-                f"[process_document] Semantic chunking: {chunking_stats['sentences_count']} sentences, "
+                f"[process_document] Semantic chunking v3: {chunking_stats.get('blocks_count', '?')} blocks, "
+                f"{chunking_stats['sentences_count']} sentences, "
                 f"{chunking_stats['chunking_tokens']} tokens, ${chunking_stats['chunking_cost_usd']:.6f}"
             )
         else:
@@ -693,41 +708,47 @@ async def process_document(
         result["error"] = f"Chunk insertion failed: {e}"
         return result
 
-    # 12. RAG v2.0: Генерация контекста для чанков через LLM
+    # 12. RAG v2.5: Генерация контекста для чанков (ОПЦИОНАЛЬНО)
     context_cost = 0.0
     context_tokens = 0
-    try:
-        print(f"[process_document] Generating context for {len(chunks_for_db)} chunks...")
 
-        # Получаем чанки из БД (нужны их ID)
-        db_chunks = await get_chunks_by_document(document_id)
+    if generate_context:
+        try:
+            print(f"[process_document] Generating context for {len(chunks_for_db)} chunks...")
 
-        # Генерируем контексты
-        context_result = await generate_contexts_for_document(
-            document_text=full_text,
-            chunks=db_chunks,
-        )
+            # Получаем чанки из БД (нужны их ID)
+            db_chunks = await get_chunks_by_document(document_id)
 
-        context_cost = context_result.total_cost
-        context_tokens = context_result.total_input_tokens + context_result.total_output_tokens
+            # Генерируем контексты с локальным окном (RAG v2.5)
+            context_result = await generate_contexts_for_document(
+                document_text=full_text,
+                chunks=db_chunks,
+                use_window=True,  # RAG v2.5: используем новую логику с окном
+            )
 
-        # Обновляем контексты в БД
-        if context_result.success_count > 0:
-            updates = [
-                {"chunk_id": cr.chunk_id, "context": cr.context}
-                for cr in context_result.contexts
-                if cr.context  # Только непустые контексты
-            ]
-            await bulk_update_chunk_contexts(updates)
+            context_cost = context_result.total_cost
+            context_tokens = context_result.total_input_tokens + context_result.total_output_tokens
 
-        print(
-            f"[process_document] Context generation: {context_result.success_count}/{len(db_chunks)} chunks, "
-            f"tokens: {context_tokens}, cost: ${context_cost:.4f}"
-        )
+            # Обновляем контексты в БД
+            if context_result.success_count > 0:
+                updates = [
+                    {"chunk_id": cr.chunk_id, "context": cr.context}
+                    for cr in context_result.contexts
+                    if cr.context  # Только непустые контексты
+                ]
+                await bulk_update_chunk_contexts(updates)
 
-    except Exception as e:
-        # Ошибка генерации контекста не критична — документ всё равно загружен
-        print(f"[process_document] Context generation failed (non-critical): {e}")
+            print(
+                f"[process_document] Context generation: {context_result.success_count}/{len(db_chunks)} chunks, "
+                f"tokens: {context_tokens}, cost: ${context_cost:.4f}"
+            )
+
+        except Exception as e:
+            # Ошибка генерации контекста не критична — документ всё равно загружен
+            print(f"[process_document] Context generation failed (non-critical): {e}")
+    else:
+        # RAG v2.5: логирование пропуска генерации контекста
+        print(f"[process_document] Context generation skipped (generate_context=False)")
 
     # 13. Обновление статуса документа на 'chunked' (is_embedded=False)
     # Документ готов для паспортизации, embeddings будут сгенерированы позже
@@ -809,7 +830,16 @@ async def embed_document(
         total_tokens = 0
         embedding_model = None
 
-        chunk_texts = [c["chunk_text"] for c in chunks]
+        # Собираем текст для embedding: prefix + context + chunk_text
+        chunk_texts = []
+        chunks_without_prefix = 0
+        for c in chunks:
+            if not c.get("prefix"):
+                chunks_without_prefix += 1
+            chunk_texts.append(assemble_chunk_text(c))
+
+        if chunks_without_prefix > 0:
+            print(f"[embed_document] WARNING: {chunks_without_prefix}/{len(chunks)} chunks have no prefix (passport data missing from embedding)")
 
         if use_gemini_embeddings and settings.queryrouter_api_key:
             # RAG v2.0: Gemini Embeddings

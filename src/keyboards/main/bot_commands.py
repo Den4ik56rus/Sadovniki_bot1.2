@@ -11,7 +11,7 @@ async def set_main_menu_commands(bot: Bot) -> None:
     """
     commands = [
         BotCommand(command="start",        description="🚀 Запустить бота"),
-        BotCommand(command="kb_pending",        description="модерациия вопросов"),
+        BotCommand(command="kb_pending",   description="модерациия вопросов"),
     ]
 
     await bot.set_my_commands(commands)

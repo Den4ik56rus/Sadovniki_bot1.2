@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRagDocumentStore } from '@/store/ragDocumentStore'
 import { useDocumentsStore } from '@/store'
+import { api } from '@/services/api'
 import { RagDocumentList } from './RagDocumentList'
 import { ChunkPassportEditor } from './ChunkPassportEditor'
 import styles from './RagDocsPage.module.css'
@@ -15,10 +16,22 @@ export function RagDocsPage() {
   const [localError, setLocalError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  // RAG toggle state
+  const [ragEnabled, setRagEnabled] = useState(true)
+  const [isToggling, setIsToggling] = useState(false)
+
   useEffect(() => {
     fetchDocuments()
     fetchPassportOptions()
     fetchDocsStore() // Для получения subcategories
+
+    // Загружаем состояние RAG toggle
+    api.getSettings().then(response => {
+      const ragSetting = response.settings.find(s => s.key === 'rag_enabled')
+      if (ragSetting) {
+        setRagEnabled(ragSetting.value === 'true')
+      }
+    }).catch(console.error)
   }, [fetchDocuments, fetchPassportOptions, fetchDocsStore])
 
   // Set default category when subcategories load
@@ -27,6 +40,19 @@ export function RagDocsPage() {
       setSelectedCategory(subcategories[0])
     }
   }, [subcategories, selectedCategory])
+
+  const handleRagToggle = useCallback(async () => {
+    setIsToggling(true)
+    try {
+      const newValue = !ragEnabled
+      await api.updateSetting('rag_enabled', String(newValue))
+      setRagEnabled(newValue)
+    } catch (err) {
+      console.error('Failed to toggle RAG:', err)
+    } finally {
+      setIsToggling(false)
+    }
+  }, [ragEnabled])
 
   const handleFile = useCallback(
     async (file: File) => {
@@ -101,10 +127,28 @@ export function RagDocsPage() {
   return (
     <div className={styles.page}>
       <header className={styles.header}>
-        <h1 className={styles.title}>RAG Документы</h1>
-        <p className={styles.subtitle}>
-          Загрузка документов и паспортизация чанков для RAG-системы
-        </p>
+        <div className={styles.headerTop}>
+          <div>
+            <h1 className={styles.title}>RAG Документы</h1>
+            <p className={styles.subtitle}>
+              Загрузка документов и паспортизация чанков для RAG-системы
+            </p>
+          </div>
+          <div className={styles.ragToggle}>
+            <span className={styles.toggleLabel}>RAG-система</span>
+            <button
+              className={`${styles.toggleButton} ${ragEnabled ? styles.toggleOn : styles.toggleOff}`}
+              onClick={handleRagToggle}
+              disabled={isToggling}
+              title={ragEnabled ? 'RAG включён — нажмите для отключения' : 'RAG отключён — нажмите для включения'}
+            >
+              <span className={styles.toggleSlider} />
+            </button>
+            <span className={`${styles.toggleStatus} ${ragEnabled ? styles.statusOn : styles.statusOff}`}>
+              {ragEnabled ? 'Включена' : 'Отключена'}
+            </span>
+          </div>
+        </div>
       </header>
 
       {/* Upload section */}

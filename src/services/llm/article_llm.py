@@ -16,11 +16,12 @@ import logging
 from typing import Optional, Tuple
 
 from src.services.rag.unified_retriever import retrieve_unified_snippets
-from src.services.llm.embeddings_llm import get_text_embedding_with_usage
+from src.services.llm.gemini_embeddings import get_gemini_embedding_with_usage
 from src.services.llm.core_llm import create_chat_completion_with_usage, calculate_cost
 from src.prompts.article_prompt import build_article_system_prompt
 from src.services.db.article_repo import save_article
 from src.config import settings
+from src.services.db.settings_repo import get_model_for_task, get_temperature_for_task, get_reasoning_effort_for_task
 
 logger = logging.getLogger(__name__)
 
@@ -60,7 +61,7 @@ async def generate_article(
         # ============================================================
         print(f"[article_llm] ШАГ 1: Получение embedding...")
 
-        query_embedding, embed_tokens, embed_model = await get_text_embedding_with_usage(topic)
+        query_embedding, embed_tokens, embed_model = await get_gemini_embedding_with_usage(topic)
 
         print(f"[article_llm] Embedding получен:")
         print(f"  - Размерность: {len(query_embedding)}")
@@ -130,15 +131,21 @@ async def generate_article(
             {"role": "user", "content": f"Напиши подробную статью на тему: {topic}"}
         ]
 
+        article_model = await get_model_for_task("article")
+        article_temp = await get_temperature_for_task("article")
+
         print(f"[article_llm] Параметры LLM:")
-        print(f"  - Модель: {settings.openai_model_article}")
-        print(f"  - Temperature: {settings.openai_temperature}")
+        print(f"  - Модель: {article_model}")
+        print(f"  - Temperature: {article_temp}")
         print(f"  - Сообщений: {len(messages)}")
+
+        article_reasoning = await get_reasoning_effort_for_task("article")
 
         response = await create_chat_completion_with_usage(
             messages=messages,
-            model=settings.openai_model_article,
-            # temperature берётся из settings.openai_temperature
+            model=article_model,
+            temperature=article_temp,
+            reasoning_effort=article_reasoning,
         )
 
         article_text = response["content"]

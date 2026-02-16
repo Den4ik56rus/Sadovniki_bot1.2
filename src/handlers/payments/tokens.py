@@ -47,7 +47,7 @@ async def buy_tokens_handler(callback: CallbackQuery):
 
         if not package:
             await callback.message.edit_text(
-                "❌ Пакет токенов не найден.\n"
+                "❌ Пакет вопросов не найден.\n"
                 "Попробуйте выбрать другой или свяжитесь с поддержкой.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(
@@ -60,7 +60,7 @@ async def buy_tokens_handler(callback: CallbackQuery):
 
         if not package.get("is_active"):
             await callback.message.edit_text(
-                "⚠️ Этот пакет токенов временно недоступен.\n"
+                "⚠️ Этот пакет вопросов временно недоступен.\n"
                 "Выберите другой вариант или попробуйте позже.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(
@@ -100,7 +100,7 @@ async def buy_tokens_handler(callback: CallbackQuery):
             f"💰 Сумма: {int(package['price_rub'])}₽\n"
             f"🎁 Вы получите: {package['tokens_amount']} вопросов\n\n"
             f"Нажмите кнопку ниже для оплаты.\n"
-            f"После успешной оплаты токены будут автоматически начислены на ваш баланс.\n\n"
+            f"После успешной оплаты вопросы будут автоматически начислены на ваш баланс.\n\n"
             f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}",
             reply_markup=keyboard
         )

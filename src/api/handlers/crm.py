@@ -202,7 +202,7 @@ async def get_funnel_stats(request: web.Request) -> web.Response:
 async def get_client_full(request: web.Request) -> web.Response:
     """
     GET /api/admin/crm/clients/{id}/full
-    Получить полные данные клиента включая теги и кастомные поля.
+    Получить полные данные клиента включая теги, кастомные поля и реферальную информацию.
     """
     try:
         user_id = int(request.match_info["id"])
@@ -211,7 +211,26 @@ async def get_client_full(request: web.Request) -> web.Response:
         if not client:
             raise web.HTTPNotFound(text="Client not found")
 
-        return web.json_response(_serialize_dict(client))
+        result = _serialize_dict(client)
+
+        # Добавляем реферальные данные
+        from src.services.db.referral_repo import get_referrer_info, get_referral_stats
+        from src.services.db.pool import get_pool
+
+        referrer = await get_referrer_info(user_id)
+        ref_stats = await get_referral_stats(user_id)
+
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            ref_code = await conn.fetchval(
+                "SELECT referral_code FROM users WHERE id = $1", user_id
+            )
+
+        result["referrer"] = _serialize_dict(referrer) if referrer else None
+        result["referrals_count"] = ref_stats["total_referrals"]
+        result["referral_code"] = ref_code
+
+        return web.json_response(result)
 
     except ValueError:
         raise web.HTTPBadRequest(text="Invalid client ID")
@@ -1001,6 +1020,24 @@ async def delete_funnel_column(request: web.Request) -> web.Response:
         raise
     except Exception as e:
         logger.error(f"Error deleting funnel column: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
+
+
+async def get_client_referrals(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/crm/clients/{id}/referrals
+    Получить список приглашённых пользователей.
+    """
+    try:
+        user_id = int(request.match_info["id"])
+        from src.services.db.referral_repo import get_referrals_list
+        referrals = await get_referrals_list(user_id)
+        return web.json_response([_serialize_dict(r) for r in referrals])
+
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid client ID")
+    except Exception as e:
+        logger.error(f"Error getting client referrals: {e}")
         raise web.HTTPInternalServerError(text="Database error")
 
 

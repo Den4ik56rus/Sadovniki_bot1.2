@@ -23,7 +23,7 @@ from src.services.db.kb_repo import (
     kb_insert,
 )
 
-from src.services.llm.embeddings_llm import get_text_embedding
+from src.services.llm.gemini_embeddings import get_gemini_embedding
 from src.services.llm.core_llm import create_chat_completion
 from src.keyboards.admin.menu import (
     admin_main_menu_kb,
@@ -570,7 +570,7 @@ async def cb_kb_choose_category(callback: CallbackQuery):
     question = item["question"]
 
     try:
-        q_emb = await get_text_embedding(question)
+        q_emb = await get_gemini_embedding(question)
     except Exception:
         await callback.answer("Не удалось посчитать похожесть. Введи категорию вручную.", show_alert=True)
         return
@@ -579,7 +579,7 @@ async def cb_kb_choose_category(callback: CallbackQuery):
 
     for cat in categories:
         try:
-            cat_emb = await get_text_embedding(cat)
+            cat_emb = await get_gemini_embedding(cat)
         except Exception:
             continue
         sim = _cosine_sim(q_emb, cat_emb)
@@ -883,7 +883,7 @@ async def cb_kb_approve(callback: CallbackQuery):
     answer = item["answer"]
 
     # Эмбеддинги считаем по ВОПРОСУ
-    embedding = await get_text_embedding(question)
+    embedding = await get_gemini_embedding(question)
 
     kb_id = await kb_insert(
         category=category,          # Тип консультации (или "unknown")

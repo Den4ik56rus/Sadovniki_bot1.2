@@ -7,11 +7,6 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
         keyboard=[
             [
                 KeyboardButton(text="🧑‍🌾 Консультация"),
-                KeyboardButton(text="🦠 Диагноз болезней"),
-            ],
-            [
-                KeyboardButton(text="🌱 Мои посадки"),
-                KeyboardButton(text="📅 План сезона"),
             ],
             [
                 KeyboardButton(text="👤 Мой профиль"),

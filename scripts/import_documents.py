@@ -155,12 +155,14 @@ async def import_document(
         category="общая_информация",  # Дефолтное значение для совместимости
         subcategory=subcategory,
         force_update=force_update,
+        generate_context=False,  # RAG v2.5: не генерировать контекст при импорте
     )
 
     if result["success"]:
         print(f"✅ Успешно обработан!")
         print(f"   - Document ID: {result['document_id']}")
         print(f"   - Chunks: {result['chunks_count']}")
+        print(f"   - Context: Skipped (generate manually via chunk UI)")
     else:
         print(f"❌ Ошибка: {result['error']}")
 

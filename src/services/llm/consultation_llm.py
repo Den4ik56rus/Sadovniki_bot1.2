@@ -19,11 +19,13 @@ import asyncio
 import logging
 from typing import Optional, List, Dict, Callable, Awaitable
 
-from src.services.db.messages_repo import get_last_messages      # История сообщений
+from src.services.db.messages_repo import get_last_messages, get_recent_messages  # История сообщений
 from src.services.rag.unified_retriever import retrieve_unified_snippets  # Объединенный RAG-поиск (Q&A + документы)
-from src.services.llm.embeddings_llm import get_text_embedding_with_usage   # Эмбеддинги текста с usage
+from src.services.llm.gemini_embeddings import get_gemini_embedding_with_usage   # Эмбеддинги текста через Gemini
 from src.services.llm.core_llm import (
     create_chat_completion_with_usage,
+    create_chat_completion_with_retry,
+    create_chat_completion_streaming,
     calculate_cost,
     calculate_embedding_cost,
 )
@@ -31,6 +33,7 @@ from src.prompts.consultation_prompts import build_consultation_system_prompt  #
 from src.services.db.consultation_logs_repo import log_consultation  # Логирование консультаций
 
 from src.config import settings
+from src.services.db.settings_repo import get_model_for_task, get_temperature_for_task, get_reasoning_effort_for_task
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +112,9 @@ async def compose_full_question(
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            model=settings.openai_model_utility,
+            model=await get_model_for_task("utility"),
+            temperature=await get_temperature_for_task("utility"),
+            reasoning_effort=await get_reasoning_effort_for_task("utility"),
         )
 
         composed = response["content"].strip()
@@ -211,7 +216,9 @@ async def ask_consultation_llm(
     compose_tokens: int = 0,                      # Токены форматирования вопроса
     classification_cost_usd: float = 0.0,         # Стоимость классификации (detect_culture, detect_category_and_culture)
     classification_tokens: int = 0,               # Токены классификации
-    status_updater: Optional[Callable[[str], Awaitable[None]]] = None,  # Callback для обновления статуса
+    status_updater: Optional[Callable] = None,  # Callback для обновления прогресс-бара: (step, total, label)
+    stream: bool = False,  # Включить стриминг ответа
+    streaming_transition: Optional[Callable[[], Awaitable[Callable[[str], Awaitable[None]]]]] = None,  # Переход в стриминг-режим
 ) -> str:
     """
     Основной вызов LLM.
@@ -236,24 +243,46 @@ async def ask_consultation_llm(
     total_classification_cost = classification_cost_usd
     total_classification_tokens = classification_tokens
 
-    # Хелпер для безопасного обновления статуса
-    async def update_status(text: str) -> None:
+    # Определяем количество шагов для прогресс-бара
+    total_steps = 3 if skip_rag else 6
+
+    # Хелпер для безопасного обновления прогресс-бара
+    # Минимальная задержка чтобы пользователь успел прочитать текст шага
+    _last_progress_time: float = 0.0
+    MIN_STEP_DISPLAY_SEC: float = 1.8  # минимум 1.8 сек на показ каждого шага
+
+    async def update_progress(step: int, label: str) -> None:
+        nonlocal _last_progress_time
         if status_updater:
             try:
-                await status_updater(text)
+                # Ждём чтобы предыдущий шаг был виден хотя бы MIN_STEP_DISPLAY_SEC
+                now = time.perf_counter()
+                if _last_progress_time > 0:
+                    elapsed = now - _last_progress_time
+                    if elapsed < MIN_STEP_DISPLAY_SEC:
+                        await asyncio.sleep(MIN_STEP_DISPLAY_SEC - elapsed)
+                await status_updater(step, total_steps, label)
+                _last_progress_time = time.perf_counter()
             except Exception:
                 pass  # Ошибки статуса не должны ломать консультацию
 
     # 1. История диалога
     if skip_rag:
-        await update_status("📚 Анализирую Ваш вопрос...")
+        await update_progress(1, "Анализирую Ваш вопрос...")
     else:
-        await update_status("📚 Загружаю историю диалога...")
+        await update_progress(1, "Загружаю историю диалога...")
 
-    history: List[Dict] = await get_last_messages(
-        user_id=user_id,
-        limit=6,
-    )
+    # Фильтруем историю по topic_id чтобы не подхватывать контекст из других топиков
+    if topic_id:
+        history: List[Dict] = await get_recent_messages(
+            topic_id=topic_id,
+            limit=6,
+        )
+    else:
+        history: List[Dict] = await get_last_messages(
+            user_id=user_id,
+            limit=6,
+        )
 
     # 2. Собираем последние пользовательские сообщения
     user_history_texts: List[str] = [
@@ -305,11 +334,15 @@ async def ask_consultation_llm(
     # Приоритет: composed_question > recent_for_category > text
     rag_query_text = composed_question or recent_for_category or text
 
-    # Пропускаем RAG, если явно указано (например, на этапе уточняющих вопросов)
-    if skip_rag:
+    # Проверяем глобальный переключатель RAG
+    from src.services.db.settings_repo import is_rag_enabled
+    rag_globally_enabled = await is_rag_enabled()
+
+    # Пропускаем RAG, если явно указано или глобально отключено
+    if skip_rag or not rag_globally_enabled:
+        reason = "skip_rag=True (этап уточняющих вопросов)" if skip_rag else "RAG глобально отключён (admin toggle)"
         print(f"\n{'='*60}")
-        print(f"[RAG] Пропущен (skip_rag=True)")
-        print(f"[RAG] Причина: этап уточняющих вопросов")
+        print(f"[RAG] Пропущен ({reason})")
         print(f"{'='*60}\n")
     elif rag_category is not None:
         print(f"\n{'='*60}")
@@ -319,24 +352,24 @@ async def ask_consultation_llm(
         print(f"[RAG] Запрос для поиска: {rag_query_text}")
 
         try:
-            await update_status("🔍 Готовлю запрос для поиска...")
+            await update_progress(2, "Готовлю запрос для поиска...")
 
-            query_embedding, embedding_tokens, embedding_model = await get_text_embedding_with_usage(
+            query_embedding, embedding_tokens, embedding_model = await get_gemini_embedding_with_usage(
                 rag_query_text
             )
             print(f"[RAG] Получен эмбеддинг запроса (размер: {len(query_embedding)}, токенов: {embedding_tokens}, модель: {embedding_model})")
 
-            await update_status("📖 Ищу подходящую литературу...")
+            await update_progress(3, "Ищу подходящую литературу...")
 
             kb_snippets, qa_found = await retrieve_unified_snippets(
                 category=rag_category,
                 subcategory=rag_subcategory,
                 query_embedding=query_embedding,
                 qa_limit=3,           # Уровень 1: Q&A (2-3 лучших результата)
-                doc_limit=30,         # Уровень 3: Документы по культуре
-                priority_doc_limit=10, # Уровень 2: Приоритетные документы
-                qa_distance_threshold=0.6,    # Увеличен порог для Q&A
-                doc_distance_threshold=0.75,  # Увеличен порог для документов
+                doc_limit=6,          # Уровень 3: Документы по культуре
+                priority_doc_limit=6,  # Уровень 2: Приоритетные документы
+                qa_distance_threshold=0.45,   # Порог для Q&A
+                doc_distance_threshold=0.5,   # Порог для документов
             )
 
             print(f"[RAG] Q&A найдены на уровне 1: {qa_found}")
@@ -373,7 +406,7 @@ async def ask_consultation_llm(
     messages: List[Dict[str, str]] = []
 
     if kb_snippets:
-        await update_status("🧠 Изучаю найденные материалы...")
+        await update_progress(4, "Изучаю найденные материалы...")
 
     # Используем новый улучшенный системный промпт со стандартными параметрами
     system_prompt = await build_consultation_system_prompt(
@@ -420,16 +453,31 @@ async def ask_consultation_llm(
     start_time = time.perf_counter()
 
     if skip_rag:
-        await update_status("✍️ Формирую уточняющий вопрос...")
+        await update_progress(2, "Формирую уточняющий вопрос...")
     else:
-        await update_status("✍️ Формирую ответ...")
+        await update_progress(5, "Формирую ответ...")
 
     try:
-        llm_response = await create_chat_completion_with_usage(
-            messages=messages,
-            model=settings.openai_model_consultation,
-            # temperature берётся из settings.openai_temperature
-        )
+        # Переход в стриминг-режим (если включён)
+        on_stream_chunk = None
+        if stream and streaming_transition:
+            on_stream_chunk = await streaming_transition()
+
+        if stream and on_stream_chunk:
+            llm_response = await create_chat_completion_streaming(
+                messages=messages,
+                model=await get_model_for_task("consultation"),
+                temperature=await get_temperature_for_task("consultation"),
+                reasoning_effort=await get_reasoning_effort_for_task("consultation"),
+                on_chunk=on_stream_chunk,
+            )
+        else:
+            llm_response = await create_chat_completion_with_retry(
+                messages=messages,
+                model=await get_model_for_task("consultation"),
+                temperature=await get_temperature_for_task("consultation"),
+                reasoning_effort=await get_reasoning_effort_for_task("consultation"),
+            )
 
         latency_ms = int((time.perf_counter() - start_time) * 1000)
         response_text = llm_response["content"]
@@ -463,7 +511,7 @@ async def ask_consultation_llm(
     except Exception as e:
         print(f"[ask_consultation_llm][OpenAI error] {e}")
         logger.error(f"[ask_consultation_llm][OpenAI error] {e}")
-        return "Сейчас не получается связаться с моделью. Попробуйте ещё раз чуть позже."
+        raise  # Пробрасываем ошибку — вызывающий код возвращает токены
 
 
 async def _log_consultation_async(
@@ -514,7 +562,7 @@ async def _log_consultation_async(
             rag_snippets=rag_snippets,
             llm_params={
                 "model": llm_response["model"],
-                "temperature": settings.openai_temperature,
+                "temperature": await get_temperature_for_task("consultation"),
             },
             prompt_tokens=llm_response["prompt_tokens"],
             completion_tokens=llm_response["completion_tokens"],

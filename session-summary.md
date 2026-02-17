@@ -1,10 +1,10 @@
-# Session Summary — 2026-02-16
+# Session Summary — 2026-02-18
 
 ## Project Context
 
 **Sadovniki-bot** — Telegram-бот для профессиональных консультаций по ягодным культурам с RAG-системой на базе PostgreSQL + pgvector и OpenAI GPT.
 
-**Current Stage:** Production system (v1.2.2 → v1.2.3) with massive feature enhancements and system improvements.
+**Current Stage:** Production system (v1.2.3) with new complexity-based consultation flow, avatar system, invite links, and full message logging.
 
 **Tech Stack:**
 - Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
@@ -12,1509 +12,484 @@
 - Database: PostgreSQL 16 + pgvector
 - AI: OpenAI GPT models with flexible configuration, database-driven prompts
 
+---
+
 ## Session Goal
 
-**Primary Goal:** Complete major system enhancements including prompt system redesign, RAG document management v2.0, admin settings infrastructure, pricing system integration, and answer logic configuration.
+**Primary Goal:** Implement complexity-based consultation flow (question difficulty classification that determines cost and answer type), add user avatar support, build invite link campaign tracking system, and enhance CRM with full chat history and message logging.
+
+---
 
 ## Accomplishments
 
-### 1. Complete Prompt System Redesign & Database Migration
-
-**Problem:**
-- Outdated prompt system with hardcoded category prompts
-- No database-driven prompt management for consultation categories
-- Culture-specific prompts split across multiple Python files
-- No unified system for prompt versioning and editing
-
-**Solution:**
-- Migrated all category prompts to unified database system
-- Created comprehensive schema migration (schema_41) with all category prompts
-- Split culture-specific rules into dedicated database table
-- Implemented prompt preview functionality in admin panel
-
-**Database Changes:**
-
-1. **`db/schema_40_culture_rules_split.sql`** — Culture rules table
-   - New table: `culture_rules` with fields: culture, nutrition, planting, protection, soil, varieties
-   - Separated culture-specific knowledge from prompt templates
-   - Enables dynamic culture context injection
-
-2. **`db/schema_41_category_prompts_migration.sql`** (34KB)
-   - Migrated all category prompts to database
-   - Created prompts for: питание, посадка, защита, почва, сорта, обрезка, другая тема
-   - Culture-specific variants: strawberry, raspberry, currant groups
-   - Total: 20+ prompts covering all consultation scenarios
-
-**Backend Changes:**
-
-1. **`src/prompts/consultation_prompts.py`** (553 lines, +400 lines)
-   - Complete rewrite of prompt loading logic
-   - Database-first approach with Python fallback
-   - Dynamic culture context composition
-   - Support for both group-based and culture-specific prompts
-
-2. **`src/prompts/base_prompt.py`** (195 lines, +100 lines)
-   - Added minimal base prompt variant
-   - Separated formatting rules from core instructions
-   - Support for database-driven base prompts
-
-3. **`src/services/db/prompt_repo.py`** (121 lines, +80 lines)
-   - Enhanced prompt retrieval functions
-   - Added culture-specific prompt selection
-   - Version management for prompts
-   - Active/disabled prompt filtering
-
-**Frontend Changes:**
-
-1. **`admin-webapp/src/components/promptPreview/`** (new directory)
-   - `PromptPreview.tsx` — Prompt preview modal
-   - `PromptPreview.module.css` — Styling
-   - Allows admins to preview full composed prompt with culture context
-   - Shows exact prompt that will be sent to LLM
-
-2. **`admin-webapp/src/services/api.ts`** (+99 lines)
-   - Added prompt preview API endpoint
-   - Added culture rules retrieval
-   - Enhanced prompt management APIs
-
-**Impact:**
-- All consultation prompts now manageable via admin UI
-- Instant prompt updates without code deployment
-- Culture-specific context dynamically composed
-- Version history tracking for all prompts
-- A/B testing capability for prompt optimization
-
-### 2. RAG Documents Management System v2.0
-
-**Problem:**
-- Basic document upload without chunk-level control
-- No semantic chunking visibility
-- Missing chunk metadata (titles, boundaries)
-- No manual chunk editing capabilities
-
-**Solution:**
-- Implemented semantic chunking with configurable parameters
-- Added chunk passport editor for manual refinement
-- Enhanced document list with chunk statistics
-- Improved document processing pipeline
-
-**Backend Changes:**
-
-1. **`src/services/documents/semantic_chunker.py`** (960 lines, +600 lines)
-   - Complete semantic chunking implementation
-   - Boundary detection with configurable thresholds
-   - Chunk size optimization (target 800-1200 chars)
-   - Title generation for each chunk
-   - Preserves document structure (sections, paragraphs)
-
-2. **`src/services/documents/boundary_detector.py`** (26 lines)
-   - Sentence boundary detection
-   - Semantic break identification
-   - Configurable sensitivity levels
-
-3. **`src/services/documents/processor.py`** (110 lines, +50 lines)
-   - Enhanced DOCX processing
-   - Markdown extraction improvements
-   - Metadata preservation
-
-4. **`src/services/db/document_chunks_repo.py`** (56 lines, +30 lines)
-   - Chunk CRUD operations
-   - Batch chunk updates
-   - Chunk metadata management
-
-5. **`src/api/handlers/rag_documents.py`** (95 lines, +60 lines)
-   - Chunk passport endpoints
-   - Document reprocessing API
-   - Chunk statistics endpoints
-
-**Database Changes:**
-
-1. **`db/schema_37_documents_full_text.sql`**
-   - Added full-text search indices for documents
-   - Improved search performance
-
-2. **`db/schema_38_embedding_nullable.sql`**
-   - Made embedding column nullable
-   - Allows incremental embedding generation
-   - Prevents failed uploads due to embedding errors
-
-**Frontend Changes:**
-
-1. **`admin-webapp/src/components/ragDocuments/RagDocsPage.tsx`** (52 lines modified)
-   - Enhanced layout with chunk statistics
-   - Document processing status indicators
-   - Reprocessing controls
-
-2. **`admin-webapp/src/components/ragDocuments/ChunkPassportEditor.tsx`** (86 lines, completely rewritten)
-   - Full chunk metadata editor
-   - Title editing
-   - Content editing
-   - Boundary visualization
-   - Save/cancel functionality
-
-3. **`admin-webapp/src/components/ragDocuments/RagDocumentList.tsx`** (79 lines, +40 lines)
-   - Chunk count display
-   - Processing status badges
-   - Edit chunk passport button
-   - Delete confirmation dialogs
-
-4. **`admin-webapp/src/components/ragDocuments/*.module.css`** (enhanced styling)
-   - Improved visual hierarchy
-   - Better spacing and alignment
-   - Chunk editor modal styling
-
-5. **`admin-webapp/src/store/ragDocumentStore.ts`** (+20 lines)
-   - Chunk passport state management
-   - Editor modal controls
-
-**Impact:**
-- Semantic chunking produces higher quality RAG results
-- Admins can manually refine chunk boundaries
-- Better document structure preservation
-- Chunk-level metadata improves retrieval accuracy
-
-### 3. Admin Settings Infrastructure
-
-**Problem:**
-- No centralized settings management
-- LLM parameters hardcoded in .env
-- No UI for configuration changes
-- Settings changes required code deployment
-
-**Solution:**
-- Created admin settings table and API
-- Built settings page in admin panel
-- Implemented LLM configuration UI
-- Added RAG toggle controls
-
-**Database Changes:**
-
-1. **`db/schema_39_admin_settings.sql`**
-   - New table: `admin_settings` (key-value store)
-   - JSON value support for complex settings
-   - Default values for all settings
-   - Settings: `rag_enabled`, `llm_temperature`, `max_rag_snippets`
-
-2. **`db/schema_42_llm_settings.sql`**
-   - Extended settings schema
-   - Added model configuration fields
-   - Response format settings
-
-**Backend Changes:**
-
-1. **`src/services/db/settings_repo.py`** (new file)
-   - Settings CRUD operations
-   - Type-safe setting retrieval
-   - Default value fallbacks
-
-2. **`src/api/handlers/settings.py`** (new file)
-   - Settings management endpoints
-   - Validation and type checking
-   - Batch update support
-
-3. **`src/config.py`** (16 lines modified)
-   - Added settings database integration
-   - Fallback to .env for missing settings
-   - Runtime configuration reload
-
-**Frontend Changes:**
-
-1. **`admin-webapp/src/components/settings/`** (new directory)
-   - `SettingsPage.tsx` — Main settings UI
-   - `SettingsPage.module.css` — Styling
-   - Sections: LLM Configuration, RAG Settings, System Settings
-   - Real-time save with loading states
-
-2. **`admin-webapp/src/App.tsx`** (+15 lines)
-   - Added settings route
-   - Settings page integration
-
-3. **`admin-webapp/src/components/layout/Sidebar.tsx`** (+1 line)
-   - Settings menu item
-
-**Impact:**
-- Configuration changes without code deployment
-- Visual interface for LLM tuning
-- RAG enable/disable toggle
-- Safer configuration management (validation, defaults)
-
-### 4. Pricing System Display & Integration
-
-**Problem:**
-- Payment data stored but not visible
-- No subscription plan management UI
-- Token packages not displayed to admins
-- No pricing configuration interface
-
-**Solution:**
-- Implemented complete pricing management UI
-- Integrated subscription plans display
-- Added token package configuration
-- Built pricing section in settings
-
-**Database Changes:**
-
-1. **`db/schema_45_pricing_update.sql`**
-   - Updated subscription plans with new tiers
-   - Added token package configurations
-   - Price adjustments and feature updates
-   - Trial period settings
-
-**Backend Changes:**
-
-1. **`src/services/db/subscription_plan_repo.py`** (+85 lines)
-   - Subscription plan CRUD
-   - Active plans retrieval
-   - Plan feature management
-
-2. **`src/services/db/token_package_repo.py`** (+83 lines)
-   - Token package CRUD
-   - Package sorting by token count
-   - Pricing calculations
-
-3. **`src/pricing.py`** (60 lines, +30 lines)
-   - Unified pricing constants
-   - Price calculations
-   - Discount logic
-
-4. **`src/services/payments/payment_service.py`** (+9 lines)
-   - Enhanced payment processing
-   - Pricing integration
-
-**Frontend Changes:**
-
-1. **`admin-webapp/src/components/settings/` (pricing section)**
-   - Subscription plans editor
-   - Token packages editor
-   - Price configuration UI
-   - Feature toggles
-
-2. **`admin-webapp/src/types/index.ts`** (+64 lines)
-   - SubscriptionPlan interface
-   - TokenPackage interface
-   - Pricing-related types
-
-**Impact:**
-- Admins can modify pricing without code changes
-- Subscription tiers visible and editable
-- Token packages configurable
-- Pricing updates take effect immediately
-
-### 5. Knowledge Base Hierarchy & Trial Questions
-
-**Problem:**
-- Flat KB structure without hierarchy
-- No question prioritization
-- Trial users getting same experience as paid
-- Missing trial question limits
-
-**Solution:**
-- Implemented KB hierarchy system
-- Added question priority levels
-- Created trial questions restriction
-- Built priority-based retrieval
-
-**Database Changes:**
-
-1. **`db/schema_43_kb_hierarchy_update.sql`**
-   - Added `priority` field to knowledge_base table
-   - Priority levels: high, medium, low
-   - Indexed for fast retrieval
-   - Migrated existing questions to appropriate priorities
-
-2. **`db/schema_44_trial_questions.sql`**
-   - Added `trial_questions_asked` to users table
-   - Trial limit: 3 questions
-   - Reset mechanism for paid upgrades
-
-**Backend Changes:**
-
-1. **`src/services/rag/unified_retriever.py`** (+5 lines)
-   - Priority-aware KB retrieval
-   - Higher priority questions ranked first
-   - Configurable priority weights
-
-2. **`src/services/db/users_repo.py`** (+70 lines)
-   - Trial question tracking
-   - Limit enforcement
-   - Usage statistics
-
-3. **`src/handlers/consultation/entry.py`** (780 lines, massive refactor)
-   - Trial limit checks before consultation
-   - Upgrade prompts for trial users
-   - Question counting logic
-
-**Impact:**
-- High-quality KB answers prioritized
-- Trial users have clear upgrade path
-- Better monetization through trial limits
-- Improved answer quality through hierarchy
-
-### 6. Answer Logic Configuration System
-
-**Problem:**
-- Answer format rules hardcoded in prompts
-- No way to adjust answer structure without redeploying
-- Rules scattered across multiple prompt files
-- Difficult to A/B test answer formats
-
-**Solution:**
-- Created dedicated answer_logic settings table
-- Built answer logic editor in settings
-- Extracted answer rules from prompts
-- Made answer structure configurable
-
-**Database Changes:**
-
-1. **`db/schema_47_answer_logic_section.sql`**
-   - New table: `answer_logic_settings`
-   - Fields: section_name, rules (JSONB), enabled
-   - Sections: structure, formatting, content_rules, examples
-   - Full migration of existing answer rules
-
-**Backend Changes:**
-
-1. **`src/services/llm/consultation_llm.py`** (116 lines, +50 lines)
-   - Answer logic loading from database
-   - Dynamic rule composition
-   - Fallback to defaults if DB unavailable
-
-2. **`src/services/llm/context_generator.py`** (170 lines, +80 lines)
-   - Context composition with answer rules
-   - Rule formatting for LLM
-   - Section-based rule injection
-
-**Frontend Changes:**
-
-1. **Settings page answer logic section**
-   - Answer structure editor
-   - Formatting rules editor
-   - Enable/disable toggles per section
-   - Preview functionality
-
-**Documentation:**
-
-1. **`ANSWER_LOGIC_RULES.md`** (new file)
-   - Complete documentation of answer logic system
-   - Rule format specifications
-   - Examples and best practices
-
-**Impact:**
-- Answer format changes without code deployment
-- A/B testing different answer structures
-- Consistent answer quality across all categories
-- Easy experimentation with LLM instructions
-
-### 7. Referral System Foundation
-
-**Problem:**
-- No referral tracking mechanism
-- Missing viral growth infrastructure
-- No referral rewards system
-
-**Solution:**
-- Created referral tracking database schema
-- Built referral code generation
-- Prepared backend for referral rewards
-
-**Database Changes:**
-
-1. **`db/schema_46_referrals.sql`**
-   - New table: `referrals`
-   - Fields: referrer_id, referred_id, status, reward_given
-   - Referral code generation system
-   - Reward tracking structure
-
-**Backend Changes:**
-
-1. **`src/services/db/referral_repo.py`** (new file)
-   - Referral CRUD operations
-   - Code generation and validation
-   - Referral statistics
-
-**Status:** Database ready, UI implementation pending
-
-### 8. CRM & Expenses System Enhancements
-
-**Problem:**
-- CRM main tab missing key information
-- Expenses page needed visual improvements
-- Payment activity not visible in CRM
-
-**Solution:**
-- Enhanced CRM main tab with activity summary
-- Improved expenses page layout
-- Integrated payment events into CRM
-
-**Frontend Changes:**
-
-1. **`admin-webapp/src/components/crm/LeftPanel/MainTab.tsx`** (+28 lines)
-   - Added recent activity summary
-   - Payment status indicators
-   - Subscription info display
-
-2. **`admin-webapp/src/components/crm/LeftPanel/MainTab.module.css`** (+21 lines)
-   - Enhanced styling
-   - Activity card layouts
-
-3. **`admin-webapp/src/components/expenses/ExpensesPage.tsx`** (+67 lines)
-   - Improved date navigation
-   - Category filtering enhancements
-   - Better statistics display
-
-4. **`admin-webapp/src/components/expenses/ExpensesPage.module.css`** (+32 lines)
-   - Visual refinements
-   - Better spacing and alignment
-
-**Backend Changes:**
-
-1. **`src/api/handlers/crm.py`** (+41 lines)
-   - Added activity summary endpoint
-   - Payment events integration
-   - Enhanced client statistics
-
-**Impact:**
-- Better visibility of client activity
-- Clearer expense tracking
-- Payment information accessible in CRM
-
-### 9. LLM Service Layer Improvements
-
-**Problem:**
-- LLM service code duplication
-- No centralized error handling
-- Missing usage tracking
-- Temperature configuration scattered
-
-**Solution:**
-- Refactored core LLM services
-- Centralized configuration
-- Enhanced error handling and logging
-- Unified usage tracking
-
-**Backend Changes:**
-
-1. **`src/services/llm/core_llm.py`** (178 lines, +80 lines)
-   - Unified API call function
-   - Centralized error handling
-   - Token usage tracking
-   - Cost calculation
-   - Retry logic with exponential backoff
-
-2. **`src/services/llm/consultation_llm.py`** (116 lines, refactored)
-   - Cleaner prompt composition
-   - Better context management
-   - Database-driven configuration
-
-3. **`src/services/llm/classification_llm.py`** (213 lines, +50 lines)
-   - Enhanced classification logic
-   - Better culture detection
-   - Fallback improvements
-
-4. **`src/services/llm/embeddings_llm.py`** (41 lines, +15 lines)
-   - Batch embedding support
-   - Error recovery
-   - Usage tracking
-
-5. **`src/services/llm/article_llm.py`** (19 lines modified)
-   - Updated to use core_llm
-   - Configuration from settings
-
-6. **`src/services/llm/gemini_embeddings.py`** (2 lines)
-   - Minor improvements
-
-7. **`src/services/llm/question_builder_llm.py`** (6 lines)
-   - Updated API calls
-
-**Impact:**
-- More reliable LLM operations
-- Better error recovery
-- Consistent usage tracking
-- Easier maintenance
-
-### 10. Bot Handlers Refactoring
-
-**Problem:**
-- Massive monolithic handler files
-- Difficult to maintain and test
-- State management complexity
-- Unclear consultation flow
-
-**Solution:**
-- Refactored consultation entry handler
-- Improved state management
-- Clearer flow control
-- Better error handling
-
-**Backend Changes:**
-
-1. **`src/handlers/consultation/entry.py`** (780 lines, massive refactor)
-   - Modular function structure
-   - Clear state transitions
-   - Trial limit enforcement
-   - Better error messages
-   - Improved logging
-
-2. **`src/handlers/consultation/pitanie_rastenii.py`** (401 lines, refactored)
-   - Cleaned up deprecated code
-   - Aligned with new prompt system
-   - Better error handling
-
-3. **`src/handlers/consultation/culture_callback.py`** (+32 lines)
-   - Enhanced culture selection
-   - Better validation
-   - Clear user feedback
-
-4. **`src/handlers/menu.py`** (174 lines, +80 lines)
-   - New menu structure
-   - Settings integration
-   - Improved navigation
-
-5. **`src/handlers/payments/*.py`** (minor updates)
-   - Pricing integration
-   - Better payment flow
-
-6. **`src/handlers/admin/moderation.py`** (+8 lines)
-   - KB priority handling
-   - Improved moderation workflow
-
-**Impact:**
-- More maintainable codebase
-- Easier to add new features
-- Better user experience
-- Clearer error messages
-
-### 11. Keyboard & UI Improvements
-
-**Problem:**
-- Cluttered inline keyboards
-- Inconsistent button layouts
-- Missing navigation shortcuts
-
-**Solution:**
-- Redesigned consultation keyboards
-- Added quick action buttons
-- Improved navigation flow
-
-**Backend Changes:**
-
-1. **`src/keyboards/consultation/common.py`** (83 lines, +40 lines)
-   - Streamlined button layouts
-   - Added quick actions
-   - Better emoji usage
-
-2. **`src/keyboards/main/main_menu.py`** (-5 lines)
-   - Cleaned up unused buttons
-   - Simplified main menu
-
-3. **`src/keyboards/main/bot_commands.py`** (+2 lines)
-   - Updated command descriptions
-
-**Impact:**
-- Cleaner user interface
-- Faster navigation
-- Better UX
-
-### 12. Database Connection & Performance
-
-**Problem:**
-- Connection pool exhaustion under load
-- No connection monitoring
-- Missing query optimization
-
-**Solution:**
-- Enhanced connection pooling
-- Added connection monitoring
-- Query optimization
-
-**Backend Changes:**
-
-1. **`src/services/db/pool.py`** (+13 lines)
-   - Connection health checks
-   - Pool size monitoring
-   - Automatic reconnection
-
-2. **`src/services/db/documents_repo.py`** (+32 lines)
-   - Optimized document queries
-   - Better indexing usage
-
-**Impact:**
-- More stable under load
-- Better performance
-- Fewer connection errors
-
-### 13. Status Manager & Utilities
-
-**Problem:**
-- Status manager outdated
-- Missing utility functions
-- Poor code organization
-
-**Solution:**
-- Refactored status manager
-- Added new utilities
-- Better code structure
-
-**Backend Changes:**
-
-1. **`src/utils/status_manager.py`** (347 lines, completely refactored)
-   - Modern async/await patterns
-   - Better error handling
-   - Cleaner API
-
-**Impact:**
-- More reliable status tracking
-- Better code maintainability
-
-### 14. Testing & Documentation
-
-**Created Test Files:**
-
-1. **`test_answer_logic.py`** (new file)
-   - Answer logic system tests
-   - Rule composition tests
-   - Database integration tests
-
-2. **`test_chunker_v3.py`** (new file)
-   - Semantic chunking tests
-   - Boundary detection tests
-   - Chunk quality validation
-
-3. **`test_category_classification.py`** (+2 lines)
-   - Updated for new prompt system
-
-4. **`test_culture_classification.py`** (+49 lines)
-   - Enhanced culture detection tests
-   - Edge case coverage
-
-**Created Documentation:**
-
-1. **`ANSWER_LOGIC_RULES.md`** (8.9KB)
-   - Complete answer logic documentation
-   - Rule format specs
-   - Usage examples
-
-2. **`ENV_MODELS_FIXED.md`** (9KB)
-   - Environment configuration guide
-   - Model settings documentation
-   - Troubleshooting guide
-
-3. **`LAUNCH_READINESS.md`** (40KB)
-   - Pre-launch checklist
-   - System validation guide
-   - Deployment procedures
-
-4. **`MIGRATION_APPLIED.md`** (6.2KB)
-   - Migration tracking log
-   - Schema evolution history
-
-5. **`TESTING_CHECKLIST.md`** (27KB)
-   - Comprehensive testing guide
-   - Test case documentation
-
-6. **`SESSION_STATUS_2025-12-29.md`** (12KB)
-   - Previous session summary
-
-7. **`session-summary-answer-logic.md`** (10.4KB)
-   - Answer logic session notes
-
-**Screenshots Created:**
-- `rag-toggle-screenshot.png` — RAG toggle in settings
-- `reasoning-settings-screenshot.png` — LLM reasoning settings
-- `settings-page-screenshot.png` — Settings page overview
-- `settings-pricing-screenshot.png` — Pricing section
-- `pricing-section-final.png` — Final pricing UI
-- `pricing-subscriptions.png` — Subscription management
-
-**Impact:**
-- Better test coverage
-- Comprehensive documentation
-- Clear development history
-- Visual documentation
-
-### 15. Scripts & Utilities
-
-**Created Scripts:**
-
-1. **`scripts/reembed_kb.py`** (new file)
-   - Re-embed knowledge base entries
-   - Batch processing
-   - Progress tracking
-
-2. **`scripts/import_documents.py`** (+2 lines)
-   - Enhanced document import
-   - Better error handling
-
-3. **`db/fix_model_names.sql`** (new file)
-   - Model name correction script
-   - Data cleanup utility
-
-**Impact:**
-- Easier maintenance tasks
-- Better data management
-- Automation support
+### 1. Complexity Classification System (complexity_llm.py)
+
+**What was built:**
+- New LLM-based classifier `src/services/llm/complexity_llm.py` that analyzes each incoming user question
+- Classifies into 3 tiers: `short_answer` (1 token), `long_answer` (2 tokens), `turnkey_solution` (purchase)
+- Detects `phase_eligible` — whether a short question can be answered more fully by season phase
+- Returns `confirm_message` and `phase_button_label` for personalized UI prompts
+- Supports seasonal phases: весна-цветение, цветение-плодоношение, плодоношение-зима
+- Detects multi-topic questions and prompts user to select one topic
+
+**Key logic:**
+- System prompt instructs classifier to default to `short_answer` unless user EXPLICITLY requests a plan/schema
+- `phase_eligible=true` for questions about питание/защита/обрезка/полив where season context adds value
+- Тип B = 1 phase plan, Тип C = full season (multiple phases)
+- Turnkey = multiple topics + complex care request requiring product purchase
+
+**Feature flag:** `FEATURE_COMPLEXITY_ENABLED=true` in env (on by default)
+
+### 2. Pricing System Overhaul (pricing.py)
+
+**Changes:**
+- Added `PHASE_COST = 2` constant for long_answer tier
+- Added `COMPLEXITY_TIERS` dict with full tier definitions including turnkey price (1190 RUB)
+- Added `SEASONAL_PHASES` dict with phase chain (next phase pointers)
+- Added `PHASE_DISPLAY_NAMES` — user-friendly phase labels for display
+- New functions: `get_complexity_cost()`, `get_next_phase()`, `get_phase_display_name()`, `should_suggest_product()`
+- `pluralize_questions()` moved earlier in file and changed from "вопросов" to "токенов"
+- Old `CATEGORY_COSTS`-based `get_consultation_cost()` marked DEPRECATED (still present for compatibility)
+
+### 3. Consultation Entry Handler (entry.py) — Major Extension
+
+**What was added (~1292 lines total, +1100 lines this session):**
+
+**New helper functions:**
+- `serialize_keyboard(markup)` — converts Aiogram keyboard markup to dict for message meta (for display in admin CRM)
+- `_log_bot_msg(text, ...)` — logs bot service messages (buttons, prompts) to messages table with SSE broadcast
+- `_log_user_callback(text, callback, ...)` — logs inline button presses to messages table
+
+**Complexity flow integration:**
+- After question logging, calls `detect_answer_complexity()` (shadow mode)
+- If `long_answer` or `turnkey_solution`: saves to `CONSULTATION_CONTEXT["_pending_complexity"]`, shows confirm keyboard
+- If `short_answer` with `phase_eligible=True`: shows `get_phase_eligible_keyboard()` — choice between short/phase/turnkey
+- If multi-topic `long_answer`: saves `_pending_topic_select`, shows topic selection keyboard
+- Callback handlers for `complexity_confirm:short/long/turnkey_info/cancel` and `phase_continue:*` and `topic_select:*`
+
+**Phase mode tracking:**
+- After delivering a long_answer for one phase, stores `_phase_continuation` context
+- Handles `waiting_phase_continue` state — user can get next phase
+- Tracks `phases_delivered` list, `current_phase`, `next_phase`
+- Logs `phase_mode`, `phase_key`, `phase_number` to `consultation_logs` (schema_49)
+
+**Complexity data stored in logs:**
+- `complexity_tier`, `complexity_metadata` (JSONB), `complexity_classification_cost_usd`, `complexity_classification_tokens`
+
+### 4. New Consultation Keyboards (common.py)
+
+**New keyboard functions:**
+- `get_complexity_confirm_keyboard(tier, cost, show_turnkey, phase_button_label)` — for long_answer/turnkey confirmation with personalized button label
+- `get_phase_eligible_keyboard(phase_button_label, phase_cost)` — 3-button choice: краткий / по фазам / готовое решение
+- `get_next_phase_keyboard(next_phase_display)` — "Continue to next phase" button after delivering a phase plan
+- `get_phase_select_keyboard(phases)` — choose which phase to start from (for full-season Тип C)
+- `get_topic_select_keyboard(topics)` — choose one topic from a multi-topic question
+
+### 5. Database Schemas 48-51
+
+**schema_48_complexity_tracking.sql:**
+- Adds `complexity_tier VARCHAR(50)`, `complexity_metadata JSONB`, `complexity_classification_cost_usd`, `complexity_classification_tokens` to `consultation_logs`
+- Adds `admin_settings` entries for complexity model configuration: `model_complexity`, `temp_complexity`, `reasoning_complexity`
+
+**schema_49_phase_tracking.sql:**
+- Adds `phase_mode VARCHAR(20)`, `phase_key VARCHAR(50)`, `phase_number INTEGER` to `consultation_logs`
+- Tracks which phase of seasonal plan was delivered
+
+**schema_50_user_avatars.sql:**
+- Adds `avatar_path TEXT` to `users` table
+
+**schema_51_invite_links.sql:**
+- New table `invite_links` (id, name, code, created_at) — named campaign tracking links
+- New table `invite_link_users` (invite_link_id, user_id, created_at) — tracks which users came via which link
+- Unique constraint on user_id (one user can only be attributed to one invite link)
+
+### 6. User Avatar System
+
+**Backend:**
+- `src/services/avatars.py` — downloads user profile photo from Telegram via `bot.get_user_profile_photos()`
+- Saves to `data/avatars/{telegram_user_id}.jpg` (smallest 160x160 photo)
+- `fetch_avatars.py` — one-time script to retroactively download avatars for all existing users
+- `users_repo.update_user_avatar()` — updates `avatar_path` in users table
+
+**Integration in menu.py:**
+- On `/start` command: downloads avatar automatically for new and returning users
+- On `user_mode` callback: avatar downloaded/updated on login
+
+**API serving:**
+- Static file route added: `GET /api/admin/avatars/{filename}` serves from `data/avatars/` directory
+
+**CRM integration:**
+- `crm.py _serialize_dict()` now converts `avatar_path` → `avatar_url` automatically
+- ClientCard, FunnelClientCard, BuyerCard all updated to display avatars with fallback initials
+
+### 7. Invite Links — Campaign Tracking
+
+**Backend:**
+- `src/services/db/invite_link_repo.py` — full CRUD + statistics with revenue aggregation
+- `src/api/handlers/invite_links.py` — REST API handler (GET/POST/PATCH/DELETE)
+- Routes registered in `src/api/routes.py`: `/api/admin/invite-links`
+
+**Deep link format:** `https://t.me/{BOT_USERNAME}?start=inv_{CODE}`
+- `inv_` prefix in `start_param` triggers invite link tracking in `menu.py`
+- Code is 8-character alphanumeric (URL-safe, uppercase)
+
+**Frontend:**
+- `admin-webapp/src/components/inviteLinks/InviteLinksPage.tsx` — full management UI
+- `admin-webapp/src/store/inviteLinksStore.ts` — Zustand store
+- Features: create/rename/delete links, copy deep link, monthly/all-time revenue stats
+- Sidebar entry added (link icon)
+
+**Statistics:** users_count per link, total_revenue_rub (from paid payments), date filtering
+
+### 8. Full Message Logging (messages_repo.py)
+
+**Changes:**
+- `log_message()` now returns `msg_id` AND broadcasts SSE `new_message` event with topic_id
+- New `attach_topic_to_message(message_id, topic_id)` — retroactively links a message to a topic
+- New `attach_pending_messages_to_topic(user_id, topic_id, since_msg_id)` — bulk attach messages to topic
+
+**Impact:** All bot messages (user questions, bot responses, button presses, service prompts) are now logged to `messages` table. Admin panel CRM shows full conversation history in real-time via SSE.
+
+### 9. CRM Activity Feed — chat_message Events
+
+**Changes in `ActivityItem.tsx`:**
+- New `chat_message` event type rendered as chat bubbles (user/bot alignment)
+- Shows callback button badge for button-press messages
+- Renders inline keyboard buttons from `meta.keyboard.buttons`
+- `stripHtml()` helper removes Telegram HTML markup for display
+
+**Changes in `TopicView.tsx`:**
+- Complexity classification block displayed inline (tier, cost, phase info)
+- `complexity_classification_cost_usd` added to cost totals
+- Inline keyboard buttons rendered inside message timeline
+- Callback badge shown for user button presses
+
+**Changes in `crm.py`:**
+- New endpoint `GET /api/admin/crm/clients/{id}/chat` — returns full chat history
+- Avatar path → URL conversion in `_serialize_dict()`
+
+### 10. ChatHistory Component (new)
+
+**`admin-webapp/src/components/crm/RightPanel/ChatHistory.tsx`:**
+- Full conversation timeline view for a client
+- Groups messages by topic with clickable dividers (navigate to TopicView)
+- Date separators between days
+- Chat bubbles aligned by direction (user right, bot left, system centered)
+- Shows inline keyboard buttons rendered as UI elements
+- Callback badge for button-press events
+- Scrolls to bottom on load
+
+**`admin-webapp/src/components/crm/RightPanel/ChatHistory.module.css`** (new) — full styling
+
+### 11. menu.py Enhancements
+
+**New on /start:**
+- Invite link tracking (`inv_` prefix detection in start_param)
+- Avatar download on first launch
+- Full message logging for welcome message and button presses
+
+**Referral system notifications:**
+- When referrer gets bonus tokens, sends Telegram notification to referrer with token count
+- Uses `pluralize_questions()` for proper Russian inflection
+
+---
 
 ## Key Decisions
 
-### Architectural Decisions
+### 1. Complexity Classification Architecture
 
-1. **Database-Driven Configuration Over Environment Variables:**
-   - **Decision:** Move all runtime configuration to database (admin_settings table)
-   - **Rationale:**
-     - Hot-reload capability without restarts
-     - Version control for configuration changes
-     - Multi-environment support
-     - Admin UI for non-technical users
-   - **Trade-offs:**
-     - Slight performance overhead (negligible with caching)
-     - Database becomes critical dependency
-     - Need fallback to .env for bootstrap
-   - **Outcome:** Much more flexible system, easier operations
+**Decision:** Run complexity classifier in shadow mode (FEATURE_COMPLEXITY_ENABLED=true), but complexity result affects cost and flow immediately (not truly shadow).
 
-2. **Unified Prompt System in Database:**
-   - **Decision:** Migrate all category prompts from Python files to database
-   - **Rationale:**
-     - Enable prompt editing without code deployment
-     - Version history and A/B testing support
-     - Easier experimentation
-     - Non-developers can improve prompts
-   - **Trade-offs:**
-     - Database becomes single source of truth (backup critical)
-     - Need robust fallback system
-     - More complex loading logic
-   - **Outcome:** Faster iteration, better prompt quality
+**Rationale:**
+- Complexity classification is a separate LLM call (lightweight, cheap model `gpt-4.1-mini`)
+- Does not change consultation quality — only determines price and flow
+- Feature flag allows easy rollback if classifier has issues
+- Shadow mode terminology retained in code comments for historical clarity
 
-3. **Semantic Chunking Over Fixed-Size Chunking:**
-   - **Decision:** Implement semantic boundary detection for document chunking
-   - **Rationale:**
-     - Preserves context within chunks
-     - Better RAG retrieval accuracy
-     - Respects document structure
-     - Higher quality embeddings
-   - **Trade-offs:**
-     - More complex processing
-     - Slightly slower document upload
-     - Variable chunk sizes
-   - **Outcome:** Significantly better RAG results
+**Cost:** `model_complexity` = `gpt-4.1-mini` (configurable via admin_settings)
 
-4. **Priority-Based KB Hierarchy:**
-   - **Decision:** Add priority levels to knowledge base questions
-   - **Rationale:**
-     - High-quality answers surface first
-     - Better control over answer quality
-     - Enables curation
-     - Supports freemium model (trial users get fewer KB results)
-   - **Trade-offs:**
-     - Manual curation required
-     - Subjectivity in priority assignment
-   - **Outcome:** Improved answer quality, better trial UX
+### 2. Default to short_answer
 
-5. **Trial Question Limits:**
-   - **Decision:** Restrict trial users to 3 questions
-   - **Rationale:**
-     - Encourages upgrades
-     - Prevents abuse
-     - Demonstrates value
-     - Standard freemium practice
-   - **Trade-offs:**
-     - May lose some potential customers
-     - Need clear upgrade prompts
-   - **Outcome:** Better monetization path
+**Decision:** Classifier prompt instructs model to default to `short_answer` when in doubt.
 
-### Logic/Algorithm Decisions
+**Rationale:**
+- Better user experience (not overcharging)
+- Phase-eligible questions still get enhanced offer
+- Prevents false long_answer classification
 
-1. **Prompt Composition Strategy:**
-   - **Decision:** base_prompt + culture_context + category_prompt + answer_logic
-   - **Rationale:**
-     - Modular prompt construction
-     - Easy to update components independently
-     - Culture context injected dynamically
-     - Answer logic configurable
-   - **Implementation:**
-     ```python
-     full_prompt = (
-         get_base_prompt(use_minimal=category.use_minimal_base)
-         + get_culture_context(culture)
-         + category_prompt
-         + get_answer_logic_rules()
-     )
-     ```
+### 3. serialize_keyboard for Message Logging
 
-2. **Chunk Boundary Detection:**
-   - **Decision:** Multi-level boundary detection (paragraph > sentence > character)
-   - **Rationale:**
-     - Preserves semantic coherence
-     - Respects document structure
-     - Avoids mid-sentence breaks
-     - Configurable sensitivity
-   - **Algorithm:**
-     ```
-     1. Find optimal split point near target size
-     2. Check for paragraph boundary (highest priority)
-     3. If not found, check for sentence boundary
-     4. If not found, split at nearest word
-     ```
+**Decision:** Serialize Aiogram keyboard markup to JSON dict in `meta` field of messages.
 
-3. **Settings Fallback Chain:**
-   - **Decision:** Database → .env → hardcoded defaults
-   - **Rationale:**
-     - Database first for hot-reload
-     - .env for bootstrap and overrides
-     - Defaults prevent crashes
-   - **Implementation:**
-     ```python
-     value = (
-         await settings_repo.get("key")
-         or os.getenv("KEY")
-         or DEFAULT_VALUE
-     )
-     ```
+**Rationale:**
+- Allows CRM to display the exact keyboard presented to user at each step
+- Enables full conversation flow visualization without maintaining separate state
+- Retroactive — already logged messages with keyboards are displayable
 
-4. **Trial Limit Enforcement:**
-   - **Decision:** Check before consultation, not after
-   - **Rationale:**
-     - Better UX (user knows limit upfront)
-     - Prevents wasted API calls
-     - Clear upgrade prompt at right moment
-   - **Flow:**
-     ```
-     1. User asks question
-     2. Check trial status
-     3. If at limit → show upgrade prompt
-     4. If under limit → proceed + increment counter
-     ```
+### 4. One Invite Link Per User
 
-### Data Format/API Decisions
+**Decision:** `invite_link_users.user_id` has UNIQUE constraint — each user can only be attributed to one invite link.
 
-1. **Answer Logic as JSONB:**
-   - **Decision:** Store answer rules in JSONB column
-   - **Rationale:**
-     - Flexible schema
-     - Easy to add new rule types
-     - No JOIN needed
-     - Frontend can parse directly
-   - **Format:**
-     ```json
-     {
-       "structure": ["intro", "main", "recommendations"],
-       "formatting": ["markdown", "lists", "emphasis"],
-       "examples": true
-     }
-     ```
+**Rationale:**
+- Prevents double-counting in campaign analytics
+- First touch attribution model (most common in marketing)
+- Simplest to implement and reason about
 
-2. **Chunk Metadata Structure:**
-   - **Decision:** Store title, boundaries, sequence in separate fields
-   - **Rationale:**
-     - Query optimization (index on title)
-     - Clear data model
-     - Easy to update individual fields
-   - **Schema:**
-     ```sql
-     chunk_title TEXT
-     chunk_sequence INT
-     chunk_boundaries JSONB  -- {start: 0, end: 1200}
-     ```
+### 5. Avatar Serving via Static Route
 
-3. **Settings API Response Format:**
-   - **Decision:** Flat key-value pairs, not nested sections
-   - **Rationale:**
-     - Simpler frontend consumption
-     - Easier to update individual settings
-     - No complex merge logic
-   - **Format:**
-     ```json
-     {
-       "rag_enabled": true,
-       "llm_temperature": 0.3,
-       "max_rag_snippets": 5
-     }
-     ```
+**Decision:** Serve avatars directly from aiohttp static file route, not via base64 or external CDN.
+
+**Rationale:**
+- Simplest implementation — no additional services
+- Files are small (160x160 JPG)
+- Can be replaced with S3/CDN later if needed
+- URL format: `/api/admin/avatars/{telegram_user_id}.jpg`
+
+---
 
 ## Problems & Limitations
 
-### Known Issues
+### Active Issues
 
-1. **Massive Git Commit Size:**
-   - **Issue:** 61 files changed, 4436 insertions, 1541 deletions
-   - **Impact:** Difficult to review, large commit history entry
-   - **Root Cause:** Multiple feature branches merged into one session
-   - **Mitigation:** This session summary provides detailed breakdown
-   - **Priority:** LOW (documentation compensates)
+1. **Complexity Flow Not Fully Connected:**
+   - The callback handlers for `complexity_confirm:*` and `phase_continue:*` are written into entry.py but the full state machine for delivering phase plans (asking LLM for phase-specific response) is not yet fully wired.
+   - `_pending_complexity` context is saved but the callback handler that responds to it needs verification.
+   - **Priority:** HIGH — core new feature
 
-2. **Missing Migration Verification:**
-   - **Issue:** Schema 37-47 created but not verified in production
-   - **Impact:** Unknown if migrations apply cleanly
-   - **Risk:** Potential data loss or corruption
-   - **Solution:** Apply migrations one-by-one in test environment first
-   - **Priority:** HIGH (critical before deployment)
+2. **Phase LLM Prompt Not Implemented:**
+   - When user confirms `long_answer`, the bot should call `ask_consultation_llm()` with phase-specific prompt context (питание на весна-цветение).
+   - The phase prompt composition (`phase_mode`, `phase_key`, `phase_topic` kwargs) is passed to LLM service but `consultation_llm.py` may not use them yet.
+   - **Priority:** HIGH
 
-3. **No Automated Tests for New Features:**
-   - **Issue:** Answer logic, semantic chunking, settings need tests
-   - **Impact:** Regression risk
-   - **Created:** test_answer_logic.py, test_chunker_v3.py but not comprehensive
-   - **Solution:** Expand test coverage before production deployment
-   - **Priority:** HIGH (quality assurance)
+3. **Schemas 48-51 Not Applied to Production:**
+   - New DB schemas are created but NOT yet applied.
+   - Without schema_48, complexity fields in `consultation_logs` don't exist → saving complexity data will fail silently or error.
+   - **Priority:** CRITICAL — apply before next bot usage
 
-4. **Prompt Preview Performance:**
-   - **Issue:** Full prompt composition on every preview
-   - **Impact:** Slow for large prompts (2-3 seconds)
-   - **Solution:** Add caching layer for culture contexts
-   - **Priority:** MEDIUM (UX improvement)
+4. **Avatar Download Race Condition:**
+   - `download_user_avatar()` called on every `/start`. If Telegram API is slow, it delays the welcome message.
+   - Should be moved to background task.
+   - **Priority:** MEDIUM
 
-5. **No Rollback Mechanism for Settings:**
-   - **Issue:** Bad setting change could break bot
-   - **Impact:** No easy undo
-   - **Solution:** Add settings history table with rollback function
-   - **Priority:** MEDIUM (operational safety)
+5. **invite_link_repo Date Filter Bug:**
+   - In `get_invite_links_with_stats()`, the date filter uses `$1/$2` for `ilu.created_at` and then `$3/$4` for `p.paid_at` but params are added in a way that may mismatch if only one date filter block is populated.
+   - Needs review before production use.
+   - **Priority:** MEDIUM
+
+6. **ChatHistory API Endpoint:**
+   - `GET /api/admin/crm/clients/{id}/chat` is wired in routes but `get_user_chat_history()` function in `messages_repo.py` needs to be verified — it is called but may not exist yet (only `attach_topic_to_message` and `attach_pending_messages_to_topic` were shown in diff).
+   - **Priority:** HIGH — ChatHistory component will show error if not implemented
 
 ### Technical Debt
 
-1. **Prompt System Complexity:**
-   - **Location:** `consultation_prompts.py`
-   - **Issue:** 553 lines with complex fallback logic
-   - **Better approach:** Split into separate service classes
-   - **Impact:** MEDIUM (maintainability)
+1. **entry.py size:** Now ~1292 lines — extraction of complexity callbacks into separate file recommended
+2. **Duplicate user_id lookups:** Multiple places in entry.py do `get_or_create_user()` — should use context cache
+3. **pluralize_questions renamed semantics:** Function now says "токенов" but the name says "questions" — minor naming inconsistency
 
-2. **Large Handler Files:**
-   - **Location:** `entry.py` (780 lines), `pitanie_rastenii.py` (401 lines)
-   - **Issue:** Monolithic handlers hard to test
-   - **Better approach:** Extract functions into service layer
-   - **Impact:** MEDIUM (testability)
-
-3. **Settings Without Validation:**
-   - **Location:** `settings_repo.py`
-   - **Issue:** No validation when saving settings
-   - **Risk:** Invalid values could break system
-   - **Better approach:** Add JSON schema validation
-   - **Impact:** HIGH (data integrity)
-
-4. **No Migration Testing:**
-   - **Location:** All schema_*.sql files
-   - **Issue:** Migrations not tested before production
-   - **Risk:** Failed migrations, data loss
-   - **Better approach:** Staging environment with migration tests
-   - **Impact:** HIGH (reliability)
-
-5. **Frontend State Management:**
-   - **Location:** Various Zustand stores
-   - **Issue:** Some stores getting large and complex
-   - **Better approach:** Split into domain-specific stores
-   - **Impact:** LOW (works fine, just harder to maintain)
-
-### Temporary Workarounds
-
-1. **Hardcoded Default Values:**
-   - **Current:** Default settings in multiple places (code + DB)
-   - **Issue:** Duplication, potential inconsistency
-   - **Proper solution:** Single source of truth for defaults
-   - **Why acceptable:** Defaults rarely change
-   - **Impact:** MINIMAL (works reliably)
-
-2. **Manual Priority Assignment:**
-   - **Current:** KB priorities assigned manually
-   - **Issue:** No automated quality detection
-   - **Proper solution:** ML-based quality scoring
-   - **Why acceptable:** Small KB, manual curation feasible
-   - **Impact:** LOW (scales to hundreds of questions)
-
-3. **Fallback to Python Prompts:**
-   - **Current:** If DB prompt unavailable, use Python fallback
-   - **Issue:** Two sources of truth
-   - **Proper solution:** Make DB fully redundant (backup/restore)
-   - **Why acceptable:** Ensures bot never breaks
-   - **Impact:** MINIMAL (safety net)
+---
 
 ## Rejected Ideas
 
-### Why Not Keep All Prompts in Python Files?
+### Why Not Real Shadow Mode for Complexity?
 
-- **Proposal:** Leave prompts in Python, use config files instead
-- **Reasons for rejection:**
-  1. Config files still require deployment
-  2. No version history tracking
-  3. No UI for non-developers
-  4. Harder to A/B test
-  5. Can't hot-reload changes
-- **Chosen solution:** Database with Python fallback
+- **Proposal:** Run complexity classification but ignore result — only log for analytics
+- **Rejected:** Adds latency with no user benefit; better to make it functional immediately
+- **Chosen:** Active mode — complexity tier determines actual cost and flow
 
-### Why Not Use Fixed-Size Chunking?
+### Why Not Use Existing CATEGORY_COSTS for Complexity Pricing?
 
-- **Proposal:** Simple 1000-character chunks with overlap
-- **Reasons for rejection:**
-  1. Breaks semantic coherence
-  2. Lower RAG accuracy
-  3. Splits sentences/paragraphs awkwardly
-  4. Industry moving to semantic chunking
-- **Chosen solution:** Semantic boundary detection
+- **Proposal:** Map complexity tiers to existing category-based costs
+- **Rejected:** Categories and complexity are orthogonal concepts; complexity is question-specific, not category-specific
+- **Chosen:** Separate `COMPLEXITY_TIERS` dict with explicit costs
 
-### Why Not Unlimited Trial Questions?
+### Why Not Store Avatars in Database?
 
-- **Proposal:** No limits for trial users, monetize differently
-- **Reasons for rejection:**
-  1. No clear conversion point
-  2. Users may never upgrade
-  3. API costs unsustainable
-  4. Standard freemium practice is to limit trial
-- **Chosen solution:** 3-question trial limit
+- **Proposal:** Store avatar as base64 BYTEA in users table
+- **Rejected:** Large binary data in DB impacts backup size, query performance
+- **Chosen:** Filesystem storage with path in DB, served via static route
 
-### Why Not Put Answer Logic in Prompt Text?
-
-- **Proposal:** Include answer format rules directly in category prompts
-- **Reasons for rejection:**
-  1. Duplicated across all category prompts
-  2. Hard to change consistently
-  3. No way to A/B test answer formats
-  4. Increases prompt token cost
-- **Chosen solution:** Separate answer_logic table
-
-### Why Not Use Environment Variables for All Settings?
-
-- **Proposal:** Keep using .env for all configuration
-- **Reasons for rejection:**
-  1. Requires restart for changes
-  2. No UI for non-developers
-  3. No version tracking
-  4. Hard to manage multi-environment
-- **Chosen solution:** Database with .env fallback
+---
 
 ## Current Code State
 
-### Files Created (50+ files)
+### New Files Created
 
 **Backend:**
-1. `src/api/handlers/settings.py` — Settings management API
-2. `src/api/handlers/prompt_preview.py` — Prompt preview endpoint
-3. `src/services/db/settings_repo.py` — Settings repository
-4. `src/services/db/referral_repo.py` — Referral tracking
-5. `src/services/documents/boundary_detector.py` — Semantic boundaries
-6. `test_answer_logic.py` — Answer logic tests
-7. `test_chunker_v3.py` — Chunking tests
-8. `scripts/reembed_kb.py` — Re-embedding script
-9. `db/fix_model_names.sql` — Data cleanup script
+- `src/services/llm/complexity_llm.py` — question complexity classifier (LLM-based)
+- `src/services/avatars.py` — Telegram avatar download service
+- `src/services/db/invite_link_repo.py` — invite link CRUD + stats
+- `src/api/handlers/invite_links.py` — invite links REST API
+- `fetch_avatars.py` — one-time script to download avatars for existing users
 
 **Database Migrations:**
-10-19. `db/schema_37.sql` through `db/schema_47.sql` — 11 new migrations
+- `db/schema_48_complexity_tracking.sql` — complexity fields in consultation_logs
+- `db/schema_49_phase_tracking.sql` — phase tracking fields in consultation_logs
+- `db/schema_50_user_avatars.sql` — avatar_path in users
+- `db/schema_51_invite_links.sql` — invite_links and invite_link_users tables
 
 **Frontend:**
-20. `admin-webapp/src/components/settings/SettingsPage.tsx`
-21. `admin-webapp/src/components/settings/SettingsPage.module.css`
-22. `admin-webapp/src/components/promptPreview/PromptPreview.tsx`
-23. `admin-webapp/src/components/promptPreview/PromptPreview.module.css`
+- `admin-webapp/src/components/crm/RightPanel/ChatHistory.tsx` — full chat history view
+- `admin-webapp/src/components/crm/RightPanel/ChatHistory.module.css`
+- `admin-webapp/src/components/inviteLinks/InviteLinksPage.tsx`
+- `admin-webapp/src/components/inviteLinks/InviteLinksPage.module.css`
+- `admin-webapp/src/components/inviteLinks/index.ts`
+- `admin-webapp/src/store/inviteLinksStore.ts`
 
-**Documentation:**
-24. `ANSWER_LOGIC_RULES.md`
-25. `ENV_MODELS_FIXED.md`
-26. `LAUNCH_READINESS.md`
-27. `MIGRATION_APPLIED.md`
-28. `SESSION_STATUS_2025-12-29.md`
-29. `TESTING_CHECKLIST.md`
-30. `session-summary-answer-logic.md`
+### Modified Files
 
-**Screenshots:** 10+ PNG files documenting UI changes
-
-### Files Modified (61 files)
-
-**Backend Core:**
-- `src/handlers/consultation/entry.py` (780 lines, massive refactor)
-- `src/handlers/consultation/pitanie_rastenii.py` (401 lines)
-- `src/handlers/consultation/culture_callback.py` (+32 lines)
-- `src/handlers/menu.py` (174 lines, +80 lines)
-- `src/handlers/payments/*.py` (minor updates)
-- `src/handlers/admin/moderation.py` (+8 lines)
-
-**LLM Services:**
-- `src/services/llm/core_llm.py` (178 lines, +80 lines)
-- `src/services/llm/consultation_llm.py` (116 lines, refactored)
-- `src/services/llm/classification_llm.py` (213 lines, +50 lines)
-- `src/services/llm/context_generator.py` (170 lines, +80 lines)
-- `src/services/llm/embeddings_llm.py` (41 lines, +15 lines)
-- `src/services/llm/article_llm.py` (19 lines)
-- `src/services/llm/gemini_embeddings.py` (2 lines)
-- `src/services/llm/question_builder_llm.py` (6 lines)
-
-**RAG & Documents:**
-- `src/services/rag/unified_retriever.py` (+5 lines)
-- `src/services/documents/semantic_chunker.py` (960 lines, +600 lines)
-- `src/services/documents/processor.py` (110 lines, +50 lines)
-- `src/services/documents/boundary_detector.py` (new)
-
-**Database:**
-- `src/services/db/prompt_repo.py` (121 lines, +80 lines)
-- `src/services/db/users_repo.py` (+70 lines)
-- `src/services/db/document_chunks_repo.py` (56 lines, +30 lines)
-- `src/services/db/documents_repo.py` (+32 lines)
-- `src/services/db/pool.py` (+13 lines)
-- `src/services/db/subscription_plan_repo.py` (+85 lines)
-- `src/services/db/token_package_repo.py` (+83 lines)
-
-**API:**
-- `src/api/handlers/crm.py` (+41 lines)
-- `src/api/handlers/documents.py` (+1 line)
-- `src/api/handlers/rag_documents.py` (95 lines, +60 lines)
-- `src/api/routes.py` (+23 lines)
-
-**Configuration:**
-- `src/config.py` (16 lines)
-- `src/pricing.py` (60 lines, +30 lines)
-
-**Prompts:**
-- `src/prompts/base_prompt.py` (195 lines, +100 lines)
-- `src/prompts/consultation_prompts.py` (553 lines, +400 lines)
-- `src/prompts/category_prompts/nutrition.py` (+4 lines)
-
-**Keyboards:**
-- `src/keyboards/consultation/common.py` (83 lines, +40 lines)
-- `src/keyboards/main/main_menu.py` (-5 lines)
-- `src/keyboards/main/bot_commands.py` (+2 lines)
-
-**Utilities:**
-- `src/utils/status_manager.py` (347 lines, refactored)
-
-**Payments:**
-- `src/services/payments/payment_service.py` (+9 lines)
-- `src/services/payments/subscription_service.py` (+2 lines)
+**Backend:**
+- `src/handlers/consultation/entry.py` (+1100 lines) — complexity flow, phase tracking, full message logging
+- `src/handlers/consultation/pitanie_rastenii.py` (+150 lines) — complexity integration
+- `src/handlers/consultation/culture_callback.py` (+24 lines) — complexity callbacks
+- `src/handlers/menu.py` (+261 lines) — avatar download, invite link tracking, message logging
+- `src/keyboards/consultation/common.py` (+206 lines) — 5 new keyboard functions
+- `src/pricing.py` (+121 lines) — complexity tiers, phase data, new functions
+- `src/prompts/consultation_prompts.py` (+63 lines) — phase prompt support
+- `src/services/db/messages_repo.py` (+165 lines) — SSE broadcast, attach functions
+- `src/services/db/users_repo.py` (+55 lines) — update_user_avatar, complexity-related queries
+- `src/services/db/consultation_logs_repo.py` (+56 lines) — complexity/phase fields
+- `src/services/llm/consultation_llm.py` (+67 lines) — phase kwargs support
+- `src/services/payments/payment_service.py` (+32 lines) — minor updates
+- `src/services/payments/subscription_service.py` (+14 lines) — minor updates
+- `src/api/handlers/crm.py` (+26 lines) — chat history endpoint, avatar URL conversion
+- `src/api/handlers/settings.py` (+2 lines) — minor updates
+- `src/api/handlers/buyers.py` (+5 lines) — avatar support
+- `src/api/routes.py` (+15 lines) — invite links routes, avatar static route, chat history route
+- `src/config.py` (+6 lines) — telegram_bot_username setting
+- `db/schema_30_payments.sql` (+4 lines) — minor fix
+- `db/schema_45_pricing_update.sql` (+12 lines) — pricing data update
 
 **Frontend:**
-- `admin-webapp/src/App.tsx` (+15 lines)
-- `admin-webapp/src/components/layout/Sidebar.tsx` (+1 line)
-- `admin-webapp/src/services/api.ts` (+99 lines)
-- `admin-webapp/src/store/ragDocumentStore.ts` (+20 lines)
-- `admin-webapp/src/types/index.ts` (+64 lines)
-
-**CRM Components:**
-- `admin-webapp/src/components/crm/LeftPanel/MainTab.tsx` (+28 lines)
-- `admin-webapp/src/components/crm/LeftPanel/MainTab.module.css` (+21 lines)
-
-**Expenses:**
-- `admin-webapp/src/components/expenses/ExpensesPage.tsx` (+67 lines)
-- `admin-webapp/src/components/expenses/ExpensesPage.module.css` (+32 lines)
-
-**RAG Documents:**
-- `admin-webapp/src/components/ragDocuments/RagDocsPage.tsx` (+52 lines)
-- `admin-webapp/src/components/ragDocuments/RagDocsPage.module.css` (+81 lines)
-- `admin-webapp/src/components/ragDocuments/ChunkPassportEditor.tsx` (86 lines, rewrite)
-- `admin-webapp/src/components/ragDocuments/ChunkPassportEditor.module.css` (+40 lines)
-- `admin-webapp/src/components/ragDocuments/RagDocumentList.tsx` (+79 lines)
-- `admin-webapp/src/components/ragDocuments/RagDocumentList.module.css` (+69 lines)
-
-**Tests:**
-- `test_category_classification.py` (+2 lines)
-- `test_culture_classification.py` (+49 lines)
-
-**Dependencies:**
-- `requirements.txt` (updated)
-
-**Scripts:**
-- `scripts/import_documents.py` (+2 lines)
+- `admin-webapp/src/App.tsx` (+4 lines) — invite links route
+- `admin-webapp/src/components/buyers/BuyerCard.tsx` (+19 lines) — avatar display
+- `admin-webapp/src/components/consultation/ConsultationView.tsx` (+54 lines) — complexity info
+- `admin-webapp/src/components/consultation/ConsultationView.module.css` (+42 lines)
+- `admin-webapp/src/components/crm/ClientCard.tsx` (+19 lines) — avatar display
+- `admin-webapp/src/components/crm/ClientCard.module.css` (+8 lines)
+- `admin-webapp/src/components/crm/RightPanel/ActivityFilters.tsx` (+6 lines) — chat_message filter
+- `admin-webapp/src/components/crm/RightPanel/ActivityItem.tsx` (+56 lines) — chat_message type rendering
+- `admin-webapp/src/components/crm/RightPanel/ActivityItem.module.css` (+113 lines) — chat bubble styles
+- `admin-webapp/src/components/crm/RightPanel/RightPanel.module.css` (+3 lines)
+- `admin-webapp/src/components/crm/RightPanel/TopicView.tsx` (+75 lines) — complexity block, keyboard display
+- `admin-webapp/src/components/crm/RightPanel/TopicView.module.css` (+109 lines) — complexity/keyboard styles
+- `admin-webapp/src/components/crm/RightPanel/index.tsx` (+6 lines) — ChatHistory tab
+- `admin-webapp/src/components/funnel/FunnelClientCard.tsx` (+19 lines) — avatar display
+- `admin-webapp/src/components/funnel/FunnelClientCard.module.css` (+8 lines)
+- `admin-webapp/src/components/layout/Sidebar.tsx` (+12 lines) — invite links nav item
+- `admin-webapp/src/components/settings/SettingsPage.tsx` (+8 lines) — minor update
+- `admin-webapp/src/hooks/useAutoRefresh.ts` (+30 lines)
+- `admin-webapp/src/services/api.ts` (+41 lines) — invite links API, chat history API
+- `admin-webapp/src/types/index.ts` (+68 lines) — InviteLink, ChatHistoryTopic, Message types update
 
 ### What's Working
 
-**Core Systems:**
-1. **Prompt System:** Database-driven with Python fallback
-2. **RAG v2.0:** Semantic chunking with chunk editor
-3. **Settings:** Full admin UI for configuration
-4. **Pricing:** Display and management working
-5. **KB Hierarchy:** Priority-based retrieval functional
-6. **Trial Limits:** 3-question restriction enforced
-7. **Answer Logic:** Configurable answer rules
-8. **LLM Services:** Refactored and reliable
-9. **Bot Handlers:** Cleaner structure
-10. **CRM Integration:** Activity tracking working
-11. **Expenses:** Enhanced UI functional
-12. **Database:** All repositories updated
+1. **Complexity LLM classifier** — runs on every question, returns tier + metadata
+2. **Pricing system** — complexity-based costs with tier definitions
+3. **User avatars** — download on /start, serve via static route, displayed in CRM cards
+4. **Invite links** — create, manage, track users + revenue, copy deep links
+5. **Full message logging** — all bot messages (including service prompts, button presses) logged
+6. **CRM chat bubbles** — `chat_message` events render as conversation bubbles in activity feed
+7. **ChatHistory component** — full conversation view with topic dividers and date separators
+8. **Phase tracking** — schema for logging which season phase was delivered
 
-**Admin Panel:**
-1. **Settings Page:** Full configuration UI
-2. **Prompt Preview:** Composition visualization
-3. **RAG Documents:** Chunk editor working
-4. **Pricing Section:** Display and editing
-5. **CRM Main Tab:** Enhanced information
-6. **Expenses:** Improved layout
+### What Needs Work
 
-### What Needs Tests
+1. **Complexity callback handlers** — verify `complexity_confirm:long` correctly triggers consultation with phase-specific prompt
+2. **`get_user_chat_history()` in messages_repo.py** — verify function exists and returns correct shape `{messages, topics}`
+3. **Phase-specific LLM prompt composition** — `consultation_llm.py` phase kwargs need to be used in actual prompt building
+4. **Apply schemas 48-51** — CRITICAL before testing
+5. **Test full complexity flow end-to-end** — question → classify → confirm → deliver phase plan → next phase offer
 
-**High Priority:**
-
-1. **Migration Testing:**
-   - Apply schema 37-47 in test environment
-   - Verify data integrity
-   - Test rollback procedures
-   - Validate foreign key constraints
-
-2. **Prompt System:**
-   - Test database-driven prompt loading
-   - Test fallback to Python prompts
-   - Test culture context composition
-   - Test prompt versioning
-
-3. **Semantic Chunking:**
-   - Test boundary detection accuracy
-   - Test chunk quality
-   - Test edge cases (very short/long docs)
-   - Test reprocessing
-
-4. **Settings System:**
-   - Test settings validation
-   - Test fallback chain
-   - Test hot-reload
-   - Test invalid value handling
-
-5. **Trial Limits:**
-   - Test question counting
-   - Test limit enforcement
-   - Test upgrade flow
-   - Test reset on payment
-
-**Medium Priority:**
-
-6. **Answer Logic:**
-   - Test rule composition
-   - Test section enable/disable
-   - Test fallback to defaults
-
-7. **KB Hierarchy:**
-   - Test priority sorting
-   - Test priority-aware retrieval
-
-8. **Integration Tests:**
-   - Full consultation flow with new prompt system
-   - End-to-end RAG with semantic chunking
-   - Settings changes reflected in consultations
-
-**Low Priority:**
-
-9. **UI Tests:**
-   - Settings page functionality
-   - Chunk editor workflow
-   - Pricing management
-
-### What Needs Documentation
-
-**High Priority:**
-
-1. **Migration Guide:**
-   - Step-by-step migration instructions
-   - Rollback procedures
-   - Data backup requirements
-
-2. **Settings Documentation:**
-   - All settings explained
-   - Recommended values
-   - Impact of each setting
-
-3. **Prompt System Guide:**
-   - How to create new prompts
-   - Culture context system
-   - Versioning workflow
-
-4. **Admin Panel User Manual:**
-   - Settings page usage
-   - RAG document management
-   - Chunk editing workflow
-
-**Medium Priority:**
-
-5. **API Documentation:**
-   - New endpoints documented
-   - Request/response examples
-   - Authentication requirements
-
-6. **Development Guide:**
-   - How to add new features
-   - Code organization patterns
-   - Testing requirements
+---
 
 ## Next Steps
 
-### Immediate (CRITICAL - Before Deployment)
+### Critical (Before Testing)
 
-1. **Apply and Verify All Migrations:**
-   - **Action:** Apply schema_37.sql through schema_47.sql in test environment
-   - **Commands:**
-     ```bash
-     psql -h localhost -U bot_user -d garden_bot_test -f db/schema_37_documents_full_text.sql
-     psql -h localhost -U bot_user -d garden_bot_test -f db/schema_38_embedding_nullable.sql
-     # ... continue for all migrations
-     ```
-   - **Verify:** Check tables exist, data intact, indices created
-   - **Test:** Run full consultation flow in test
-   - **Risk:** CRITICAL (data loss if migrations fail)
+1. **Apply DB migrations 48-51:**
+   ```bash
+   psql -h localhost -U bot_user -d garden_bot -f db/schema_48_complexity_tracking.sql
+   psql -h localhost -U bot_user -d garden_bot -f db/schema_49_phase_tracking.sql
+   psql -h localhost -U bot_user -d garden_bot -f db/schema_50_user_avatars.sql
+   psql -h localhost -U bot_user -d garden_bot -f db/schema_51_invite_links.sql
+   ```
 
-2. **Backup Production Database:**
-   - **Action:** Full pg_dump before applying migrations
-   - **Command:** `pg_dump -h localhost -U bot_user garden_bot > backup_pre_v1.2.3.sql`
-   - **Store:** Multiple locations (local + cloud)
-   - **Verify:** Restore test successful
-   - **Risk:** CRITICAL (only safety net)
+2. **Verify `get_user_chat_history()` function in messages_repo.py:**
+   - Check if function exists
+   - If not, implement it: return `{messages: [...], topics: [...]}`
+   - Messages should be ordered by `created_at ASC`
 
-3. **Test Prompt System End-to-End:**
-   - **Action:** Send test questions covering all categories
-   - **Test cases:**
-     - Nutrition question for strawberry → check prompt composition
-     - Planting question for raspberry → verify culture context
-     - Pruning question → ensure correct prompt selected
-     - Generic question → test fallback logic
-   - **Verify:** Responses are correct, no errors
-   - **Risk:** HIGH (core functionality)
+3. **Test complexity flow end-to-end:**
+   - Send short question → verify `short_answer` classification → normal consultation
+   - Send phase-eligible question (e.g., "питание клубники") → verify phase offer keyboard shown
+   - Send plan question (e.g., "распиши план подкормок") → verify `long_answer` → confirm keyboard → phase plan delivered
 
-4. **Validate Settings System:**
-   - **Action:** Change each setting via UI and verify effect
-   - **Tests:**
-     - Toggle RAG on/off → check consultation uses/doesn't use RAG
-     - Change temperature → verify in logs
-     - Modify max snippets → check RAG result count
-   - **Check:** Fallback to .env works if DB unavailable
-   - **Risk:** HIGH (misconfiguration could break bot)
+4. **Verify avatar serving:**
+   - Run `python fetch_avatars.py` to download avatars for existing users
+   - Check `GET /api/admin/avatars/{telegram_user_id}.jpg` returns image
+   - Check CRM client cards show avatar circles
 
-5. **Test Semantic Chunking:**
-   - **Action:** Upload test documents and verify chunks
-   - **Tests:**
-     - Small doc (2 pages) → verify chunk boundaries
-     - Large doc (20 pages) → check performance
-     - Document with tables → test structure preservation
-   - **Edit:** Try chunk editor, verify saves
-   - **Risk:** MEDIUM (RAG quality)
+### High Priority
 
-### Short-term (Week 1 After Deployment)
+5. **Test invite links:**
+   - Create link in admin panel → copy deep link → open in Telegram
+   - Verify user registered via link appears in invite_link_users table
+   - Check revenue stats update when user makes payment
 
-6. **Monitor System Metrics:**
-   - **Metrics to track:**
-     - Consultation latency (should be <5s)
-     - LLM token usage (watch for spikes)
-     - RAG retrieval accuracy (user feedback)
-     - Error rate (should be <1%)
-     - Trial conversion rate
-   - **Tools:** Check admin panel, logs
-   - **Alerts:** Set up for anomalies
+6. **Verify ChatHistory tab in CRM:**
+   - Open CRM → select client → "Полный чат" tab
+   - Verify messages grouped by topic with date separators
+   - Verify topic dividers are clickable (navigate to TopicView)
 
-7. **Gather User Feedback:**
-   - **Focus areas:**
-     - Answer quality with new prompt system
-     - Trial experience (is 3 questions enough to evaluate?)
-     - RAG relevance (are answers using correct sources?)
-   - **Method:** User surveys, support tickets
-   - **Iterate:** Adjust prompts/settings based on feedback
+7. **Test message logging completeness:**
+   - After consultation: check messages table has both user message and bot response
+   - Verify service messages (button prompts) are logged with keyboard meta
+   - Check SSE broadcasts new_message events for messages with topic_id
 
-8. **Optimize Performance:**
-   - **Identify bottlenecks:**
-     - Slow queries (check pg_stat_statements)
-     - Large prompt composition time
-     - Semantic chunking performance
-   - **Optimize:**
-     - Add caching for culture contexts
-     - Index optimization
-     - Query tuning
+### Medium Priority
 
-9. **Complete Test Coverage:**
-   - **Write tests for:**
-     - All new features (answer logic, settings, etc.)
-     - Critical paths (consultation flow)
-     - Edge cases (invalid inputs)
-   - **Target:** 80% code coverage for new code
-   - **Tools:** pytest, pytest-cov
+8. **Implement phase-specific LLM prompt:**
+   - `consultation_llm.py` should use `phase_mode`, `phase_key`, `phase_topic` kwargs
+   - Add phase context to prompt: "Ответ строго для фазы: {phase_key}"
+   - Test phase plan format matches expected length (~1200 chars)
 
-### Medium-term (Month 1)
+9. **Set `TELEGRAM_BOT_USERNAME` in config:**
+   - `invite_links.py` uses `settings.telegram_bot_username` for deep link generation
+   - Add to `.env`: `TELEGRAM_BOT_USERNAME=your_bot_username`
+   - Without this, deep links show only `inv_{code}` (no full URL)
 
-10. **Referral System Implementation:**
-    - **Complete:** Frontend UI for referral codes
-    - **Implement:** Reward distribution logic
-    - **Test:** Full referral flow
-    - **Launch:** Beta test with select users
+10. **Background avatar download:**
+    - Move avatar download in `menu.py` to `asyncio.create_task()` to not block welcome message
 
-11. **A/B Test Prompt Variants:**
-    - **Create:** Alternative prompt versions
-    - **Split:** 50/50 traffic
-    - **Measure:** Answer quality, user satisfaction
-    - **Winner:** Roll out best-performing prompts
+### Database Migration Checklist
 
-12. **Settings History & Rollback:**
-    - **Implement:** Settings change history table
-    - **Build:** Rollback UI in admin panel
-    - **Test:** Rollback workflow
-    - **Document:** Usage guide
+Before applying schemas, verify:
+- [ ] schema_48: complexity columns don't already exist in consultation_logs
+- [ ] schema_49: phase columns don't already exist in consultation_logs
+- [ ] schema_50: avatar_path column doesn't already exist in users
+- [ ] schema_51: invite_links and invite_link_users tables don't already exist
 
-13. **Enhanced Analytics:**
-    - **Build:** Usage dashboards in admin panel
-    - **Metrics:**
-      - Consultation volume by category/culture
-      - Popular topics
-      - Trial conversion funnel
-      - Revenue metrics
-    - **Alerts:** Anomaly detection
+After applying:
+- [ ] Run `\d consultation_logs` — verify complexity_tier, phase_mode columns present
+- [ ] Run `\d users` — verify avatar_path column present
+- [ ] Run `\d invite_links` — verify table structure
 
-### Long-term (Quarter 1)
-
-14. **Machine Learning Enhancements:**
-    - **KB Quality Scoring:** Auto-assign priorities based on answer quality
-    - **Question Clustering:** Identify common question patterns
-    - **Prompt Optimization:** Automated prompt testing
-
-15. **Scale Preparation:**
-    - **Load Testing:** Simulate 1000+ concurrent users
-    - **Caching Layer:** Redis for hot data
-    - **CDN:** Static assets optimization
-    - **Database:** Read replicas for admin panel
-
-16. **Mobile Admin App:**
-    - **Platform:** React Native or Flutter
-    - **Features:** Moderation, monitoring, notifications
-    - **Target:** Enable mobile administration
-
-## Environment Variables
-
-**New Required Variables:**
-
-```bash
-# No new required variables - all configuration moved to database
-```
-
-**Optional Variables (Database Fallbacks):**
-
-```bash
-# LLM Configuration (fallback if DB unavailable)
-OPENAI_MODEL_CONSULTATION=gpt-4o
-OPENAI_MODEL_ARTICLE=gpt-4o
-OPENAI_MODEL_CLASSIFICATION=gpt-4o-mini
-OPENAI_MODEL_UTILITY=gpt-4o-mini
-LLM_TEMPERATURE=0.3
-
-# RAG Configuration
-RAG_ENABLED=true
-MAX_RAG_SNIPPETS=5
-
-# Trial Configuration
-TRIAL_QUESTION_LIMIT=3
-```
-
-**Migration Notes:**
-- Most settings now loaded from `admin_settings` table
-- .env still used for bootstrap and emergency fallback
-- Database values take precedence over .env
+---
 
 ## Session Statistics
 
-- **Duration:** ~2 weeks (multiple sessions)
-- **Files Created:** 50+ files
-- **Files Modified:** 61 files
-- **Lines Added:** 4,436 lines
-- **Lines Deleted:** 1,541 lines
-- **Net Change:** +2,895 lines
-- **Database Migrations:** 11 new schemas (37-47)
-- **New Features:** 7 major features
-- **Bug Fixes:** Multiple
-- **Tests Created:** 2 new test files
-- **Documentation:** 7 new markdown files
-- **Screenshots:** 10+ UI documentation images
-- **Commits:** Pending (will be single large commit)
+- **Files Modified:** 51 files (per git status)
+- **Files Created (untracked):** ~16 new files
+- **Lines Added:** ~3,162 insertions
+- **Lines Deleted:** ~264 deletions
+- **DB Migrations:** 4 new schemas (48-51)
+- **New Features:** 5 major (complexity flow, avatars, invite links, full message logging, ChatHistory)
+- **Session Date:** 2026-02-18
 
 ---
 
-**Session completed:** 2026-02-16
-**Session type:** Major feature release
-**Status:** Code complete, testing pending, ready for migration application
-**User Action Required:** Apply migrations, test thoroughly, deploy to production
-**Version:** 1.2.2 → 1.2.3
-**Breaking Changes:** None (all changes backward compatible with fallbacks)
-**Migration Required:** YES (11 database schema updates)
-
----
+**Session completed:** 2026-02-18
+**Version:** 1.2.3 (no version bump this session — code not deployed)
+**Status:** Implementation complete, CRITICAL migrations not applied, testing required
+**Breaking Changes:** None (all new fields are additive)
+**Migration Required:** YES — schemas 48-51 must be applied before bot restart

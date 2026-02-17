@@ -11,10 +11,11 @@ Before making ANY changes:
 2. Read `session-summary.md` — contains latest session changes
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
-**Current Project State (2025-12-20):**
-- Version: 1.2.2
-- Phase: Payment system display integration
-- Latest changes: Payment repository functions, API endpoints, CRM billing tab, payments list page
+**Current Project State (2026-02-18):**
+- Version: 1.2.3
+- Phase: Complexity flow + user experience features
+- Latest changes: Complexity classification (complexity_llm.py), user avatars, invite links campaign tracking, full message logging, CRM ChatHistory component
+- CRITICAL: DB schemas 48-51 NOT YET APPLIED — must apply before running bot
 - See: `session-summary.md` for details
 
 ## Collaboration Rules

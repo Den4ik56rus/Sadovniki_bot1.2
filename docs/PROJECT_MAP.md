@@ -1,8 +1,8 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2026-02-16
+**Last Updated:** 2026-02-18
 **Project:** Sadovniki-bot v1.2.3
-**Status:** Production-ready with major system enhancements
+**Status:** Active development — complexity flow + avatars + invite links added
 
 ## Quick Navigation
 
@@ -104,30 +104,44 @@
 ```
 User Question
     ↓
-1. Classification (detect_category_and_culture)
+1. Log user message to messages table (SSE broadcast)
     ↓
-2. Topic Management (create or continue topic)
+2. Classification (detect_category_and_culture)
     ↓
-3. Clarification Check (need more info?)
+3. Complexity Classification (detect_answer_complexity — gpt-4.1-mini)
+    ├── short_answer (1 token) — default
+    ├── short_answer + phase_eligible — offer phase plan
+    ├── long_answer (2 tokens) — plan for one seasonal phase
+    └── turnkey_solution — purchase offer
+    ↓
+4. Based on complexity tier:
+    ├── short_answer → direct consultation flow
+    ├── short_answer + phase_eligible → show phase choice keyboard
+    ├── long_answer → show confirm + cost keyboard
+    └── turnkey_solution → show purchase info + plan option
+    ↓ (user confirms or auto for short_answer)
+5. Topic Management (create or continue topic)
+    ↓
+6. Clarification Check (need more info?)
     ↓ (if sufficient info)
-4. Question Composition (compose_full_question with culture context)
+7. Question Composition (compose_full_question with culture context)
     ↓
-5. Embedding Generation (get_text_embedding_with_usage)
+8. Embedding Generation (get_text_embedding_with_usage)
     ↓
-6. RAG Search (retrieve_unified_snippets)
+9. RAG Search (retrieve_unified_snippets)
     ├── Level 1: Q&A pairs (kb)
     ├── Level 2: Priority documents (subcategory-specific)
     └── Level 3: General documents (category-wide)
     ↓
-7. Prompt Building (culture-specific prompt + RAG context)
+10. Prompt Building (culture-specific prompt + RAG context + phase context if applicable)
     ↓
-8. LLM Generation (OpenAI GPT-4o)
+11. LLM Generation (OpenAI GPT-4o)
     ↓
-9. Markdown → HTML Formatting (markdown_to_telegram_html)
+12. Markdown → HTML Formatting (markdown_to_telegram_html)
     ↓
-10. Response Delivery (with follow-up buttons)
+13. Response Delivery (with follow-up buttons or next-phase button)
     ↓
-11. Logging (consultation_logs, messages, SSE broadcast)
+14. Logging (consultation_logs with complexity/phase fields, messages, SSE broadcast)
 ```
 
 ---
@@ -139,6 +153,8 @@ User Question
 | Feature | Status | Documentation | Notes |
 |---------|--------|---------------|-------|
 | Multi-turn Consultations | ✅ Production | [CONSULTATION_FLOW.md](features/CONSULTATION_FLOW.md) | State machine with context |
+| Complexity Classification | ⏳ Implemented, needs testing | [COMPLEXITY_FLOW.md](features/COMPLEXITY_FLOW.md) | LLM-based tier detection |
+| Phase-Based Plans | ⏳ Implemented, needs testing | [COMPLEXITY_FLOW.md](features/COMPLEXITY_FLOW.md) | Seasonal phase plan delivery |
 | Culture Classification | ✅ Production | [CLASSIFICATION.md](features/CLASSIFICATION.md) | 12 culture types |
 | RAG System | ✅ Production | [RAG_SYSTEM.md](../architecture/RAG_SYSTEM.md) | 3-level priority search |
 | Culture-Specific Prompts | ✅ Production | [PROMPTS.md](features/PROMPTS.md) | Detailed for strawberry/raspberry |
@@ -147,6 +163,10 @@ User Question
 | KB Moderation | ✅ Production | [MODERATION.md](features/MODERATION.md) | Queue system |
 | Terminology Management | ✅ Production | [TERMINOLOGY.md](features/TERMINOLOGY.md) | Preferred wording |
 | Admin Panel (SSE) | ✅ Production | [ADMIN_PANEL.md](features/ADMIN_PANEL.md) | Real-time monitoring |
+| User Avatars | ⏳ Implemented, migrations pending | - | Telegram profile photos |
+| Invite Links | ⏳ Implemented, migrations pending | - | Campaign tracking with revenue stats |
+| Full Message Logging | ✅ Implemented | - | All bot/user messages + buttons logged |
+| CRM ChatHistory | ⏳ Implemented, needs API verification | - | Full conversation timeline per client |
 | Article Writing Mode | ✅ Production | - | Admin feature, needs docs |
 | Document Upload | ✅ Production | [DOCUMENT_PIPELINE.md](features/DOCUMENT_PIPELINE.md) | PDF/TXT/MD/DOCX |
 | CRM Deals Kanban | ✅ Production | - | Sales funnel management, needs docs |
@@ -188,27 +208,28 @@ User Question
 
 ## Active Context
 
-### Current Phase: System Enhancement & Optimization
+### Current Phase: Complexity Flow + User Experience Features
 
 **Focus Areas:**
-1. Database-driven configuration and prompts
-2. Advanced RAG with semantic chunking
-3. Admin settings infrastructure
-4. Trial limits and monetization
+1. Complexity-based consultation pricing (short/long/turnkey)
+2. Seasonal phase plan delivery
+3. User avatars and campaign tracking (invite links)
+4. Full message logging and CRM chat history
 
-**Last Session Changes (2026-02-16):**
-- Complete prompt system redesign with database migration
-- RAG documents v2.0 with semantic chunking and chunk editor
-- Admin settings infrastructure with UI configuration panel
-- Pricing system display and subscription plan management
-- KB hierarchy with priority levels and trial question limits
-- Answer logic configuration system
-- Referral system foundation
-- LLM service layer improvements
-- Bot handlers refactoring
-- CRM and expenses system enhancements
-- Version: 1.2.2 → 1.2.3
-- Database: 11 new migrations (schema_37-47)
+**Last Session Changes (2026-02-18):**
+- Complexity classifier (complexity_llm.py) — LLM-based question difficulty detection
+- 3-tier pricing: short_answer (1 token), long_answer (2 tokens), turnkey_solution (purchase)
+- Phase-eligible questions: offer short or detailed seasonal plan
+- 5 new consultation keyboards for complexity confirmation and phase selection
+- User avatar system: download from Telegram, serve via static route, display in CRM cards
+- Invite links (campaign tracking): create named links, track users + revenue
+- Full message logging: ALL bot messages + button presses logged with meta/keyboard JSON
+- messages_repo.py: SSE broadcast on every logged message, attach_topic functions
+- CRM ChatHistory component: full conversation timeline with topic dividers, date separators
+- chat_message event type in activity feed: conversation bubbles with keyboard rendering
+- complexity block in TopicView: tier, phase, cost display
+- Pending: schemas 48-51 not applied, complexity callback flow needs end-to-end testing
+- DB migrations 48-51 MUST be applied before next bot session
 
 ### Constraints & Invariants
 
@@ -250,6 +271,7 @@ User Question
 ### Feature Documents
 
 - [CONSULTATION_FLOW.md](features/CONSULTATION_FLOW.md) — Multi-turn dialogues, state machine
+- [COMPLEXITY_FLOW.md](features/COMPLEXITY_FLOW.md) — Complexity classification, phase plans, pricing tiers
 - [CLASSIFICATION.md](features/CLASSIFICATION.md) — Culture classification (12 types)
 - [PROMPTS.md](features/PROMPTS.md) — Prompt system, culture-specific prompts
 - [MODERATION.md](features/MODERATION.md) — Knowledge base moderation

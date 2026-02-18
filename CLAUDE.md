@@ -12,7 +12,7 @@ Before making ANY changes:
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
 **Current Project State (2026-02-18):**
-- Version: 1.2.4
+- Version: 1.2.5
 - Phase: Complexity flow + user experience features
 - Latest changes: Complexity classification (complexity_llm.py), user avatars, invite links campaign tracking, full message logging, CRM ChatHistory component
 - CRITICAL: DB schemas 48-51 NOT YET APPLIED — must apply before running bot

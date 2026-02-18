@@ -16,6 +16,7 @@ interface FunnelStore {
   isLoadingClients: boolean
   error: string | null
   isSettingsMode: boolean
+  sseConnected: boolean
 
   // Funnel actions
   fetchFunnels: () => Promise<void>
@@ -38,6 +39,11 @@ interface FunnelStore {
   transferClient: (userId: number, toFunnelId: string, toStageKey?: string) => Promise<boolean>
   removeClient: (userId: number, fromStage: string) => void
 
+  // SSE real-time actions
+  smartRefresh: (funnelId: string) => Promise<void>
+  removeClientLocally: (userId: number) => void
+  setSseConnected: (connected: boolean) => void
+
   // Settings mode
   toggleSettingsMode: () => void
 
@@ -58,6 +64,7 @@ export const useFunnelStore = create<FunnelStore>()(
       isLoadingClients: false,
       error: null,
       isSettingsMode: false,
+      sseConnected: false,
 
       // Funnel actions
       fetchFunnels: async () => {
@@ -342,6 +349,72 @@ export const useFunnelStore = create<FunnelStore>()(
         })
       },
 
+      // SSE real-time actions
+
+      // Фоновое обновление без isLoadingClients — мержит данные, сохраняя UI
+      smartRefresh: async (funnelId: string) => {
+        try {
+          const response = await api.getFunnelClients(funnelId)
+          set((state) => {
+            // Мержим: обновляем существующих клиентов, добавляем новых
+            const newClients: Record<string, FunnelClient[]> = {}
+            for (const stageKey of Object.keys(response.clients)) {
+              const freshList = response.clients[stageKey] || []
+              const existingList = state.clients[stageKey] || []
+
+              // Создаём map существующих клиентов для быстрого поиска
+              const existingMap = new Map(existingList.map((c) => [c.id, c]))
+
+              newClients[stageKey] = freshList.map((freshClient) => {
+                const existing = existingMap.get(freshClient.id)
+                // Если клиент уже был, обновляем данные но сохраняем ссылку если данные не изменились
+                if (existing &&
+                  existing.status === freshClient.status &&
+                  existing.total_consultations === freshClient.total_consultations &&
+                  existing.total_cost_usd === freshClient.total_cost_usd) {
+                  return existing
+                }
+                return freshClient
+              })
+            }
+
+            // Проверяем изменились ли stats
+            const statsChanged = Object.keys(response.stats).some(
+              (key) => response.stats[key] !== state.stats[key]
+            ) || Object.keys(state.stats).length !== Object.keys(response.stats).length
+
+            return {
+              clients: newClients,
+              ...(statsChanged ? { stats: response.stats } : {}),
+            }
+          })
+        } catch (error) {
+          console.error('[smartRefresh] Error:', error)
+        }
+      },
+
+      // Удаляет клиента локально из всех этапов (для SSE client_removed)
+      removeClientLocally: (userId: number) => {
+        set((state) => {
+          const newClients = { ...state.clients }
+          const newStats = { ...state.stats }
+          let found = false
+
+          for (const stage in newClients) {
+            const before = newClients[stage].length
+            newClients[stage] = newClients[stage].filter((c) => c.id !== userId)
+            if (newClients[stage].length < before) {
+              newStats[stage] = Math.max(0, (newStats[stage] || 0) - 1)
+              found = true
+            }
+          }
+
+          return found ? { clients: newClients, stats: newStats } : state
+        })
+      },
+
+      setSseConnected: (connected: boolean) => set({ sseConnected: connected }),
+
       // Settings mode
       toggleSettingsMode: () => set((state) => ({ isSettingsMode: !state.isSettingsMode })),
 
@@ -356,6 +429,7 @@ export const useFunnelStore = create<FunnelStore>()(
         isLoadingClients: false,
         error: null,
         isSettingsMode: false,
+        sseConnected: false,
       }),
     }),
     {

@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 
+const DEFAULT_EVENT_TYPES = ['new_log', 'new_message', 'heartbeat', 'status_update']
+
 interface UseSSEOptions {
   endpoint: string
   onMessage: (event: MessageEvent) => void
@@ -8,6 +10,7 @@ interface UseSSEOptions {
   reconnectInterval?: number
   maxReconnectAttempts?: number
   lastEventId?: string | null
+  eventTypes?: string[]
 }
 
 interface UseSSEReturn {
@@ -43,7 +46,8 @@ export function useSSE({
   enabled = true,
   reconnectInterval = 3000,
   maxReconnectAttempts = 5,
-  lastEventId: _lastEventId
+  lastEventId: _lastEventId,
+  eventTypes = DEFAULT_EVENT_TYPES,
 }: UseSSEOptions): UseSSEReturn {
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -71,13 +75,12 @@ export function useSSE({
       // Обработка дефолтных message событий
       eventSource.onmessage = onMessage
 
-      // Обработка кастомных типов событий (new_log, new_message, heartbeat и т.д.)
+      // Обработка кастомных типов событий
       // SSE спецификация требует addEventListener для кастомных типов
       const messageHandler = onMessage as EventListener
-      eventSource.addEventListener('new_log', messageHandler)
-      eventSource.addEventListener('new_message', messageHandler)
-      eventSource.addEventListener('heartbeat', messageHandler)
-      eventSource.addEventListener('status_update', messageHandler)
+      for (const eventType of eventTypes) {
+        eventSource.addEventListener(eventType, messageHandler)
+      }
 
       eventSource.onerror = (event) => {
         console.error('[SSE] Error:', event)
@@ -105,7 +108,7 @@ export function useSSE({
       setError(String(err))
       setIsConnected(false)
     }
-  }, [endpoint, enabled, onMessage, onError, reconnectAttempts, reconnectInterval, maxReconnectAttempts])
+  }, [endpoint, enabled, onMessage, onError, reconnectAttempts, reconnectInterval, maxReconnectAttempts, eventTypes])
 
   const close = useCallback(() => {
     if (eventSourceRef.current) {

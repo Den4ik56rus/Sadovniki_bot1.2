@@ -1,5 +1,5 @@
 // Universal Kanban Board for any Funnel
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import {
   DndContext,
   DragOverlay,
@@ -22,6 +22,8 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useCurrencyStore } from '@/store'
+import { useSSE } from '@/hooks/useSSE'
+import { api } from '@/services/api'
 import { FunnelColumn } from './FunnelColumn'
 import { FunnelClientCard } from './FunnelClientCard'
 import { FunnelClientCardFull } from './FunnelClientCardFull'
@@ -90,14 +92,96 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
     reorderStages,
     removeClient,
     transferClient,
+    smartRefresh,
+    removeClientLocally,
+    setSseConnected,
   } = useFunnelStore()
 
   const { usdRate, fetchRate } = useCurrencyStore()
 
   const [activeClient, setActiveClient] = useState<FunnelClient | null>(null)
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null)
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(null)
-  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedClientId, setSelectedClientId] = useState<number | null>(() => {
+    const saved = sessionStorage.getItem(`funnel-${funnelId}-selectedClient`)
+    return saved ? Number(saved) : null
+  })
+  const [searchQuery, setSearchQuery] = useState(() => {
+    return sessionStorage.getItem(`funnel-${funnelId}-search`) || ''
+  })
+
+  // Сохраняем UI state в sessionStorage
+  useEffect(() => {
+    if (selectedClientId !== null) {
+      sessionStorage.setItem(`funnel-${funnelId}-selectedClient`, String(selectedClientId))
+    } else {
+      sessionStorage.removeItem(`funnel-${funnelId}-selectedClient`)
+    }
+  }, [selectedClientId, funnelId])
+
+  useEffect(() => {
+    if (searchQuery) {
+      sessionStorage.setItem(`funnel-${funnelId}-search`, searchQuery)
+    } else {
+      sessionStorage.removeItem(`funnel-${funnelId}-search`)
+    }
+  }, [searchQuery, funnelId])
+
+  // Self-echo suppression: отслеживаем собственные действия чтобы не дублировать SSE
+  const recentActions = useRef<Map<string, number>>(new Map())
+
+  const trackAction = useCallback((userId: number, action: string) => {
+    const key = `${userId}-${action}`
+    recentActions.current.set(key, Date.now())
+    // Чистим старые записи
+    setTimeout(() => recentActions.current.delete(key), 3000)
+  }, [])
+
+  const isOwnAction = useCallback((userId: number, action: string) => {
+    const key = `${userId}-${action}`
+    const ts = recentActions.current.get(key)
+    return ts !== undefined && Date.now() - ts < 3000
+  }, [])
+
+  // SSE подписка для real-time обновлений воронки
+  const handleFunnelSSE = useCallback(
+    (event: MessageEvent) => {
+      try {
+        const data = JSON.parse(event.data)
+        if (event.type === 'heartbeat') return
+
+        switch (event.type) {
+          case 'client_moved':
+            if (!isOwnAction(data.user_id, 'move')) {
+              smartRefresh(funnelId)
+            }
+            break
+          case 'client_removed':
+            if (!isOwnAction(data.user_id, 'remove')) {
+              removeClientLocally(data.user_id)
+            }
+            break
+          case 'client_added':
+          case 'consultation_logged':
+            smartRefresh(funnelId)
+            break
+        }
+      } catch (err) {
+        console.error('[FunnelKanban] SSE parse error:', err)
+      }
+    },
+    [funnelId, smartRefresh, removeClientLocally, isOwnAction]
+  )
+
+  const { isConnected: sseConnected } = useSSE({
+    endpoint: api.sse.funnelEvents(funnelId),
+    onMessage: handleFunnelSSE,
+    enabled: true,
+    eventTypes: ['client_moved', 'client_removed', 'client_added', 'consultation_logged', 'heartbeat'],
+  })
+
+  useEffect(() => {
+    setSseConnected(sseConnected)
+  }, [sseConnected, setSseConnected])
 
   // Sensors for drag
   const sensors = useSensors(
@@ -201,10 +285,12 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
       if (over.data.current?.type === 'dropzone') {
         const action = over.data.current.action as string
         if (action === 'delete') {
+          trackAction(activeClientData.id, 'remove')
           removeClient(activeClientData.id, activeClientData.status)
           return
         }
         if (action === 'transfer-buyers') {
+          trackAction(activeClientData.id, 'remove')
           transferClient(activeClientData.id, 'buyers', 'pending_payment')
           return
         }
@@ -226,6 +312,7 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
       }
 
       if (targetStage && targetStage !== activeClientData.status) {
+        trackAction(activeClientData.id, 'move')
         moveClient(activeClientData.id, activeClientData.status, targetStage)
       }
     }

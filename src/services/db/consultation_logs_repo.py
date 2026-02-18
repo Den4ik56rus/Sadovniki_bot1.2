@@ -202,6 +202,17 @@ async def log_consultation(
                         entity_id=topic_id
                     )
 
+                # Broadcast для CRM воронки — обновляет метрики клиента на канбане
+                await sse_manager.broadcast(
+                    event_type='consultation_logged',
+                    data={
+                        'user_id': log_data.get('user_id'),
+                        'topic_id': topic_id,
+                        'cost_usd': log_data.get('llm_cost_usd', 0),
+                    },
+                    endpoint_type='funnel-crm'
+                )
+
                 logger.debug(f"SSE broadcast sent for log {log_id}, llm_cost_usd={log_data.get('llm_cost_usd', 'MISSING')}, composed_question={bool(log_data.get('composed_question'))}")
 
             except Exception as e:

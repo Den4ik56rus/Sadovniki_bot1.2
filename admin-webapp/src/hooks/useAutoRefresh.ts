@@ -1,6 +1,6 @@
 // Hook for auto-refreshing data
-// NOTE: SSE used for live-feed, logs, and documents - no polling needed for those
-// Polling remains only for users list and stats
+// NOTE: SSE used for live-feed, logs, documents, and funnels - no polling needed for those
+// Polling remains only for users list, stats, and as SSE fallback for funnels
 
 import { useEffect, useRef, useCallback } from 'react'
 import {
@@ -8,17 +8,19 @@ import {
   useUsersStore,
   useStatsStore,
   useDocumentsStore,
-  useCrmStore,
-  useBuyersStore,
 } from '@/store'
+import { useFunnelStore } from '@/store/funnelStore'
 
 // Refresh intervals in milliseconds
 const REFRESH_INTERVALS = {
   users: 30000, // 30 seconds
   stats: 60000, // 1 minute
   documents: 10000, // 10 seconds (for fallback polling if SSE fails)
-  crm: 15000, // 15 seconds
-  buyers: 15000, // 15 seconds
+  funnelFallback: 30000, // 30 seconds — only when SSE disconnected
+}
+
+function isFunnelView(view: string): boolean {
+  return view === 'crm' || view === 'buyers' || view.startsWith('funnel:')
 }
 
 export function useAutoRefresh() {
@@ -27,8 +29,6 @@ export function useAutoRefresh() {
   const { fetchUsers, searchQuery } = useUsersStore()
   const { fetchStats, period } = useStatsStore()
   const { fetchDocuments, pollProcessingDocuments, documents } = useDocumentsStore()
-  const { fetchClients: fetchCrmClients } = useCrmStore()
-  const { fetchBuyers } = useBuyersStore()
 
   // Track if component is mounted
   const isMounted = useRef(true)
@@ -62,19 +62,13 @@ export function useAutoRefresh() {
     }
   }, [currentView, documents, fetchDocuments, pollProcessingDocuments])
 
-  // Refresh CRM clients
-  const refreshCrm = useCallback(() => {
-    if (currentView === 'crm') {
-      fetchCrmClients()
+  // Fallback: refresh funnel only when SSE is disconnected
+  const refreshFunnelFallback = useCallback(() => {
+    const { currentFunnelId, sseConnected, smartRefresh } = useFunnelStore.getState()
+    if (isFunnelView(currentView) && currentFunnelId && !sseConnected) {
+      smartRefresh(currentFunnelId)
     }
-  }, [currentView, fetchCrmClients])
-
-  // Refresh Buyers
-  const refreshBuyers = useCallback(() => {
-    if (currentView === 'buyers') {
-      fetchBuyers()
-    }
-  }, [currentView, fetchBuyers])
+  }, [currentView])
 
   // Set up intervals based on current view
   useEffect(() => {
@@ -94,15 +88,12 @@ export function useAutoRefresh() {
       intervals.push(setInterval(refreshDocuments, REFRESH_INTERVALS.documents))
     }
 
-    if (currentView === 'crm') {
-      intervals.push(setInterval(refreshCrm, REFRESH_INTERVALS.crm))
+    // Funnel fallback polling — only active when SSE disconnected
+    if (isFunnelView(currentView)) {
+      intervals.push(setInterval(refreshFunnelFallback, REFRESH_INTERVALS.funnelFallback))
     }
 
-    if (currentView === 'buyers') {
-      intervals.push(setInterval(refreshBuyers, REFRESH_INTERVALS.buyers))
-    }
-
-    // Note: live-feed now uses SSE, no polling needed
+    // Note: live-feed uses SSE, funnels use SSE with fallback polling
 
     return () => {
       isMounted.current = false
@@ -113,8 +104,7 @@ export function useAutoRefresh() {
     refreshUsers,
     refreshStats,
     refreshDocuments,
-    refreshCrm,
-    refreshBuyers,
+    refreshFunnelFallback,
   ])
 }
 
@@ -132,7 +122,7 @@ export function useRestoreState() {
     hasRestored.current = true
 
     // Restore data based on persisted state
-    // Note: topics, logs, and live-feed will be loaded by their respective components via SSE
+    // Note: topics, logs, live-feed, and funnels will be loaded by their respective components via SSE
     switch (currentView) {
       case 'users':
         fetchUsers(searchQuery || undefined)
@@ -144,6 +134,7 @@ export function useRestoreState() {
         fetchDocuments()
         break
       // 'live' view loads via SSE in LiveFeed component
+      // Funnel views (crm/buyers/funnel:*) load via FunnelKanban component + SSE
     }
   }, [
     currentView,

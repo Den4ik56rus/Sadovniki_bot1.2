@@ -825,6 +825,14 @@ export const api = {
     documentStatus: (documentId: number): string => {
       return `${API_BASE}/events/documents/${documentId}`
     },
+
+    /**
+     * SSE endpoint для real-time обновлений воронки (CRM, Покупатели, кастомные)
+     * @param funnelId - ID воронки ('crm', 'buyers', или UUID кастомной)
+     */
+    funnelEvents: (funnelId: string): string => {
+      return `${API_BASE}/events/funnel/${funnelId}`
+    },
   },
 
   // ============================================

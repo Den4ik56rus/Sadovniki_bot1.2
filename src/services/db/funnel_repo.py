@@ -634,6 +634,16 @@ async def move_client_to_stage(
         return False
 
     async with pool.acquire() as conn:
+        # Получаем текущий этап для SSE
+        old_stage_key = await conn.fetchval(
+            """
+            SELECT stage_key FROM client_funnel_position
+            WHERE user_id = $1 AND funnel_id = $2
+            """,
+            user_id,
+            funnel_id
+        )
+
         result = await conn.execute(
             """
             UPDATE client_funnel_position
@@ -645,7 +655,24 @@ async def move_client_to_stage(
             new_stage_key
         )
 
-        return result == "UPDATE 1"
+        success = result == "UPDATE 1"
+
+        if success:
+            try:
+                from src.api.sse_manager import sse_manager
+                await sse_manager.broadcast(
+                    event_type='client_moved',
+                    data={
+                        'user_id': user_id,
+                        'from_stage': old_stage_key,
+                        'to_stage': new_stage_key,
+                    },
+                    endpoint_type=f'funnel-{funnel_id}'
+                )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast SSE client_moved: {e}")
+
+        return success
 
 
 async def transfer_client(
@@ -730,6 +757,22 @@ async def transfer_client(
                 f'{{"from_funnel": "{from_funnel_id}", "to_funnel": "{to_funnel_id}", "to_stage": "{to_stage_key}"}}'
             )
 
+            # SSE broadcast для обеих воронок
+            try:
+                from src.api.sse_manager import sse_manager
+                await sse_manager.broadcast(
+                    event_type='client_removed',
+                    data={'user_id': user_id},
+                    endpoint_type=f'funnel-{from_funnel_id}'
+                )
+                await sse_manager.broadcast(
+                    event_type='client_added',
+                    data={'user_id': user_id, 'stage_key': to_stage_key},
+                    endpoint_type=f'funnel-{to_funnel_id}'
+                )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast SSE transfer: {e}")
+
             return True
 
 
@@ -804,6 +847,17 @@ async def remove_client_from_funnel(user_id: int, funnel_id: str) -> bool:
             )
             if legacy_result == "DELETE 1":
                 deleted = True
+
+        if deleted:
+            try:
+                from src.api.sse_manager import sse_manager
+                await sse_manager.broadcast(
+                    event_type='client_removed',
+                    data={'user_id': user_id},
+                    endpoint_type=f'funnel-{funnel_id}'
+                )
+            except Exception as e:
+                logger.warning(f"Failed to broadcast SSE client_removed: {e}")
 
         return deleted
 

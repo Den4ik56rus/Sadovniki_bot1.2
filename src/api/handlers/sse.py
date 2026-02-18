@@ -5,6 +5,7 @@ Endpoints:
 - /api/admin/events/live-feed - стрим новых логов консультаций
 - /api/admin/events/logs/{topic_id} - стрим логов конкретного топика
 - /api/admin/events/documents/{document_id} - стрим статуса обработки документа
+- /api/admin/events/funnel/{funnel_id} - стрим изменений воронки (CRM, Покупатели и т.д.)
 """
 
 import asyncio
@@ -382,6 +383,90 @@ async def document_status_stream(request: web.Request) -> web.StreamResponse:
         logger.info(
             f"SSE client {client_id} disconnected "
             f"(documents, document_id={document_id})"
+        )
+
+    return response
+
+
+async def funnel_stream(request: web.Request) -> web.StreamResponse:
+    """
+    SSE endpoint для real-time обновлений воронки (CRM, Покупатели, кастомные).
+
+    Отправляет события при изменении клиентов в воронке:
+    - client_moved — клиент перемещён между этапами
+    - client_removed — клиент удалён из воронки
+    - client_added — новый клиент добавлен в воронку
+    - consultation_logged — новая консультация (обновляет метрики клиента)
+
+    Path params:
+        funnel_id (str): ID воронки ('crm', 'buyers', или UUID кастомной)
+    """
+    funnel_id = request.match_info.get('funnel_id', '')
+    if not funnel_id:
+        raise web.HTTPBadRequest(text="Missing funnel_id")
+
+    response = web.StreamResponse(
+        status=200,
+        reason='OK',
+        headers={
+            'Content-Type': 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+        }
+    )
+
+    await response.prepare(request)
+
+    client_id = str(uuid.uuid4())
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+
+    # endpoint_type = 'funnel-crm', 'funnel-buyers', etc.
+    endpoint_type = f'funnel-{funnel_id}'
+
+    logger.info(
+        f"New SSE client connected: {client_id} "
+        f"({endpoint_type})"
+    )
+
+    await sse_manager.add_client(
+        client_id=client_id,
+        queue=queue,
+        endpoint_type=endpoint_type,
+    )
+
+    try:
+        while True:
+            event = await queue.get()
+
+            if event is None:
+                logger.info(f"Received shutdown signal for {client_id}")
+                break
+
+            await send_sse_event(
+                response,
+                event['type'],
+                event['data'],
+                event.get('id')
+            )
+
+    except asyncio.CancelledError:
+        logger.info(f"SSE client {client_id} cancelled")
+    except ConnectionResetError:
+        logger.info(f"SSE client {client_id} connection reset")
+    except Exception as e:
+        logger.error(f"Error in funnel_stream for {client_id}: {e}")
+    finally:
+        await sse_manager.remove_client(client_id)
+
+        try:
+            await response.write_eof()
+        except Exception as e:
+            logger.error(f"Error closing response for {client_id}: {e}")
+
+        logger.info(
+            f"SSE client {client_id} disconnected "
+            f"({endpoint_type})"
         )
 
     return response

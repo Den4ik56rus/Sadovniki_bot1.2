@@ -18,7 +18,6 @@ export function ExpensesPage() {
     fetchCategories,
     fetchStats,
     setFilters,
-    clearFilters,
     isFormOpen,
     openForm,
     closeForm,

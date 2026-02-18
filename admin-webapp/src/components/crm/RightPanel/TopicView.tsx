@@ -415,12 +415,12 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
                       <span className={styles.complexityPrice}>
                         {tierCostLabels[log.complexity_tier || ''] || ''}
                       </span>
-                      {complexityMeta.current_phase && (
+                      {Boolean(complexityMeta.current_phase) && (
                         <span className={styles.complexityPhase}>
                           фаза: {String(complexityMeta.current_phase)}
                         </span>
                       )}
-                      {complexityMeta.topics && Array.isArray(complexityMeta.topics) && (complexityMeta.topics as string[]).length > 0 && (
+                      {Boolean(complexityMeta.topics) && Array.isArray(complexityMeta.topics) && (complexityMeta.topics as string[]).length > 0 && (
                         <span className={styles.complexityTopics}>
                           темы: {(complexityMeta.topics as string[]).join(', ')}
                         </span>

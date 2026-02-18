@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides
 
 
 def setup_routes(app: web.Application) -> None:
@@ -81,6 +81,7 @@ def setup_routes(app: web.Application) -> None:
 
     # CRM: Лента активности
     app.router.add_get("/api/admin/crm/clients/{id}/activity", crm.get_client_activity)
+    app.router.add_get("/api/admin/crm/clients/{id}/chat", crm.get_client_chat_history)
 
     # CRM: Колонки воронки (Kanban)
     app.router.add_get("/api/admin/crm/columns", crm.get_funnel_columns)
@@ -213,9 +214,26 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/api/admin/settings/pricing/packages", settings.create_token_package)
     app.router.add_put(r"/api/admin/settings/pricing/packages/{id:\d+}", settings.update_token_package)
 
+    # Guides API (Готовые решения — PDF-гайды)
+    app.router.add_get("/api/admin/guides", guides.get_guides)
+    app.router.add_get("/api/admin/guides/stats", guides.get_guide_stats)
+    app.router.add_get(r"/api/admin/guides/{id:\d+}", guides.get_guide_detail)
+
+    # Invite Links API (инвайт-ссылки для отслеживания кампаний)
+    app.router.add_get("/api/admin/invite-links", invite_links.get_invite_links)
+    app.router.add_post("/api/admin/invite-links", invite_links.create_invite_link)
+    app.router.add_patch(r"/api/admin/invite-links/{id:\d+}", invite_links.update_invite_link)
+    app.router.add_delete(r"/api/admin/invite-links/{id:\d+}", invite_links.delete_invite_link)
+
     # Webhooks (платежные системы)
     app.router.add_post("/api/webhooks/yookassa", webhooks.yookassa_webhook)
     app.router.add_post("/api/webhooks/yookassa/test", webhooks.yookassa_webhook_test)
+
+    # Статические файлы: аватары пользователей
+    import os
+    avatars_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "avatars")
+    os.makedirs(avatars_dir, exist_ok=True)
+    app.router.add_static('/api/admin/avatars', avatars_dir, show_index=False)
 
     # Health check endpoint
     app.router.add_get("/api/health", health_check)

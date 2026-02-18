@@ -16,26 +16,32 @@ REASONING_TIMEOUT = httpx.Timeout(
     connect=60.0,    # Таймаут на подключение (сек)
     read=600.0,      # Таймаут на чтение ответа (10 минут для reasoning статей)
     write=60.0,      # Таймаут на запись
-    pool=60.0,       # Таймаут на получение соединения из пула
+    pool=300.0,      # Таймаут на получение соединения из пула (5 минут — для параллельных запросов гайдов)
 )
 
-# Создаём один экземпляр клиента OpenAI.
-# Он будет переиспользоваться во всех запросах.
-_client = AsyncOpenAI(
-    api_key=settings.openai_api_key,  # Секретный API-ключ OpenAI из конфига
-    timeout=REASONING_TIMEOUT,         # Увеличенный таймаут для reasoning моделей
-    max_retries=3,                     # Автоматический retry при connection errors (по умолчанию 2)
-)
+# Ленивая инициализация клиента OpenAI.
+# Создаётся при первом вызове get_client(), а не при импорте модуля.
+# Это критично: AsyncOpenAI создаёт httpx connection pool, который привязан
+# к event loop. Если создать клиент при импорте (до запуска aiogram event loop),
+# httpx pool будет привязан к несуществующему loop → APIConnectionError.
+# См. https://github.com/openai/openai-python/issues/1059
+_client: Optional[AsyncOpenAI] = None
 
 
 def get_client() -> AsyncOpenAI:
     """
-    Возвращает асинхронного клиента OpenAI.
+    Возвращает асинхронного клиента OpenAI (ленивая инициализация).
 
-    Нужен, чтобы в других модулях не импортировать _client напрямую,
-    а пользоваться функцией (легче потом подменять/тестировать).
+    Создаёт клиент при первом вызове — уже в контексте работающего event loop.
     """
-    return _client  # Просто отдаём уже созданный клиент
+    global _client
+    if _client is None:
+        _client = AsyncOpenAI(
+            api_key=settings.openai_api_key,
+            timeout=REASONING_TIMEOUT,
+            max_retries=3,
+        )
+    return _client
 
 
 class ChatCompletionResult(TypedDict):
@@ -80,10 +86,15 @@ async def create_chat_completion(
         "messages": messages,
     }
 
-    # reasoning_effort и temperature взаимоисключающие:
-    # если включен reasoning (low/medium/high) — temperature не передаём
+    # Reasoning модели (gpt-5.x, o1, o3) НЕ поддерживают temperature
+    is_reasoning_model = any(
+        model_name.startswith(p) for p in ("gpt-5", "o1", "o3")
+    )
+
     if reasoning_effort and reasoning_effort in ("low", "medium", "high"):
         kwargs["reasoning_effort"] = reasoning_effort
+    elif is_reasoning_model:
+        pass
     elif effective_temp is not None:
         kwargs["temperature"] = effective_temp
 
@@ -138,15 +149,21 @@ async def create_chat_completion_with_usage(
         "messages": messages,
     }
 
-    # reasoning_effort и temperature взаимоисключающие:
-    # если включен reasoning (low/medium/high) — temperature не передаём
+    # Reasoning модели (gpt-5.x, o1, o3) НЕ поддерживают temperature
+    is_reasoning_model = any(
+        model_name.startswith(p) for p in ("gpt-5", "o1", "o3")
+    )
+
     if reasoning_effort and reasoning_effort in ("low", "medium", "high"):
         kwargs["reasoning_effort"] = reasoning_effort
+    elif is_reasoning_model:
+        # Reasoning модели: temperature не передаём, reasoning_effort опционально
+        pass
     elif effective_temp is not None:
         kwargs["temperature"] = effective_temp
 
     try:
-        logger.info(f"[core_llm] Вызов OpenAI API: model={model_name}, temp={effective_temp}, reasoning={reasoning_effort}")
+        logger.info(f"[core_llm] Вызов OpenAI API: model={model_name}, temp={effective_temp if not is_reasoning_model else 'N/A (reasoning)'}, reasoning={reasoning_effort}")
         response = await client.chat.completions.create(**kwargs)
     except Exception as e:
         # Детальное логирование ошибки
@@ -255,8 +272,15 @@ async def create_chat_completion_streaming(
         "stream_options": {"include_usage": True},
     }
 
+    # Reasoning модели (gpt-5.x, o1, o3) НЕ поддерживают temperature
+    is_reasoning_model = any(
+        model_name.startswith(p) for p in ("gpt-5", "o1", "o3")
+    )
+
     if reasoning_effort and reasoning_effort in ("low", "medium", "high"):
         kwargs["reasoning_effort"] = reasoning_effort
+    elif is_reasoning_model:
+        pass
     elif effective_temp is not None:
         kwargs["temperature"] = effective_temp
 

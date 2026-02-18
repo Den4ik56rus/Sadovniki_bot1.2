@@ -31,6 +31,10 @@ class Settings(BaseSettings):
         ...,  # ... = обязательное поле
         description="Токен Telegram-бота, выданный BotFather",
     )
+    telegram_bot_username: str = Field(
+        "",
+        description="Username бота (без @) для формирования deep links",
+    )
 
     # --- Подключение к базе данных PostgreSQL ---
     db_host: str = Field(
@@ -130,7 +134,7 @@ class Settings(BaseSettings):
         description="Использовать тестовый режим YooKassa",
     )
     YOOKASSA_RETURN_URL: str = Field(
-        "https://t.me/sadovniki_bot",
+        "https://t.me/garden_bot_ai_bot",
         description="URL для возврата после оплаты (ссылка на бота)",
     )
     YOOKASSA_WEBHOOK_URL: str = Field(

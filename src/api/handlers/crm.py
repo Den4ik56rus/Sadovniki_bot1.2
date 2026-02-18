@@ -39,7 +39,11 @@ def _serialize_value(value):
 
 def _serialize_dict(d: dict) -> dict:
     """Serialize all values in a dict."""
-    return {k: _serialize_value(v) for k, v in d.items()}
+    result = {k: _serialize_value(v) for k, v in d.items()}
+    # Конвертируем avatar_path → avatar_url
+    avatar_path = result.pop('avatar_path', None)
+    result['avatar_url'] = f"/api/admin/avatars/{avatar_path}" if avatar_path else None
+    return result
 
 
 async def get_crm_clients(request: web.Request) -> web.Response:
@@ -888,6 +892,26 @@ async def get_client_activity(request: web.Request) -> web.Response:
         raise web.HTTPBadRequest(text="Invalid parameters")
     except Exception as e:
         logger.error(f"Error getting client activity: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
+
+
+async def get_client_chat_history(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/crm/clients/{id}/chat
+    Полная история чата пользователя (все сообщения со всех топиков).
+    """
+    try:
+        user_id = int(request.match_info["id"])
+
+        from src.services.db.messages_repo import get_user_chat_history
+        result = await get_user_chat_history(user_id)
+
+        return web.json_response(_serialize_dict(result))
+
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid user ID")
+    except Exception as e:
+        logger.error(f"Error getting chat history: {e}")
         raise web.HTTPInternalServerError(text="Database error")
 
 

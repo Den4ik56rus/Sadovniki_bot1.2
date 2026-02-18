@@ -72,6 +72,21 @@ export interface ConsultationLog {
   llm_cost_usd: number              // Стоимость основного LLM вызова (gpt-4o)
   classification_cost_usd: number   // Стоимость классификации (gpt-4o)
   classification_tokens: number     // Токены классификации
+  // Complexity tracking
+  complexity_tier: string | null             // short_answer | long_answer | turnkey_solution
+  complexity_metadata: Record<string, unknown>
+  complexity_classification_cost_usd: number // Стоимость классификатора сложности
+  complexity_classification_tokens: number   // Токены классификатора сложности
+}
+
+export interface KeyboardButton {
+  text: string
+  callback_data?: string
+}
+
+export interface KeyboardMeta {
+  type: 'inline' | 'reply'
+  buttons: KeyboardButton[][]
 }
 
 export interface Message {
@@ -79,6 +94,25 @@ export interface Message {
   direction: 'user' | 'bot'
   text: string
   created_at: string | null
+  topic_id?: number | null
+  meta?: {
+    keyboard?: KeyboardMeta
+    type?: 'callback'
+    callback_data?: string
+  } | null
+}
+
+export interface ChatHistoryTopic {
+  id: number
+  culture: string | null
+  category: string | null
+  status: string
+  created_at: string | null
+}
+
+export interface ChatHistoryResponse {
+  messages: Message[]
+  topics: ChatHistoryTopic[]
 }
 
 export interface TopicLogsResponse {
@@ -192,7 +226,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -204,6 +238,7 @@ export interface CrmClient {
   username: string | null
   first_name: string | null
   last_name: string | null
+  avatar_url?: string | null
   user_created_at: string | null
   status: FunnelStatus
   auto_status: FunnelStatus | null
@@ -244,7 +279,7 @@ export type CustomFieldType = 'text' | 'number' | 'date' | 'checkbox' | 'select'
 export type TaskPriority = 'low' | 'medium' | 'high'
 export type TaskStatus = 'pending' | 'completed' | 'cancelled'
 export type RepeatInterval = 'none' | 'daily' | 'weekly' | 'monthly'
-export type ActivityEventType = 'consultation' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change' | 'article' | 'payment'
+export type ActivityEventType = 'consultation' | 'chat_message' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change' | 'article' | 'payment'
 
 export interface ClientTag {
   id: number
@@ -292,7 +327,7 @@ export interface ClientNote {
 
 export interface ActivityEvent {
   id: number
-  source?: 'activity' | 'topic'
+  source?: 'activity' | 'topic' | 'message'
   event_type: ActivityEventType
   event_data: Record<string, unknown>
   created_at: string
@@ -361,6 +396,7 @@ export interface Buyer {
   username: string | null
   first_name: string | null
   last_name: string | null
+  avatar_url?: string | null
   user_created_at: string | null
   status: BuyerStatus
   manual_override: boolean
@@ -427,6 +463,7 @@ export interface FunnelClient {
   username: string | null
   first_name: string | null
   last_name: string | null
+  avatar_url?: string | null
   user_created_at: string | null
   status: string  // stage_key
   manual_override: boolean
@@ -891,4 +928,86 @@ export interface PromptPreviewOption {
 export interface PromptPreviewOptionsResponse {
   categories: PromptPreviewOption[]
   cultures: PromptPreviewOption[]
+}
+
+// =============================================================================
+// Invite Links Types (Инвайт-ссылки для отслеживания кампаний)
+// =============================================================================
+
+export interface InviteLink {
+  id: number
+  name: string
+  code: string
+  created_at: string
+  users_count: number
+  total_revenue_rub: number
+  deep_link: string
+  bonus_tokens: number
+  discount_percent: number
+  discount_duration_days: number
+}
+
+export interface InviteLinksSummary {
+  total_links: number
+  total_users: number
+  total_revenue_rub: number
+}
+
+export interface InviteLinksResponse {
+  links: InviteLink[]
+  summary: InviteLinksSummary
+}
+
+// =============================================================================
+// Guide Types (Готовые решения — PDF-гайды)
+// =============================================================================
+
+export interface GuideSectionMeta {
+  title: string
+  prompt_tokens: number
+  completion_tokens: number
+  cost_usd: number
+  model: string
+  user_question: string
+  system_prompt: string
+  rag_snippets_count: number
+}
+
+export interface GuideOrder {
+  id: number
+  user_id: number
+  payment_id: number | null
+  culture_key: string
+  culture_display: string
+  status: string
+  total_llm_cost_usd: number
+  total_llm_tokens: number
+  llm_model: string | null
+  sections_meta: Record<string, GuideSectionMeta> | null
+  file_size_bytes: number | null
+  error_message: string | null
+  retry_count: number
+  created_at: string
+  updated_at: string
+  // JOIN fields
+  username?: string | null
+  first_name?: string | null
+  telegram_user_id?: number
+}
+
+export interface GuideOrdersResponse {
+  orders: GuideOrder[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface GuideStats {
+  total_orders: number
+  completed_orders: number
+  failed_orders: number
+  total_cost_usd: number
+  avg_cost_usd: number
+  total_tokens: number
+  by_culture: Array<{ culture_key: string; count: number; total_cost: number }>
 }

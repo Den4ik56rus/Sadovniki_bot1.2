@@ -157,6 +157,7 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
     let totalEmbedding = 0
     let totalLlm = 0
     let totalCost = 0
+    let totalComplexity = 0
 
     for (const log of logs) {
       totalClassification += log.classification_cost_usd || 0
@@ -164,6 +165,7 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
       totalEmbedding += log.embedding_cost_usd || 0
       totalLlm += log.llm_cost_usd || 0
       totalCost += log.cost_usd || 0
+      totalComplexity += log.complexity_classification_cost_usd || 0
     }
 
     return {
@@ -171,6 +173,7 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
       compose: totalCompose,
       embedding: totalEmbedding,
       llm: totalLlm,
+      complexity: totalComplexity,
       total: totalCost,
       count: logs.length,
     }
@@ -256,6 +259,9 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
               >
                 <div className={styles.timelineLabel}>
                   {msg.direction === 'user' ? '👤 Пользователь' : '🤖 Бот'}
+                  {msg.meta?.type === 'callback' && (
+                    <span className={styles.badgeCallback}>кнопка</span>
+                  )}
                   {msg.created_at && (
                     <span className={styles.timelineTime}>
                       {formatTime(msg.created_at)}
@@ -263,6 +269,21 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
                   )}
                 </div>
                 <div className={styles.timelineText}>{msg.text}</div>
+
+                {/* Inline keyboard buttons */}
+                {msg.meta?.keyboard?.buttons && (
+                  <div className={styles.keyboardButtons}>
+                    {(msg.meta.keyboard.buttons as Array<Array<{text: string; callback_data?: string}>>).map((row, ri) => (
+                      <div key={ri} className={styles.keyboardRow}>
+                        {row.map((btn, bi) => (
+                          <span key={bi} className={styles.keyboardBtn}>
+                            {btn.text}
+                          </span>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
 
                 {/* LLM cost and technical details - only for bot responses */}
                 {msg.direction === 'bot' && linkedLog && (
@@ -328,6 +349,18 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
             const ragCost = (log.compose_cost_usd || 0) + (log.embedding_cost_usd || 0)
             const ragTokens = (log.compose_tokens || 0) + (log.embedding_tokens || 0)
             const hasClassification = (log.classification_cost_usd || 0) > 0
+            const hasComplexity = !!(log.complexity_tier)
+            const complexityMeta = parseJsonField<Record<string, unknown>>(log.complexity_metadata, {})
+            const tierLabels: Record<string, string> = {
+              short_answer: 'Краткий ответ',
+              long_answer: 'План на фазу',
+              turnkey_solution: 'Готовое решение',
+            }
+            const tierCostLabels: Record<string, string> = {
+              short_answer: '1 вопрос',
+              long_answer: '2 вопроса',
+              turnkey_solution: 'покупка',
+            }
             return (
               <div key={`log-${log.id}`}>
                 {/* Classification block - show first if exists */}
@@ -361,6 +394,48 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
                         💰 {formatCost(log.classification_cost_usd || 0)}
                       </span>
                     </div>
+                  </div>
+                )}
+
+                {/* Complexity classification block */}
+                {hasComplexity && (
+                  <div className={`${styles.timelineItem} ${styles.timelineComplexity}`}>
+                    <div className={styles.timelineLabel}>
+                      ⚖️ Сложность
+                      {log.created_at && (
+                        <span className={styles.timelineTime}>
+                          {formatTime(log.created_at)}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.complexityInfo}>
+                      <span className={`${styles.complexityTier} ${styles[`tier_${log.complexity_tier}`] || ''}`}>
+                        {tierLabels[log.complexity_tier || ''] || log.complexity_tier}
+                      </span>
+                      <span className={styles.complexityPrice}>
+                        {tierCostLabels[log.complexity_tier || ''] || ''}
+                      </span>
+                      {complexityMeta.current_phase && (
+                        <span className={styles.complexityPhase}>
+                          фаза: {String(complexityMeta.current_phase)}
+                        </span>
+                      )}
+                      {complexityMeta.topics && Array.isArray(complexityMeta.topics) && (complexityMeta.topics as string[]).length > 0 && (
+                        <span className={styles.complexityTopics}>
+                          темы: {(complexityMeta.topics as string[]).join(', ')}
+                        </span>
+                      )}
+                    </div>
+                    {(log.complexity_classification_cost_usd || 0) > 0 && (
+                      <div className={styles.complexityCostInline}>
+                        <span className={styles.complexityCostTokens}>
+                          {(log.complexity_classification_tokens || 0).toLocaleString()} tok
+                        </span>
+                        <span className={styles.complexityCostValue}>
+                          💰 {formatCost(log.complexity_classification_cost_usd || 0)}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 )}
 

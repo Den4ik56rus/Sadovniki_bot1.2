@@ -11,7 +11,7 @@ interface SubmenuItem {
 }
 
 interface MenuItem {
-  id: View | 'deals-group' | 'lists-group'
+  id: View | 'deals-group' | 'lists-group' | 'stats-group'
   icon: React.ReactNode
   label: string
   badge?: number
@@ -110,12 +110,21 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
     label: 'Списки',
     submenu: [
       { id: 'payments', label: 'Платежи' },
+      // { id: 'guides', label: 'Готовые решения' },  // временно скрыто
       { id: 'prompts', label: 'Промпты' },
       { id: 'prompt-preview', label: 'Превью промпта' },
       { id: 'rag-docs', label: 'RAG Документы' },
     ],
   },
-  { id: 'stats', icon: Icons.stats, label: 'Аналитика' },
+  {
+    id: 'stats-group',
+    icon: Icons.stats,
+    label: 'Аналитика',
+    submenu: [
+      { id: 'stats', label: 'Статистика' },
+      { id: 'invite-links', label: 'Инвайт-ссылки' },
+    ],
+  },
   { id: 'expenses', icon: Icons.expenses, label: 'Расходы' },
   { id: 'settings', icon: Icons.settings, label: 'Настройки' },
 ]

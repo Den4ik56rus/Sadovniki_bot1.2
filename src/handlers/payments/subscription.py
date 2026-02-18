@@ -71,7 +71,7 @@ async def buy_subscription_handler(callback: CallbackQuery):
             )
             return
 
-        # Создать платеж
+        # Создать платеж (скидка применяется внутри payment_service)
         payment = await payment_service.create_subscription_payment(
             user_id=user_id,
             telegram_user_id=telegram_user_id,
@@ -79,10 +79,12 @@ async def buy_subscription_handler(callback: CallbackQuery):
             return_url=settings.YOOKASSA_RETURN_URL,
         )
 
+        pay_amount = int(payment['amount'])
+
         # Отправить ссылку на оплату
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
-                text=f"💳 Оплатить {int(plan['price_rub'])}₽",
+                text=f"💳 Оплатить {pay_amount}₽",
                 url=payment["confirmation_url"]
             )],
             [InlineKeyboardButton(
@@ -96,20 +98,42 @@ async def buy_subscription_handler(callback: CallbackQuery):
         ])
 
         qty = plan.get('tokens_included', 0)
-        await callback.message.edit_text(
-            f"📅 Подписка: {plan['name']}\n"
-            f"💰 Сумма: {int(plan['price_rub'])}₽/мес\n"
-            f"⏱ Срок: {plan['duration_days']} дней\n"
-            f"🎁 Лимит: {pluralize_questions(qty)} в месяц\n\n"
-            f"Нажмите кнопку ниже для оплаты.\n"
-            f"После успешной оплаты подписка будет активирована автоматически.\n\n"
-            f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}",
-            reply_markup=keyboard
-        )
+
+        # Текст с учётом скидки
+        if payment.get("discount_percent"):
+            original = int(payment['original_amount'])
+            sub_text = (
+                f"📅 Подписка: {plan['name']}\n"
+                f"💰 Цена: <s>{original}₽</s> → <b>{pay_amount}₽</b>/мес (скидка {payment['discount_percent']}%)\n"
+                f"⏱ Срок: {plan['duration_days']} дней\n"
+                f"🎁 Лимит: {pluralize_questions(qty)} в месяц\n\n"
+                f"Нажмите кнопку ниже для оплаты.\n"
+                f"После успешной оплаты подписка будет активирована автоматически.\n\n"
+                f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}"
+            )
+        else:
+            sub_text = (
+                f"📅 Подписка: {plan['name']}\n"
+                f"💰 Сумма: {pay_amount}₽/мес\n"
+                f"⏱ Срок: {plan['duration_days']} дней\n"
+                f"🎁 Лимит: {pluralize_questions(qty)} в месяц\n\n"
+                f"Нажмите кнопку ниже для оплаты.\n"
+                f"После успешной оплаты подписка будет активирована автоматически.\n\n"
+                f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}"
+            )
+        await callback.message.edit_text(sub_text, reply_markup=keyboard, parse_mode="HTML")
+
+        # Логируем действие пользователя + ответ бота
+        try:
+            from src.services.db.messages_repo import log_message
+            await log_message(user_id=user_id, direction="user", text=f"[Кнопка] Подписка: {plan['name']}", session_id=f"tg:{telegram_user_id}", meta={"type": "callback", "callback_data": callback.data})
+            await log_message(user_id=user_id, direction="bot", text=sub_text, session_id=f"tg:{telegram_user_id}")
+        except Exception:
+            pass
 
         logger.info(
             f"Subscription payment created: user={user_id}, plan={plan['name']}, "
-            f"amount={plan['price_rub']}, payment_id={payment['payment_id']}"
+            f"amount={pay_amount}, payment_id={payment['payment_id']}"
         )
 
     except Exception as e:

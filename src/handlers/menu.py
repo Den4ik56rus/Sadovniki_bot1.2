@@ -24,6 +24,7 @@ from src.keyboards.main.main_menu import get_main_keyboard, get_admin_start_keyb
 
 # Импортируем инлайн-меню консультаций (6 тем + кнопка "Закрыть")
 from src.keyboards.consultation.common import CONSULTATION_MENU_INLINE_KB, CONSULTATION_ENTRY_TEXT, EXAMPLE_QUESTIONS, get_example_questions_keyboard
+from src.handlers.consultation.entry import _log_bot_msg, _log_user_callback, serialize_keyboard
 
 # Импортируем список админов
 from src.handlers.admin import ADMIN_IDS
@@ -69,6 +70,12 @@ async def cmd_start(message: Message) -> None:
     # Проверяем, новый ли это пользователь (до создания)
     is_new_user = not await user_exists(telegram_user_id)
 
+    # Определяем инвайт-ссылку из start_param (campaign tracking)
+    invite_link_code = None
+    if start_param and start_param.startswith("inv_"):
+        invite_link_code = start_param[4:]
+        start_param = None  # Не обрабатывать как обычный source
+
     # Определяем реферальный код из start_param
     referral_code = None
     if start_param and start_param.startswith("ref_"):
@@ -82,6 +89,13 @@ async def cmd_start(message: Message) -> None:
         last_name=last_name,
     )
 
+    # Скачиваем/обновляем аватар пользователя из Telegram
+    from src.services.avatars import download_user_avatar
+    from src.services.db.users_repo import update_user_avatar
+    avatar_filename = await download_user_avatar(message.bot, telegram_user_id)
+    if avatar_filename:
+        await update_user_avatar(user_id, avatar_filename)
+
     # Обработка реферальной ссылки (только для новых пользователей)
     if is_new_user and referral_code:
         from src.services.db.referral_repo import (
@@ -90,10 +104,56 @@ async def cmd_start(message: Message) -> None:
         referrer_id = await get_user_id_by_referral_code(referral_code)
         if referrer_id and referrer_id != user_id:
             await create_referral(referrer_id, user_id)
-            await grant_referral_bonuses(referrer_id, user_id)
+            referrer_bonus, _ = await grant_referral_bonuses(referrer_id, user_id)
             # Источник трафика — реферал
             from src.services.db.client_funnel_repo import set_initial_source
             await set_initial_source(user_id, "Реферал")
+
+            # Уведомляем реферера о начислении бонуса
+            if referrer_bonus > 0:
+                try:
+                    from src.services.db.pool import get_pool as _get_pool
+                    _pool = _get_pool()
+                    async with _pool.acquire() as _conn:
+                        referrer_tg_id = await _conn.fetchval(
+                            "SELECT telegram_user_id FROM users WHERE id = $1",
+                            referrer_id,
+                        )
+                    if referrer_tg_id:
+                        from src.pricing import pluralize_questions
+                        notify_text = (
+                            f"🎉 Спасибо, что цените и делитесь нашим сервисом!\n\n"
+                            f"По вашей ссылке зарегистрировался новый пользователь. "
+                            f"В благодарность мы начислили вам <b>{pluralize_questions(referrer_bonus)}</b>."
+                        )
+                        await message.bot.send_message(
+                            chat_id=referrer_tg_id,
+                            text=notify_text,
+                            parse_mode="HTML",
+                        )
+                except Exception as e:
+                    logger.warning(f"Не удалось уведомить реферера {referrer_id}: {e}")
+
+    # Обработка инвайт-ссылки (campaign tracking)
+    if invite_link_code:
+        from src.services.db.invite_link_repo import (
+            get_invite_link_by_code, track_user_invite_link
+        )
+        inv_link = await get_invite_link_by_code(invite_link_code)
+        if inv_link:
+            was_new = await track_user_invite_link(inv_link['id'], user_id)
+            from src.services.db.client_funnel_repo import set_initial_source
+            await set_initial_source(user_id, f"Кампания: {inv_link['name']}")
+
+            # Начислить бонусные токены (только при первой привязке)
+            if was_new and inv_link.get('bonus_tokens', 0) > 0:
+                from src.services.db.tokens_repo import add_tokens
+                await add_tokens(
+                    user_id=user_id,
+                    amount=inv_link['bonus_tokens'],
+                    operation_type='invite_bonus',
+                    description=f"Бонус по кампании: {inv_link['name']}",
+                )
 
     # Устанавливаем источник трафика если был start-параметр (не реферал)
     if start_param:
@@ -151,20 +211,24 @@ async def cmd_start(message: Message) -> None:
     else:
         # Для обычного пользователя стандартное приветствие
         welcome_text = (
-            "Добро пожаловать в экспертный сервис для садоводов.\n\n"
-            "Здесь вы можете получить ответ практически на любой вопрос, связанный "
-            "с выращиванием ягодных культур — от выбора сорта и закладки плантации "
-            "до питания, защиты и повышения урожайности.\n\n"
-            "Все рекомендации основаны на тщательно отобранной профессиональной "
-            "литературе и практическом опыте ведущих агрономов в сфере ягодных культур.\n\n"
-            "Каждый ответ дополнительно проверяется специалистом-агрономом, что обеспечивает "
-            "высокую точность, актуальность и практическую применимость информации.\n\n"
-            "Нажмите кнопку «🧑‍🌾 Консультация», чтобы начать."
+            "Рад, что Вы присоединились! Я Ваш агроном!🙏\n\n"
+            "Моя задача — помочь, посоветовать и научить выращиванию ягодных культур.\n\n"
+            "<b>Я даю индивидуальные рекомендации, с поправкой на климат Вашего региона</b> "
+            "и условия выращивания.\n\n"
+            "В моей базе знаний огромное количество профильной литературы, "
+            "<b>но главное — в меня заложен практический опыт ягодных хозяйств.</b>\n\n"
+            "<b>То, что я расскажу, — это не сухая теория, а успешная практика, "
+            "применяемая в промышленных хозяйствах и интерпретированная для садоводов.</b> "
+            "Это очень важно!\n\n"
+            "Со мной у Вас будут богатые урожаи при минимуме ухода!\n\n"
+            "Предлагаю начать, нажмите кнопку\n"
+            "<b>«🧑‍🌾 Консультация»</b>!"
         )
 
         await message.answer(
             welcome_text,
             reply_markup=get_main_keyboard(),
+            parse_mode="HTML",
         )
 
     await log_message(
@@ -191,20 +255,45 @@ async def handle_user_mode(message: Message) -> None:
         return
 
     welcome_text = (
-        "Добро пожаловать в экспертный сервис для садоводов.\n\n"
-        "Здесь вы можете получить ответ практически на любой вопрос, связанный "
-        "с выращиванием ягодных культур — от выбора сорта и закладки плантации "
-        "до питания, защиты и повышения урожайности.\n\n"
-        "Все рекомендации основаны на тщательно отобранной профессиональной "
-        "литературе и практическом опыте ведущих агрономов в сфере ягодных культур.\n\n"
-        "Каждый ответ дополнительно проверяется специалистом-агрономом, что обеспечивает "
-        "высокую точность, актуальность и практическую применимость информации.\n\n"
-        "Нажмите кнопку «🧑‍🌾 Консультация», чтобы начать."
+        "Рад, что Вы присоединились! Я Ваш агроном!🙏\n\n"
+        "Моя задача — помочь, посоветовать и научить выращиванию ягодных культур.\n\n"
+        "<b>Я даю индивидуальные рекомендации, с поправкой на климат Вашего региона</b> "
+        "и условия выращивания.\n\n"
+        "В моей базе знаний огромное количество профильной литературы, "
+        "<b>но главное — в меня заложен практический опыт ягодных хозяйств.</b>\n\n"
+        "<b>То, что я расскажу, — это не сухая теория, а успешная практика, "
+        "применяемая в промышленных хозяйствах и интерпретированная для садоводов.</b> "
+        "Это очень важно!\n\n"
+        "Со мной у Вас будут богатые урожаи при минимуме ухода!\n\n"
+        "Предлагаю начать, нажмите кнопку\n"
+        "<b>«🧑‍🌾 Консультация»</b>!"
     )
 
     await message.answer(
         welcome_text,
         reply_markup=get_main_keyboard(),
+        parse_mode="HTML",
+    )
+
+    # Логируем нажатие кнопки + ответ бота
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+    await log_message(
+        user_id=internal_user_id,
+        direction="user",
+        text="👤 Режим пользователя",
+        session_id=f"tg:{user.id}",
+        meta={"type": "callback", "callback_data": "user_mode"},
+    )
+    await log_message(
+        user_id=internal_user_id,
+        direction="bot",
+        text=welcome_text,
+        session_id=f"tg:{user.id}",
     )
 
 
@@ -257,7 +346,23 @@ async def handle_consultation_button(message: Message) -> None:
     # Устанавливаем новое состояние - ждем вопрос
     CONSULTATION_STATE[user.id] = "waiting_consultation_question"
 
-    await message.answer(CONSULTATION_ENTRY_TEXT, reply_markup=get_example_questions_keyboard())
+    # Логируем нажатие кнопки пользователем
+    await log_message(
+        user_id=internal_user_id,
+        direction="user",
+        text="🧑‍🌾 Консультация",
+        session_id=f"tg:{user.id}",
+        meta={"type": "callback", "callback_data": "consultation"},
+    )
+
+    kb = get_example_questions_keyboard()
+    await message.answer(CONSULTATION_ENTRY_TEXT, reply_markup=kb)
+    await _log_bot_msg(
+        CONSULTATION_ENTRY_TEXT,
+        user_id=internal_user_id,
+        session_id=f"tg:{user.id}",
+        meta=serialize_keyboard(kb),
+    )
 
 
 @router.callback_query(F.data.startswith("consult_category:"))
@@ -288,6 +393,9 @@ async def handle_consultation_category(callback: CallbackQuery) -> None:
     }
 
     category_title = category_names.get(category_code, "Другая тема")
+
+    # Логируем нажатие кнопки пользователем
+    await _log_user_callback(f"[Кнопка] Категория: {category_title}", callback=callback)
 
     # Убираем инлайн-клавиатуру у старого сообщения
     if callback.message:
@@ -327,6 +435,11 @@ async def handle_consultation_category(callback: CallbackQuery) -> None:
 
     if callback.message:
         await callback.message.answer(text)
+        await _log_bot_msg(
+            text,
+            user_id=internal_user_id,
+            session_id=f"tg:{user.id}",
+        )
 
     await callback.answer()
 
@@ -377,6 +490,9 @@ async def handle_example_question(callback: CallbackQuery) -> None:
         await callback.answer()
         return
 
+    # Логируем нажатие кнопки пользователем
+    await _log_user_callback(f"[Кнопка] Пример: {question_text}", callback=callback)
+
     # Убираем инлайн-клавиатуру
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
@@ -390,11 +506,13 @@ async def handle_example_question(callback: CallbackQuery) -> None:
     CONSULTATION_STATE[user.id] = "waiting_example_details"
 
     # Просим пользователя уточнить детали
-    await callback.message.answer(
+    example_prompt = (
         f"📝 Вы выбрали: «{question_text}»\n\n"
         "Напишите уточнения — например, какая культура, регион, "
         "сорт или другие детали, чтобы ответ был максимально полезным:"
     )
+    await callback.message.answer(example_prompt)
+    await _log_bot_msg(example_prompt, telegram_user_id=user.id)
 
 
 @router.callback_query(F.data == "custom_question")
@@ -405,6 +523,9 @@ async def handle_custom_question(callback: CallbackQuery) -> None:
         await callback.answer()
         return
 
+    # Логируем нажатие кнопки пользователем
+    await _log_user_callback("[Кнопка] Свой вопрос", callback=callback)
+
     # Убираем инлайн-клавиатуру
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
@@ -414,7 +535,9 @@ async def handle_custom_question(callback: CallbackQuery) -> None:
     await callback.answer()
 
     CONSULTATION_STATE[user.id] = "waiting_consultation_question"
-    await callback.message.answer("✏️ Напишите ваш вопрос:")
+    custom_prompt = "✏️ Напишите ваш вопрос:"
+    await callback.message.answer(custom_prompt)
+    await _log_bot_msg(custom_prompt, telegram_user_id=user.id)
 
 
 @router.message(F.text == "⬅️ Назад в меню")
@@ -445,11 +568,20 @@ async def handle_back_to_menu(message: Message) -> None:
     if user.id in CONSULTATION_CONTEXT:
         del CONSULTATION_CONTEXT[user.id]
 
-    # Вернуть главное меню
-    await message.answer(
-        "Главное меню:",
-        reply_markup=get_main_keyboard()
+    # Логируем нажатие кнопки пользователем
+    await log_message(
+        user_id=internal_user_id,
+        direction="user",
+        text="⬅️ Назад в меню",
+        session_id=f"tg:{user.id}",
+        meta={"type": "callback", "callback_data": "back_to_menu"},
     )
+
+    # Вернуть главное меню
+    menu_text = "Главное меню:"
+    kb = get_main_keyboard()
+    await message.answer(menu_text, reply_markup=kb)
+    await _log_bot_msg(menu_text, user_id=internal_user_id, session_id=f"tg:{user.id}", meta=serialize_keyboard(kb))
 
 
 @router.message(F.text == "👤 Мой профиль")
@@ -483,39 +615,44 @@ async def handle_profile(message: Message) -> None:
             internal_user_id,
         )
 
-    # Получаем реферальный код и статистику
-    from src.services.db.referral_repo import get_or_create_referral_code, get_referral_stats
-    ref_code = await get_or_create_referral_code(internal_user_id)
-    ref_stats = await get_referral_stats(internal_user_id)
-
     # Формируем текст профиля
     profile_text = (
         f"<b>👤 Ваш профиль</b>\n\n"
-        f"❓ Баланс вопросов: <b>{balance}</b>\n"
+        f"🔑 Баланс токенов: <b>{balance}</b>\n"
         f"📊 Консультаций: <b>{topics_count}</b>\n\n"
         f"<b>Стоимость операций:</b>\n"
-        f"• Питание и защита растений: 2 вопроса\n"
-        f"• Остальные темы: 1 вопрос\n\n"
-        f"<b>📣 Реферальная программа</b>\n"
-        f"Ваша ссылка:\n"
-        f"<code>https://t.me/sadovniki_bot?start=ref_{ref_code}</code>\n"
-        f"Приглашено друзей: <b>{ref_stats['total_referrals']}</b>\n\n"
-        f"Пригласите друга и получите бонусные вопросы!"
+        f"• Подробный разбор задачи под конкретную культуру (1 фаза роста): 2 токена\n"
+        f"• Остальные вопросы: 1 токен"
     )
 
     # Добавляем inline кнопки
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="📣 Поделиться ссылкой",
-            callback_data="share_referral_link"
-        )],
-        [InlineKeyboardButton(
             text="💰 Пополнить баланс",
             callback_data="show_payment_menu"
+        )],
+        [InlineKeyboardButton(
+            text="📣 Реферальная программа",
+            callback_data="show_referral_program"
         )],
     ])
 
     await message.answer(profile_text, parse_mode="HTML", reply_markup=keyboard)
+
+    # Логируем нажатие кнопки + ответ бота
+    await log_message(
+        user_id=internal_user_id,
+        direction="user",
+        text="👤 Мой профиль",
+        session_id=f"tg:{user.id}",
+        meta={"type": "callback", "callback_data": "profile"},
+    )
+    await _log_bot_msg(
+        profile_text,
+        user_id=internal_user_id,
+        session_id=f"tg:{user.id}",
+        meta=serialize_keyboard(keyboard),
+    )
 
 
 @router.message(F.text == "📅 План сезона")
@@ -528,12 +665,28 @@ async def handle_season_plan(message: Message) -> None:
     if user is None:
         return
 
+    # Получаем внутренний user_id
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+    # Логируем нажатие кнопки
+    await log_message(
+        user_id=internal_user_id,
+        direction="user",
+        text="📅 План сезона",
+        session_id=f"tg:{user.id}",
+        meta={"type": "callback", "callback_data": "season_plan"},
+    )
+
     # Проверяем, настроен ли URL WebApp
     if not settings.webapp_url:
-        await message.answer(
-            "Календарь работ временно недоступен.\n"
-            "Обратитесь к администратору."
-        )
+        unavailable_text = "Календарь работ временно недоступен.\nОбратитесь к администратору."
+        await message.answer(unavailable_text)
+        await _log_bot_msg(unavailable_text, user_id=internal_user_id, session_id=f"tg:{user.id}")
         return
 
     # Создаём inline-кнопку с WebApp
@@ -548,10 +701,61 @@ async def handle_season_plan(message: Message) -> None:
         ]
     )
 
-    await message.answer(
-        "Нажмите кнопку ниже, чтобы открыть календарь работ:",
-        reply_markup=keyboard
+    calendar_text = "Нажмите кнопку ниже, чтобы открыть календарь работ:"
+    await message.answer(calendar_text, reply_markup=keyboard)
+    await _log_bot_msg(calendar_text, user_id=internal_user_id, session_id=f"tg:{user.id}", meta=serialize_keyboard(keyboard))
+
+
+@router.callback_query(F.data == "show_referral_program")
+async def handle_show_referral_program(callback: CallbackQuery) -> None:
+    """Показывает реферальную программу: ссылку, статистику, кнопку поделиться."""
+    user = callback.from_user
+    if user is None:
+        await callback.answer()
+        return
+
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
     )
+
+    from src.services.db.referral_repo import get_or_create_referral_code, get_referral_stats
+    ref_code = await get_or_create_referral_code(internal_user_id)
+    ref_stats = await get_referral_stats(internal_user_id)
+
+    bot_me = await callback.bot.me()
+    bot_username = bot_me.username
+
+    referral_text = (
+        f"<b>📣 Реферальная программа</b>\n\n"
+        f"Ваша ссылка:\n"
+        f"<code>https://t.me/{bot_username}?start=ref_{ref_code}</code>\n\n"
+        f"Приглашено друзей: <b>{ref_stats['total_referrals']}</b>\n\n"
+        f"Пригласите друга и получите бонусные токены!"
+    )
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="📣 Поделиться ссылкой",
+            callback_data="share_referral_link"
+        )],
+    ])
+
+    if callback.message:
+        await callback.message.answer(referral_text, parse_mode="HTML", reply_markup=keyboard)
+
+    # Логируем
+    await _log_user_callback("[Кнопка] Реферальная программа", callback=callback)
+    await _log_bot_msg(
+        referral_text,
+        user_id=internal_user_id,
+        session_id=f"tg:{user.id}",
+        meta=serialize_keyboard(keyboard),
+    )
+
+    await callback.answer()
 
 
 @router.callback_query(F.data == "share_referral_link")
@@ -572,14 +776,21 @@ async def handle_share_referral(callback: CallbackQuery) -> None:
     from src.services.db.referral_repo import get_or_create_referral_code
     ref_code = await get_or_create_referral_code(internal_user_id)
 
+    bot_me = await callback.bot.me()
+    bot_username = bot_me.username
+
     share_text = (
         "Привет! Я пользуюсь экспертным сервисом для садоводов — "
         "здесь можно получить профессиональную консультацию по ягодным культурам.\n\n"
-        "Переходи по ссылке и получи бонусные вопросы:\n"
-        f"https://t.me/sadovniki_bot?start=ref_{ref_code}"
+        "Переходи по ссылке и получи бонусные токены:\n"
+        f"https://t.me/{bot_username}?start=ref_{ref_code}"
     )
 
     if callback.message:
         await callback.message.answer(share_text)
+
+    # Логируем нажатие кнопки + ответ бота
+    await _log_user_callback("[Кнопка] Поделиться ссылкой", callback=callback)
+    await _log_bot_msg(share_text, user_id=internal_user_id, session_id=f"tg:{user.id}")
 
     await callback.answer("Перешлите это сообщение друзьям!")

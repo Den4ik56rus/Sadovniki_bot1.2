@@ -135,7 +135,7 @@ async def create(
         name: Название плана
         price_rub: Цена в рублях
         duration_days: Длительность в днях
-        tokens_included: Количество вопросов
+        tokens_included: Количество токенов
         description: Описание
 
     Returns:

@@ -101,7 +101,7 @@ async def get_referral_bonus_amounts() -> tuple[int, int]:
 
 async def grant_referral_bonuses(referrer_id: int, referee_id: int) -> tuple[int, int]:
     """
-    Начислить бонусные вопросы обоим участникам.
+    Начислить бонусные токены обоим участникам.
     Возвращает (referrer_bonus, referee_bonus) — начисленные суммы.
     """
     from src.services.db.tokens_repo import add_tokens

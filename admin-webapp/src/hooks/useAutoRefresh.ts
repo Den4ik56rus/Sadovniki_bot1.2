@@ -8,6 +8,8 @@ import {
   useUsersStore,
   useStatsStore,
   useDocumentsStore,
+  useCrmStore,
+  useBuyersStore,
 } from '@/store'
 
 // Refresh intervals in milliseconds
@@ -15,6 +17,8 @@ const REFRESH_INTERVALS = {
   users: 30000, // 30 seconds
   stats: 60000, // 1 minute
   documents: 10000, // 10 seconds (for fallback polling if SSE fails)
+  crm: 15000, // 15 seconds
+  buyers: 15000, // 15 seconds
 }
 
 export function useAutoRefresh() {
@@ -23,6 +27,8 @@ export function useAutoRefresh() {
   const { fetchUsers, searchQuery } = useUsersStore()
   const { fetchStats, period } = useStatsStore()
   const { fetchDocuments, pollProcessingDocuments, documents } = useDocumentsStore()
+  const { fetchClients: fetchCrmClients } = useCrmStore()
+  const { fetchBuyers } = useBuyersStore()
 
   // Track if component is mounted
   const isMounted = useRef(true)
@@ -56,6 +62,20 @@ export function useAutoRefresh() {
     }
   }, [currentView, documents, fetchDocuments, pollProcessingDocuments])
 
+  // Refresh CRM clients
+  const refreshCrm = useCallback(() => {
+    if (currentView === 'crm') {
+      fetchCrmClients()
+    }
+  }, [currentView, fetchCrmClients])
+
+  // Refresh Buyers
+  const refreshBuyers = useCallback(() => {
+    if (currentView === 'buyers') {
+      fetchBuyers()
+    }
+  }, [currentView, fetchBuyers])
+
   // Set up intervals based on current view
   useEffect(() => {
     isMounted.current = true
@@ -74,6 +94,14 @@ export function useAutoRefresh() {
       intervals.push(setInterval(refreshDocuments, REFRESH_INTERVALS.documents))
     }
 
+    if (currentView === 'crm') {
+      intervals.push(setInterval(refreshCrm, REFRESH_INTERVALS.crm))
+    }
+
+    if (currentView === 'buyers') {
+      intervals.push(setInterval(refreshBuyers, REFRESH_INTERVALS.buyers))
+    }
+
     // Note: live-feed now uses SSE, no polling needed
 
     return () => {
@@ -85,6 +113,8 @@ export function useAutoRefresh() {
     refreshUsers,
     refreshStats,
     refreshDocuments,
+    refreshCrm,
+    refreshBuyers,
   ])
 }
 

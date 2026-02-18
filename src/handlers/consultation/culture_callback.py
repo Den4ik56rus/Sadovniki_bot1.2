@@ -14,7 +14,7 @@ from src.services.llm.consultation_llm import ask_consultation_llm, compose_full
 from src.services.db.moderation_repo import moderation_add
 
 from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT
-from src.handlers.consultation.entry import finalize_streaming_message
+from src.handlers.consultation.entry import finalize_streaming_message, _log_bot_msg, _log_user_callback
 from src.utils.status_manager import StatusMessageManager
 from src.services.db.tokens_repo import add_tokens
 from src.pricing import COST_NEW_TOPIC, get_consultation_cost
@@ -66,6 +66,18 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
     # Сохраняем выбранную культуру
     await set_topic_culture(topic_id, culture)
 
+    # Привязываем ВСЕ промежуточные сообщения к топику
+    _q_msg_id = CONSULTATION_CONTEXT.get(telegram_user_id, {}).get("question_msg_id")
+    if _q_msg_id:
+        try:
+            from src.services.db.messages_repo import attach_pending_messages_to_topic
+            await attach_pending_messages_to_topic(user_id, topic_id, since_msg_id=_q_msg_id)
+        except Exception:
+            pass
+
+    # Логируем нажатие кнопки пользователем
+    await _log_user_callback(f"[Кнопка] Культура: {culture}", callback=callback, topic_id=topic_id)
+
     print(f"[CULTURE] Пользователь выбрал культуру: {culture}")
 
     # Удаляем сообщение с клавиатурой
@@ -81,9 +93,9 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
     history = await get_last_messages(user_id=user_id, limit=1)
 
     if not history:
-        await callback.message.answer(
-            "Произошла ошибка при обработке запроса. Попробуйте задать вопрос снова."
-        )
+        err_text = "Произошла ошибка при обработке запроса. Попробуйте задать вопрос снова."
+        await callback.message.answer(err_text)
+        await _log_bot_msg(err_text, user_id=user_id, session_id=session_id, topic_id=topic_id)
         return
 
     user_text = history[0].get("text", "")
@@ -120,10 +132,12 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
         await status_mgr.complete()
         refund_cost = get_consultation_cost(consultation_category) if consultation_category else COST_NEW_TOPIC
         await add_tokens(user_id, refund_cost, "refund", "Возврат: ошибка модели")
-        await callback.message.answer(
+        err_text = (
             "Произошла ошибка при обработке запроса. "
             "Вопросы возвращены на ваш баланс. Попробуйте ещё раз."
         )
+        await callback.message.answer(err_text)
+        await _log_bot_msg(err_text, user_id=user_id, session_id=session_id, topic_id=topic_id)
         CONSULTATION_STATE.pop(telegram_user_id, None)
         return
 

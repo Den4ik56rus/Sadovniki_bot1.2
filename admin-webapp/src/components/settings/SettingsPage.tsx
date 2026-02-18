@@ -25,7 +25,7 @@ interface TaskState {
   saved: boolean
 }
 
-const TASK_ORDER = ['consultation', 'classification', 'article', 'utility'] as const
+const TASK_ORDER = ['consultation', 'classification', 'complexity', 'article', 'utility', 'guide'] as const
 
 const REASONING_OPTIONS = [
   { value: 'none', label: 'Выкл' },
@@ -445,9 +445,9 @@ export function SettingsPage() {
       {/* Trial Questions */}
       <div className={styles.trialRow}>
         <div className={styles.toggleInfo}>
-          <span className={styles.toggleLabel}>Бесплатные вопросы</span>
+          <span className={styles.toggleLabel}>Бесплатные токены</span>
           <span className={styles.toggleDescription}>
-            Количество вопросов для новых пользователей
+            Количество токенов для новых пользователей
           </span>
         </div>
         <div className={styles.inputRow}>
@@ -552,7 +552,7 @@ export function SettingsPage() {
                   type="text"
                   className={styles.textInput}
                   value={newPackage.name}
-                  placeholder="Например: 10 вопросов"
+                  placeholder="Например: 10 токенов"
                   onChange={e => setNewPackage(p => ({ ...p, name: e.target.value }))}
                 />
               </div>

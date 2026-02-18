@@ -1,0 +1,535 @@
+/* Invite Links Page Styles */
+
+.container {
+  padding: 32px 48px;
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+/* Header */
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.headerLeft h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.addButton {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 16px;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.addButton:hover {
+  opacity: 0.9;
+}
+
+/* Date Controls */
+.dateControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.viewToggle {
+  display: flex;
+  background: #F3F4F6;
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+
+.toggleButton {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6B7280;
+  background: transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.toggleButton:hover {
+  color: #374151;
+}
+
+.toggleActive {
+  background: white;
+  color: #111827;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.dateNavigation {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.navButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  color: #111827;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.navButton:hover {
+  background: #F3F4F6;
+  border-color: #D1D5DB;
+}
+
+.dateRange {
+  display: flex;
+  align-items: center;
+  padding: 0 12px;
+  height: 36px;
+  background: white;
+  border: 1px solid #E5E7EB;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #374151;
+  min-width: 200px;
+}
+
+/* Summary Cards */
+.summaryCards {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+}
+
+.summaryCard {
+  padding: 20px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+}
+
+.summaryValue {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: 4px;
+}
+
+.summaryLabel {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+/* Create Form */
+.createForm {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 20px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+}
+
+.createFields {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.createInput {
+  padding: 10px 14px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.createInput:focus {
+  border-color: var(--accent-primary);
+}
+
+.createInput::placeholder {
+  color: var(--text-muted);
+}
+
+.bonusFields {
+  display: flex;
+  gap: 16px;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-muted);
+}
+
+.numberInput {
+  width: 100px;
+  padding: 8px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.numberInput:focus {
+  border-color: var(--accent-primary);
+}
+
+.createActions {
+  display: flex;
+  gap: 8px;
+}
+
+.createSubmit {
+  padding: 10px 20px;
+  background: var(--accent-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  white-space: nowrap;
+}
+
+.createSubmit:hover {
+  opacity: 0.9;
+}
+
+.createSubmit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.createCancel {
+  padding: 10px 16px;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.createCancel:hover {
+  background: var(--bg-tertiary);
+}
+
+/* Table */
+.table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-default);
+  overflow: hidden;
+}
+
+.table th {
+  padding: 12px 16px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-tertiary);
+}
+
+.table td {
+  padding: 14px 16px;
+  font-size: 14px;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-default);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: var(--bg-tertiary);
+}
+
+/* Link Name — editable */
+.linkName {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 500;
+  cursor: default;
+}
+
+.editIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+  line-height: 1;
+}
+
+.editIcon:hover {
+  background: rgba(74, 124, 89, 0.1);
+}
+
+/* Inline edit row */
+.editNameRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editNameInput {
+  padding: 4px 8px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+  width: 180px;
+}
+
+.editSaveBtn,
+.editCancelBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.editSaveBtn {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.editSaveBtn:hover {
+  opacity: 0.85;
+}
+
+.editCancelBtn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
+}
+
+.editCancelBtn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+/* Deep Link — full URL visible */
+.deepLink {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.deepLinkUrl {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-family: monospace;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+.copyButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s;
+  flex-shrink: 0;
+}
+
+.copyButton:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.copied {
+  color: var(--accent-primary) !important;
+  border-color: var(--accent-primary) !important;
+  background: rgba(74, 124, 89, 0.08);
+}
+
+.usersCount {
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.revenue {
+  font-weight: 600;
+}
+
+/* Bonus / Discount / Days cells */
+.bonusCell,
+.discountCell,
+.daysCell {
+  text-align: center;
+  white-space: nowrap;
+}
+
+.bonusValue {
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.discountValue {
+  font-weight: 600;
+  color: #E67E22;
+}
+
+.numberInputSmall {
+  width: 60px;
+  padding: 4px 6px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+  text-align: center;
+}
+
+.numberInputSmall:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(74, 124, 89, 0.15);
+}
+
+/* Actions column */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.deleteButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+  padding: 0;
+  line-height: 1;
+}
+
+.deleteButton:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.dateCell {
+  color: var(--text-secondary);
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+/* States */
+.loading {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.error {
+  padding: 48px;
+  text-align: center;
+  color: var(--accent-red);
+}
+
+.empty {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.emptyText {
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.emptyHint {
+  font-size: 13px;
+  color: var(--text-muted);
+}

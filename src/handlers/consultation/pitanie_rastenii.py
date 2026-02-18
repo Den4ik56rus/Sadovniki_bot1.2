@@ -46,6 +46,8 @@ from src.handlers.consultation.entry import (
     finalize_streaming_message,
     is_rejection_response,
     is_clarification_question,
+    _log_bot_msg,
+    serialize_keyboard,
 )
 
 # Утилита форматирования Markdown → HTML
@@ -72,6 +74,14 @@ async def process_nutrition_consultation(
     classification_cost_usd: float = 0.0,
     classification_tokens: int = 0,
     correction_hint: str | None = None,
+    complexity_result: dict | None = None,
+    telegram_user_id_override: int | None = None,
+    # Phase mode (Тип B/C)
+    phase_mode: str | None = None,
+    phase_key: str | None = None,
+    phase_topic: str | None = None,
+    is_last_phase: bool = False,
+    phase_number: int = 0,
 ) -> None:
     """
     Обрабатывает консультацию по питанию растений.
@@ -85,13 +95,43 @@ async def process_nutrition_consultation(
         root_question: Текст вопроса пользователя
         classification_cost_usd: Стоимость классификации в USD (из unified_entry)
         classification_tokens: Токены классификации
+        telegram_user_id_override: telegram ID при вызове из callback (где message.from_user = бот)
+        phase_mode: Режим фазы (single_phase / seasonal_phase / None)
+        phase_key: Ключ фазы (весна-цветение и т.д.)
+        phase_topic: Тема фазы (питание / защита / уход)
+        is_last_phase: Последняя ли это фаза
+        phase_number: Номер фазы (1, 2, 3)
     """
-    user = message.from_user
-    if user is None:
-        return
+    if telegram_user_id_override:
+        telegram_user_id = telegram_user_id_override
+        session_id = f"tg:{telegram_user_id}"
+    else:
+        user = message.from_user
+        if user is None:
+            return
+        telegram_user_id = user.id
+        session_id = build_session_id_from_message(message)
 
-    telegram_user_id = user.id
-    session_id = build_session_id_from_message(message)
+    # Complexity tracking kwargs
+    _complexity_kwargs = {}
+    if complexity_result:
+        _complexity_kwargs = {
+            "complexity_tier": complexity_result.get("tier"),
+            "complexity_metadata": complexity_result.get("metadata"),
+            "complexity_classification_cost_usd": complexity_result.get("cost_usd", 0.0),
+            "complexity_classification_tokens": complexity_result.get("tokens", 0),
+        }
+
+    # Phase mode kwargs
+    _phase_kwargs = {}
+    if phase_mode and phase_key:
+        _phase_kwargs = {
+            "phase_mode": phase_mode,
+            "phase_key": phase_key,
+            "phase_topic": phase_topic,
+            "is_last_phase": is_last_phase,
+            "phase_number": phase_number,
+        }
 
     print(f"[process_nutrition] user_id={user_id}, category={category!r}, culture={culture!r}")
 
@@ -106,14 +146,14 @@ async def process_nutrition_consultation(
     await set_topic_category(topic_id, category)
     await set_topic_culture(topic_id, culture)
 
-    # Логируем вопрос пользователя
-    await log_message(
-        user_id=user_id,
-        direction="user",
-        text=root_question,
-        session_id=session_id,
-        topic_id=topic_id,
-    )
+    # Привязываем ВСЕ промежуточные сообщения к топику
+    _q_msg_id = CONSULTATION_CONTEXT.get(telegram_user_id, {}).get("question_msg_id")
+    if _q_msg_id:
+        try:
+            from src.services.db.messages_repo import attach_pending_messages_to_topic
+            await attach_pending_messages_to_topic(user_id, topic_id, since_msg_id=_q_msg_id)
+        except Exception:
+            pass
 
     # Сохраняем контекст консультации
     CONSULTATION_CONTEXT[telegram_user_id] = {
@@ -137,7 +177,9 @@ async def process_nutrition_consultation(
 
     # Отправляем подсказку о коррекции культуры (если есть и RAG будет использован)
     if correction_hint and use_rag:
-        await message.answer(f"💡 {correction_hint}")
+        hint = f"💡 {correction_hint}"
+        await message.answer(hint)
+        await _log_bot_msg(hint, user_id=user_id, session_id=session_id, topic_id=topic_id)
 
     # Показываем сообщение ожидания с динамическими обновлениями
     status_mgr = StatusMessageManager(message, use_rag=use_rag)
@@ -172,6 +214,8 @@ async def process_nutrition_consultation(
             status_updater=status_mgr.update,
             stream=use_rag,
             streaming_transition=status_mgr.start_streaming if use_rag else None,
+            **_complexity_kwargs,
+            **_phase_kwargs,
         )
     finally:
         streaming_msg = status_mgr.get_streaming_message() if use_rag else None
@@ -189,14 +233,57 @@ async def process_nutrition_consultation(
         CONSULTATION_STATE[telegram_user_id] = "waiting_nutrition_clarification"
         print(f"[process_nutrition] LLM asking clarification, state -> waiting_nutrition_clarification")
     else:
+        # Выбираем клавиатуру: фазовая (любой phase_mode) или обычная
+        from src.pricing import get_next_phase, get_phase_display_name
+        if phase_mode in ("seasonal_phase", "single_phase") and phase_key:
+            from src.keyboards.consultation.common import get_next_phase_keyboard
+            next_phase = get_next_phase(phase_key)
+            if next_phase:
+                next_display = get_phase_display_name(next_phase)
+                kb = get_next_phase_keyboard(next_display)
+            else:
+                kb = get_followup_keyboard(category)
+            next_state = "waiting_phase_continue"
+        else:
+            kb = get_followup_keyboard(category)
+            next_state = "waiting_followup"
+
         await finalize_streaming_message(
             streaming_msg, message, answer_text,
-            keyboard=get_followup_keyboard(category),
-            show_followup_prompt=True,
+            keyboard=kb,
+            show_followup_prompt=(next_state == "waiting_followup"),
         )
         CONSULTATION_CONTEXT[telegram_user_id]["full_question"] = root_question
-        CONSULTATION_STATE[telegram_user_id] = "waiting_followup"
-        print(f"[process_nutrition] Showing followup buttons, use_rag={use_rag}")
+        CONSULTATION_STATE[telegram_user_id] = next_state
+        print(f"[process_nutrition] state -> {next_state}, phase_mode={phase_mode}, use_rag={use_rag}")
+
+        # Сохраняем контекст для фазового продолжения (если ещё нет)
+        if phase_mode in ("seasonal_phase", "single_phase") and phase_key:
+            if not CONSULTATION_CONTEXT.get(telegram_user_id, {}).get("_phase_continuation"):
+                next_phase = get_next_phase(phase_key)
+                CONSULTATION_CONTEXT[telegram_user_id] = {
+                    **CONSULTATION_CONTEXT.get(telegram_user_id, {}),
+                    "_phase_continuation": True,
+                    "current_phase": phase_key,
+                    "next_phase": next_phase,
+                    "phases_delivered": [phase_key],
+                    "topic": category,
+                    "question_text": root_question,
+                    "internal_user_id": user_id,
+                    "category": category,
+                    "culture": culture,
+                    "classification_cost": classification_cost_usd,
+                    "classification_tokens": classification_tokens,
+                    "complexity_result": complexity_result,
+                    "telegram_user_id": telegram_user_id,
+                }
+            else:
+                # Обновляем текущую фазу и delivered для последующих фаз
+                ctx = CONSULTATION_CONTEXT[telegram_user_id]
+                ctx["current_phase"] = phase_key
+                ctx["next_phase"] = get_next_phase(phase_key)
+                if phase_key not in ctx.get("phases_delivered", []):
+                    ctx.setdefault("phases_delivered", []).append(phase_key)
 
     # Логируем ответ бота
     await log_message(
@@ -529,10 +616,10 @@ async def handle_nutrition_clarification(message: Message) -> None:
     except Exception as e:
         print(f"[nutrition] ERROR in ask_consultation_llm: {e}")
         await status_mgr.complete()
-        await message.answer(
-            "Произошла ошибка при обращении к модели. "
-            "Попробуйте отправить вопрос ещё раз."
-        )
+        llm_err = "Произошла ошибка при обращении к модели. Попробуйте отправить вопрос ещё раз."
+        await message.answer(llm_err)
+        if message.from_user:
+            await _log_bot_msg(llm_err, telegram_user_id=message.from_user.id)
         return
 
     streaming_msg = status_mgr.get_streaming_message()
@@ -714,10 +801,10 @@ async def handle_variety_clarification(message: Message) -> None:
     except Exception as e:
         print(f"[nutrition] ERROR in ask_consultation_llm: {e}")
         await status_mgr.complete()
-        await message.answer(
-            "Произошла ошибка при обращении к модели. "
-            "Попробуйте отправить вопрос ещё раз."
-        )
+        llm_err = "Произошла ошибка при обращении к модели. Попробуйте отправить вопрос ещё раз."
+        await message.answer(llm_err)
+        if message.from_user:
+            await _log_bot_msg(llm_err, telegram_user_id=message.from_user.id)
         return
 
     streaming_msg = status_mgr.get_streaming_message()
@@ -801,7 +888,10 @@ async def handle_nutrition_new_topic(message: Message) -> None:
     CONSULTATION_STATE[user.id] = "waiting_consultation_question"
 
     # Просим задать вопрос с инлайн-кнопками примеров
-    await message.answer(CONSULTATION_ENTRY_TEXT, reply_markup=get_example_questions_keyboard())
+    kb = get_example_questions_keyboard()
+    await message.answer(CONSULTATION_ENTRY_TEXT, reply_markup=kb)
+    if user:
+        await _log_bot_msg(CONSULTATION_ENTRY_TEXT, telegram_user_id=user.id, meta=serialize_keyboard(kb))
 
 
 @router.message(F.text == "✏️ Заменить параметры")
@@ -816,17 +906,21 @@ async def handle_nutrition_replace_params(message: Message) -> None:
 
     ctx = CONSULTATION_CONTEXT.get(user.id)
     if not ctx:
-        await message.answer("Контекст консультации утерян. Пожалуйста, задайте новый вопрос.")
+        ctx_lost = "Контекст консультации утерян. Пожалуйста, задайте новый вопрос."
+        await message.answer(ctx_lost)
+        await _log_bot_msg(ctx_lost, telegram_user_id=user.id)
         return
 
     # Устанавливаем состояние ожидания новых параметров
     CONSULTATION_STATE[user.id] = "waiting_param_replacement"
 
-    await message.answer(
+    params_prompt = (
         "Укажите ваши параметры:\n"
         "Например: 'Теплица, Урал' или 'Южный регион, открытый грунт'\n\n"
         "Или задайте вопрос заново с другими условиями."
     )
+    await message.answer(params_prompt)
+    await _log_bot_msg(params_prompt, telegram_user_id=user.id)
 
 
 @router.message(
@@ -843,7 +937,9 @@ async def handle_param_replacement(message: Message) -> None:
 
     ctx = CONSULTATION_CONTEXT.get(user.id)
     if not ctx:
-        await message.answer("Контекст консультации утерян")
+        ctx_lost2 = "Контекст консультации утерян"
+        await message.answer(ctx_lost2)
+        await _log_bot_msg(ctx_lost2, telegram_user_id=user.id)
         CONSULTATION_STATE.pop(user.id, None)
         return
 
@@ -918,10 +1014,10 @@ async def handle_param_replacement(message: Message) -> None:
     except Exception as e:
         print(f"[nutrition] ERROR in ask_consultation_llm: {e}")
         await status_mgr.complete()
-        await message.answer(
-            "Произошла ошибка при обращении к модели. "
-            "Попробуйте отправить вопрос ещё раз."
-        )
+        llm_err = "Произошла ошибка при обращении к модели. Попробуйте отправить вопрос ещё раз."
+        await message.answer(llm_err)
+        if message.from_user:
+            await _log_bot_msg(llm_err, telegram_user_id=message.from_user.id)
         return
 
     streaming_msg = status_mgr.get_streaming_message()
@@ -973,7 +1069,9 @@ async def handle_detailed_plan(message: Message) -> None:
 
     ctx = CONSULTATION_CONTEXT.get(user.id)
     if not ctx:
-        await message.answer("Контекст консультации утерян. Пожалуйста, задайте новый вопрос.")
+        ctx_lost3 = "Контекст консультации утерян. Пожалуйста, задайте новый вопрос."
+        await message.answer(ctx_lost3)
+        await _log_bot_msg(ctx_lost3, telegram_user_id=user.id)
         return
 
     full_question = ctx.get("full_question", ctx.get("root_question", ""))
@@ -1022,10 +1120,10 @@ async def handle_detailed_plan(message: Message) -> None:
     except Exception as e:
         print(f"[nutrition] ERROR in ask_consultation_llm (detailed plan): {e}")
         await status_mgr.complete()
-        await message.answer(
-            "Произошла ошибка при обращении к модели. "
-            "Попробуйте отправить вопрос ещё раз."
-        )
+        llm_err = "Произошла ошибка при обращении к модели. Попробуйте отправить вопрос ещё раз."
+        await message.answer(llm_err)
+        if message.from_user:
+            await _log_bot_msg(llm_err, telegram_user_id=message.from_user.id)
         return
 
     streaming_msg = status_mgr.get_streaming_message()

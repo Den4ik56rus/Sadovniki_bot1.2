@@ -332,7 +332,7 @@ async def _send_subscription_notification(
             "🎉 <b>Подписка активирована!</b>\n\n"
             f"📅 План: {plan['name']}\n"
             f"⏱ Действует до: {expires_str}\n"
-            f"🎁 Начислено вопросов: {plan['tokens_included']}\n\n"
+            f"🎁 Начислено токенов: {plan['tokens_included']}\n\n"
             "Спасибо за вашу поддержку! 🌱"
         )
 
@@ -341,6 +341,18 @@ async def _send_subscription_notification(
             text=message_text,
             parse_mode="HTML"
         )
+
+        # Логируем уведомление в БД для отображения в админке
+        try:
+            from src.services.db.messages_repo import log_message
+            await log_message(
+                user_id=user_id,
+                direction="bot",
+                text=message_text,
+                session_id=f"tg:{telegram_user_id}",
+            )
+        except Exception:
+            pass
 
         logger.info(f"Subscription notification sent to user {telegram_user_id}")
 

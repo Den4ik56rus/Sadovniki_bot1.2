@@ -54,6 +54,7 @@ async def get_all_clients_with_status() -> List[Dict[str, Any]]:
                 u.username,
                 u.first_name,
                 u.last_name,
+                u.avatar_path,
                 u.created_at as user_created_at,
                 COALESCE(cfs.status, 'new') as status,
                 cfs.auto_status,

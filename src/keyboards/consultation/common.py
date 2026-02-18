@@ -55,11 +55,17 @@ EXAMPLE_QUESTIONS = {
 }
 
 CONSULTATION_ENTRY_TEXT = (
-    "Добро пожаловать в режим консультаций! Здесь вы можете получить ответы, "
-    "основанные на отобранной литературе и рекомендациях лучших экспертов.\n\n"
-    "Ниже — примеры вопросов, на которые вы можете получить качественный ответ "
-    "по выбранной культуре. Вы также можете задать свой вопрос.\n\n"
-    "Стоимость: 1-2 вопроса в зависимости от темы."
+    "<b>Наша беседа будет строиться диалогом</b>, ведь так удобнее!\n\n"
+    "— <b>Вы задаете вопрос</b>, описываете проблему (одним сообщением).\n"
+    "— <b>Я даю рекомендации</b> и подробно раскрываю эту тему.\n\n"
+    "✅ После того, как я ответил - Вы можете задать <b>уточняющий вопрос</b> "
+    "или <b>новый</b>, выбрав в меню нужную кнопку.\n\n"
+    "Если вопрос касается выращивания, то для меня будет "
+    "<b>важно знать в каком регионе Вы находитесь.</b>\n\n"
+    "Ниже список вопросов для примера - обратите внимание, как их лучше "
+    "формулировать. Что бы мы были на одной волне!\n\n"
+    "<b>Для продолжения работы</b> выберите вопрос из списка👇 или "
+    "<b>задайте свой</b>😇."
 )
 
 
@@ -93,8 +99,191 @@ def get_followup_keyboard(category: str = "") -> InlineKeyboardMarkup:
     )
 
 
+# ==== Клавиатура подтверждения стоимости (complexity-based) ====
+
+def get_complexity_confirm_keyboard(
+    tier: str,
+    cost: int,
+    phase_button_label: str = "",
+) -> InlineKeyboardMarkup:
+    """
+    Клавиатура подтверждения стоимости для long_answer.
+
+    Кнопки: План на фазу / Отмена.
+
+    Args:
+        tier: Уровень сложности (long_answer, long_answer_insufficient)
+        cost: Стоимость в вопросах
+        phase_button_label: Персонализированная подпись для кнопки фазы
+    """
+    buttons = []
+
+    # Кнопка "План на фазу" — для long_answer
+    if tier in ("long_answer",):
+        plan_text = (
+            f"{phase_button_label} ({cost} вопроса)"
+            if phase_button_label
+            else f"План на фазу ({cost} вопроса)"
+        )
+        buttons.append([
+            InlineKeyboardButton(
+                text=plan_text,
+                callback_data="complexity_confirm:long",
+            ),
+        ])
+
+    # Кнопка "Отмена" — всегда
+    buttons.append([
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data="complexity_confirm:cancel",
+        ),
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+# ==== Клавиатура выбора формата для phase_eligible вопросов ====
+
+def get_phase_eligible_keyboard(
+    phase_button_label: str = "",
+    phase_cost: int = 2,
+) -> InlineKeyboardMarkup:
+    """
+    Клавиатура выбора формата ответа для short_answer с phase_eligible=True.
+
+    3 кнопки: Краткий ответ / Подробно по фазам / Готовое решение.
+    """
+    from src.pricing import COST_NEW_TOPIC
+
+    detail_text = (
+        f"{phase_button_label} ({phase_cost} вопроса)"
+        if phase_button_label
+        else f"Подробный ответ по фазам ({phase_cost} вопроса)"
+    )
+
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text=f"Краткий ответ ({COST_NEW_TOPIC} вопрос)",
+                callback_data="complexity_confirm:short",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=detail_text,
+                callback_data="complexity_confirm:long",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+# ==== Клавиатура продолжения к следующей фазе (Тип C) ====
+
+def get_next_phase_keyboard(next_phase_display_name: str = "") -> InlineKeyboardMarkup:
+    """
+    Клавиатура после фазового ответа — 3 кнопки.
+
+    Args:
+        next_phase_display_name: Не используется (для обратной совместимости)
+    """
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="✅ Задать уточняющий вопрос",
+                callback_data="followup_type:clarification",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="✅ Задать вопрос по новой теме",
+                callback_data="followup_type:new_topic",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="➡️ Выбрать следующую фазу роста",
+                callback_data="phase_continue:select",
+            ),
+        ],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_phase_select_keyboard(delivered_phases: list[str] | None = None) -> InlineKeyboardMarkup:
+    """
+    Клавиатура выбора фазы роста (3 фазы).
+
+    Args:
+        delivered_phases: Уже пройденные фазы (будут помечены галочкой)
+    """
+    from src.pricing import PHASE_DISPLAY_NAMES, PHASE_COST
+
+    delivered = set(delivered_phases or [])
+
+    phases = [
+        ("весна-цветение", PHASE_DISPLAY_NAMES["весна-цветение"]),
+        ("цветение-плодоношение", PHASE_DISPLAY_NAMES["цветение-плодоношение"]),
+        ("плодоношение-зима", PHASE_DISPLAY_NAMES["плодоношение-зима"]),
+    ]
+
+    buttons = []
+    for phase_key, display_name in phases:
+        if phase_key in delivered:
+            label = f"✅ {display_name} (пройдена)"
+            callback = f"phase_select:done:{phase_key}"
+        else:
+            label = f"📋 {display_name} ({PHASE_COST} вопроса)"
+            callback = f"phase_select:{phase_key}"
+        buttons.append([InlineKeyboardButton(text=label, callback_data=callback)])
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="❌ Закрыть",
+            callback_data="phase_continue:stop",
+        ),
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+# ==== Клавиатура выбора темы (multi-topic) ====
+
+def get_topic_select_keyboard(topics: list[str]) -> InlineKeyboardMarkup:
+    """
+    Клавиатура для выбора одной темы из нескольких.
+
+    Args:
+        topics: Список тем, например ["питание", "защита", "уход"]
+    """
+    # Красивые названия тем
+    topic_display = {
+        "питание": "Питание (подкормки)",
+        "защита": "Защита (обработки)",
+        "уход": "Уход (обрезка, полив)",
+    }
+
+    buttons = []
+    for topic in topics:
+        display_name = topic_display.get(topic, topic.capitalize())
+        buttons.append([
+            InlineKeyboardButton(
+                text=display_name,
+                callback_data=f"topic_select:{topic}",
+            ),
+        ])
+
+    buttons.append([
+        InlineKeyboardButton(
+            text="❌ Отмена",
+            callback_data="complexity_confirm:cancel",
+        ),
+    ])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 # Alias для обратной совместимости
 def get_nutrition_followup_keyboard() -> InlineKeyboardMarkup:
     return get_followup_keyboard()
-
-

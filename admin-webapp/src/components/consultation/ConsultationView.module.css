@@ -645,3 +645,45 @@
     font-size: 11px;
   }
 }
+
+/* Telegram keyboard buttons preview */
+.keyboardButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--space-2);
+  padding: var(--space-2);
+  background: rgba(63, 185, 80, 0.05);
+  border-radius: var(--radius-sm);
+}
+
+.keyboardRow {
+  display: flex;
+  gap: 4px;
+}
+
+.keyboardButton {
+  flex: 1;
+  padding: 6px 12px;
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  text-align: center;
+  color: var(--accent-blue);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.badgeCallback {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 9px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  background: rgba(88, 166, 255, 0.15);
+  color: var(--accent-blue);
+}

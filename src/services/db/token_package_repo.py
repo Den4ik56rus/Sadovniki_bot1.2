@@ -113,7 +113,7 @@ async def create(
     Args:
         name: Название пакета
         price_rub: Цена в рублях
-        tokens_amount: Количество вопросов
+        tokens_amount: Количество токенов
         description: Описание
 
     Returns:

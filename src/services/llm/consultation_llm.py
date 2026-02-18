@@ -219,6 +219,17 @@ async def ask_consultation_llm(
     status_updater: Optional[Callable] = None,  # Callback для обновления прогресс-бара: (step, total, label)
     stream: bool = False,  # Включить стриминг ответа
     streaming_transition: Optional[Callable[[], Awaitable[Callable[[str], Awaitable[None]]]]] = None,  # Переход в стриминг-режим
+    # Complexity tracking
+    complexity_tier: Optional[str] = None,
+    complexity_metadata: Optional[dict] = None,
+    complexity_classification_cost_usd: float = 0.0,
+    complexity_classification_tokens: int = 0,
+    # Phase mode (Тип B/C)
+    phase_mode: Optional[str] = None,       # "single_phase" | "seasonal_phase" | None
+    phase_key: Optional[str] = None,        # "весна-цветение" и т.д.
+    phase_topic: Optional[str] = None,      # "питание", "защита", "уход"
+    is_last_phase: bool = False,            # Последняя фаза в Тип C
+    phase_number: int = 0,                  # Номер фазы (1, 2, 3) для логирования
 ) -> str:
     """
     Основной вызов LLM.
@@ -418,6 +429,25 @@ async def ask_consultation_llm(
         default_growing_type=default_growing_type,
     )
 
+    # Инъекция фазовых инструкций (Тип B/C)
+    if phase_mode and phase_key and phase_topic:
+        from src.prompts.consultation_prompts import build_phase_instruction
+        phase_instruction = build_phase_instruction(
+            phase_key=phase_key,
+            phase_topic=phase_topic,
+            is_last_phase=is_last_phase,
+        )
+        system_prompt += phase_instruction
+        print(f"[ask_consultation_llm] Phase instruction injected: mode={phase_mode}, phase={phase_key}, topic={phase_topic}, last={is_last_phase}")
+
+    # Инъекция инструкции для краткого ответа (Тип A / downgrade)
+    elif complexity_tier == "short_answer" and complexity_metadata:
+        from src.prompts.consultation_prompts import build_short_answer_instruction
+        short_instruction = build_short_answer_instruction()
+        system_prompt += short_instruction
+        user_downgraded = complexity_metadata.get("user_downgraded", False)
+        print(f"[ask_consultation_llm] Short answer instruction injected (user_downgraded={user_downgraded})")
+
     messages.append(
         {
             "role": "system",
@@ -504,6 +534,13 @@ async def ask_consultation_llm(
             compose_tokens=compose_tokens,
             classification_cost_usd=total_classification_cost,
             classification_tokens=total_classification_tokens,
+            complexity_tier=complexity_tier,
+            complexity_metadata=complexity_metadata,
+            complexity_classification_cost_usd=complexity_classification_cost_usd,
+            complexity_classification_tokens=complexity_classification_tokens,
+            phase_mode=phase_mode,
+            phase_key=phase_key,
+            phase_number=phase_number,
         ))
 
         return response_text.strip()
@@ -532,6 +569,15 @@ async def _log_consultation_async(
     compose_tokens: int = 0,
     classification_cost_usd: float = 0.0,
     classification_tokens: int = 0,
+    # Complexity tracking
+    complexity_tier: Optional[str] = None,
+    complexity_metadata: Optional[dict] = None,
+    complexity_classification_cost_usd: float = 0.0,
+    complexity_classification_tokens: int = 0,
+    # Phase tracking
+    phase_mode: Optional[str] = None,
+    phase_key: Optional[str] = None,
+    phase_number: int = 0,
 ) -> None:
     """
     Асинхронно логирует консультацию в БД.
@@ -550,8 +596,8 @@ async def _log_consultation_async(
         if embedding_tokens > 0 and embedding_model:
             embedding_cost_usd = calculate_embedding_cost(embedding_model, embedding_tokens)
 
-        # Общая стоимость = classification + compose_question + embeddings + LLM
-        total_cost_usd = classification_cost_usd + compose_cost_usd + embedding_cost_usd + llm_cost_usd
+        # Общая стоимость = classification + compose_question + embeddings + LLM + complexity
+        total_cost_usd = classification_cost_usd + compose_cost_usd + embedding_cost_usd + llm_cost_usd + complexity_classification_cost_usd
 
         await log_consultation(
             user_id=user_id,
@@ -566,7 +612,7 @@ async def _log_consultation_async(
             },
             prompt_tokens=llm_response["prompt_tokens"],
             completion_tokens=llm_response["completion_tokens"],
-            cost_usd=total_cost_usd,  # Общая стоимость включает classification + compose + embeddings + LLM
+            cost_usd=total_cost_usd,
             latency_ms=latency_ms,
             consultation_category=consultation_category,
             culture=culture,
@@ -574,10 +620,17 @@ async def _log_consultation_async(
             embedding_cost_usd=embedding_cost_usd,
             embedding_model=embedding_model,
             composed_question=composed_question,
-            compose_cost_usd=compose_cost_usd,  # Стоимость форматирования вопроса отдельно
-            compose_tokens=compose_tokens,      # Токены форматирования вопроса
-            classification_cost_usd=classification_cost_usd,  # Стоимость классификации
-            classification_tokens=classification_tokens,      # Токены классификации
+            compose_cost_usd=compose_cost_usd,
+            compose_tokens=compose_tokens,
+            classification_cost_usd=classification_cost_usd,
+            classification_tokens=classification_tokens,
+            complexity_tier=complexity_tier,
+            complexity_metadata=complexity_metadata,
+            complexity_classification_cost_usd=complexity_classification_cost_usd,
+            complexity_classification_tokens=complexity_classification_tokens,
+            phase_mode=phase_mode,
+            phase_key=phase_key,
+            phase_number=phase_number,
         )
 
         logger.debug(

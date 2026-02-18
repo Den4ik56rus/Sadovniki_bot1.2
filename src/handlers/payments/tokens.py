@@ -47,7 +47,7 @@ async def buy_tokens_handler(callback: CallbackQuery):
 
         if not package:
             await callback.message.edit_text(
-                "❌ Пакет вопросов не найден.\n"
+                "❌ Пакет токенов не найден.\n"
                 "Попробуйте выбрать другой или свяжитесь с поддержкой.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(
@@ -60,7 +60,7 @@ async def buy_tokens_handler(callback: CallbackQuery):
 
         if not package.get("is_active"):
             await callback.message.edit_text(
-                "⚠️ Этот пакет вопросов временно недоступен.\n"
+                "⚠️ Этот пакет токенов временно недоступен.\n"
                 "Выберите другой вариант или попробуйте позже.",
                 reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                     [InlineKeyboardButton(
@@ -71,7 +71,7 @@ async def buy_tokens_handler(callback: CallbackQuery):
             )
             return
 
-        # Создать платеж
+        # Создать платеж (скидка применяется внутри payment_service)
         payment = await payment_service.create_token_payment(
             user_id=user_id,
             telegram_user_id=telegram_user_id,
@@ -79,10 +79,12 @@ async def buy_tokens_handler(callback: CallbackQuery):
             return_url=settings.YOOKASSA_RETURN_URL,
         )
 
+        pay_amount = int(payment['amount'])
+
         # Отправить ссылку на оплату
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(
-                text=f"💳 Оплатить {int(package['price_rub'])}₽",
+                text=f"💳 Оплатить {pay_amount}₽",
                 url=payment["confirmation_url"]
             )],
             [InlineKeyboardButton(
@@ -95,19 +97,39 @@ async def buy_tokens_handler(callback: CallbackQuery):
             )]
         ])
 
-        await callback.message.edit_text(
-            f"🛒 Покупка: {package['name']}\n"
-            f"💰 Сумма: {int(package['price_rub'])}₽\n"
-            f"🎁 Вы получите: {package['tokens_amount']} вопросов\n\n"
-            f"Нажмите кнопку ниже для оплаты.\n"
-            f"После успешной оплаты вопросы будут автоматически начислены на ваш баланс.\n\n"
-            f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}",
-            reply_markup=keyboard
-        )
+        # Текст с учётом скидки
+        if payment.get("discount_percent"):
+            original = int(payment['original_amount'])
+            purchase_text = (
+                f"🛒 Покупка: {package['name']}\n"
+                f"💰 Цена: <s>{original}₽</s> → <b>{pay_amount}₽</b> (скидка {payment['discount_percent']}%)\n"
+                f"🎁 Вы получите: {package['tokens_amount']} токенов\n\n"
+                f"Нажмите кнопку ниже для оплаты.\n"
+                f"После успешной оплаты токены будут автоматически начислены на ваш баланс.\n\n"
+                f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}"
+            )
+        else:
+            purchase_text = (
+                f"🛒 Покупка: {package['name']}\n"
+                f"💰 Сумма: {pay_amount}₽\n"
+                f"🎁 Вы получите: {package['tokens_amount']} токенов\n\n"
+                f"Нажмите кнопку ниже для оплаты.\n"
+                f"После успешной оплаты токены будут автоматически начислены на ваш баланс.\n\n"
+                f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}"
+            )
+        await callback.message.edit_text(purchase_text, reply_markup=keyboard, parse_mode="HTML")
+
+        # Логируем действие пользователя + ответ бота
+        try:
+            from src.services.db.messages_repo import log_message
+            await log_message(user_id=user_id, direction="user", text=f"[Кнопка] Купить: {package['name']}", session_id=f"tg:{telegram_user_id}", meta={"type": "callback", "callback_data": callback.data})
+            await log_message(user_id=user_id, direction="bot", text=purchase_text, session_id=f"tg:{telegram_user_id}")
+        except Exception:
+            pass
 
         logger.info(
             f"Token payment created: user={user_id}, package={package['name']}, "
-            f"amount={package['price_rub']}, payment_id={payment['payment_id']}"
+            f"amount={pay_amount}, payment_id={payment['payment_id']}"
         )
 
     except Exception as e:

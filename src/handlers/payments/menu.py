@@ -21,6 +21,7 @@ router = Router(name="payments_menu")
 def get_payment_menu_keyboard(
     subscription_plans: list,
     token_packages: list,
+    discount_percent: int = 0,
 ) -> InlineKeyboardMarkup:
     """
     Создает клавиатуру меню покупок.
@@ -28,6 +29,7 @@ def get_payment_menu_keyboard(
     Args:
         subscription_plans: Список активных планов подписки
         token_packages: Список активных пакетов токенов
+        discount_percent: Процент скидки (0 = без скидки)
 
     Returns:
         InlineKeyboardMarkup с кнопками покупки
@@ -45,9 +47,15 @@ def get_payment_menu_keyboard(
 
         # Пакеты токенов
         for package in token_packages:
+            price = int(package['price_rub'])
+            if discount_percent > 0:
+                discounted = int(package['price_rub'] * (100 - discount_percent) / 100)
+                text = f"  {package['name']} — {discounted}₽ (было {price}₽)"
+            else:
+                text = f"  {package['name']} — {price}₽"
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"  {package['name']} — {int(package['price_rub'])}₽",
+                    text=text,
                     callback_data=f"buy_tokens_{package['id']}"
                 )
             ])
@@ -65,9 +73,15 @@ def get_payment_menu_keyboard(
         for plan in subscription_plans:
             qty = plan.get('tokens_included', 0)
             qty_text = f" ({pluralize_questions(qty)}/мес)" if qty else ""
+            price = int(plan['price_rub'])
+            if discount_percent > 0:
+                discounted = int(plan['price_rub'] * (100 - discount_percent) / 100)
+                text = f"  {plan['name']} — {discounted}₽/мес{qty_text} (было {price}₽)"
+            else:
+                text = f"  {plan['name']} — {price}₽/мес{qty_text}"
             buttons.append([
                 InlineKeyboardButton(
-                    text=f"  {plan['name']} — {int(plan['price_rub'])}₽/мес{qty_text}",
+                    text=text,
                     callback_data=f"buy_subscription_{plan['id']}"
                 )
             ])
@@ -83,11 +97,79 @@ def get_payment_menu_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def _build_menu_text(
+    token_packages: list,
+    subscription_plans: list,
+    discount_percent: int = 0,
+) -> str:
+    """Формирует текст меню покупок с учётом скидки."""
+    text_parts = ["💰 Пополнить баланс\n"]
+
+    if discount_percent > 0:
+        text_parts.append(f"\n🎉 У вас скидка <b>{discount_percent}%</b> по приглашению!\n")
+
+    if token_packages:
+        text_parts.append("\n📦 Разовая покупка:")
+        for package in token_packages:
+            price = int(package['price_rub'])
+            if discount_percent > 0:
+                discounted = int(package['price_rub'] * (100 - discount_percent) / 100)
+                text_parts.append(
+                    f"  • {package['name']} — <s>{price}₽</s> <b>{discounted}₽</b>"
+                )
+            else:
+                text_parts.append(
+                    f"  • {package['name']} — {price}₽"
+                )
+
+    if subscription_plans:
+        text_parts.append("\n📅 Подписка:")
+        for plan in subscription_plans:
+            qty = plan.get('tokens_included', 0)
+            tokens_info = f"({pluralize_questions(qty)}/мес)" if qty else ""
+            price = int(plan['price_rub'])
+            if discount_percent > 0:
+                discounted = int(plan['price_rub'] * (100 - discount_percent) / 100)
+                text_parts.append(
+                    f"  • {plan['name']} — <s>{price}₽</s> <b>{discounted}₽</b>/мес {tokens_info}"
+                )
+            else:
+                text_parts.append(
+                    f"  • {plan['name']} — {price}₽/мес {tokens_info}"
+                )
+
+    text_parts.append("\nВыберите подходящий вариант:")
+    return "\n".join(text_parts)
+
+
 @router.message(Command("buy"))
 @router.message(F.text == "💰 Пополнить баланс")
 async def show_payment_menu(message: Message):
     """Показать меню покупок."""
-    user_id = message.from_user.id
+    telegram_user_id = message.from_user.id
+
+    # Получаем внутренний user_id
+    from src.services.db.users_repo import get_or_create_user
+    from src.services.db.messages_repo import log_message
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=telegram_user_id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name,
+    )
+
+    # Логируем нажатие кнопки пользователем
+    btn_text = message.text or "/buy"
+    try:
+        await log_message(
+            user_id=internal_user_id,
+            direction="user",
+            text=btn_text,
+            session_id=f"tg:{telegram_user_id}",
+            meta={"type": "callback", "callback_data": "payment_menu"},
+        )
+    except Exception:
+        pass
 
     try:
         # Получить активные планы и пакеты
@@ -95,44 +177,33 @@ async def show_payment_menu(message: Message):
         token_packages = await token_package_repo.get_all_active()
 
         if not subscription_plans and not token_packages:
-            await message.answer(
-                "⚠️ В данный момент нет доступных тарифов.\n"
-                "Попробуйте позже или свяжитесь с поддержкой."
-            )
+            no_plans_text = "⚠️ В данный момент нет доступных тарифов.\nПопробуйте позже или свяжитесь с поддержкой."
+            await message.answer(no_plans_text)
+            try:
+                await log_message(user_id=internal_user_id, direction="bot", text=no_plans_text, session_id=f"tg:{telegram_user_id}")
+            except Exception:
+                pass
             return
 
-        # Сформировать описание
-        text_parts = ["💰 Пополнить баланс\n"]
+        # Проверить скидку по инвайт-ссылке
+        from src.services.db.invite_link_repo import get_user_active_discount
+        discount_percent = await get_user_active_discount(internal_user_id) or 0
 
-        if token_packages:
-            text_parts.append("\n📦 Разовая покупка:")
-            for package in token_packages:
-                text_parts.append(
-                    f"  • {package['name']} — {int(package['price_rub'])}₽"
-                )
+        menu_text = _build_menu_text(token_packages, subscription_plans, discount_percent)
+        keyboard = get_payment_menu_keyboard(subscription_plans, token_packages, discount_percent)
 
-        if subscription_plans:
-            text_parts.append("\n📅 Подписка:")
-            for plan in subscription_plans:
-                qty = plan.get('tokens_included', 0)
-                tokens_info = f"({pluralize_questions(qty)}/мес)" if qty else ""
-                text_parts.append(
-                    f"  • {plan['name']} — {int(plan['price_rub'])}₽/мес {tokens_info}"
-                )
+        await message.answer(menu_text, reply_markup=keyboard, parse_mode="HTML")
 
-        text_parts.append("\nВыберите подходящий вариант:")
+        # Логируем ответ бота
+        try:
+            await log_message(user_id=internal_user_id, direction="bot", text=menu_text, session_id=f"tg:{telegram_user_id}")
+        except Exception:
+            pass
 
-        keyboard = get_payment_menu_keyboard(subscription_plans, token_packages)
-
-        await message.answer(
-            "\n".join(text_parts),
-            reply_markup=keyboard
-        )
-
-        logger.info(f"Payment menu shown to user {user_id}")
+        logger.info(f"Payment menu shown to user {telegram_user_id}")
 
     except Exception as e:
-        logger.error(f"Error showing payment menu for user {user_id}: {e}", exc_info=True)
+        logger.error(f"Error showing payment menu for user {telegram_user_id}: {e}", exc_info=True)
         await message.answer(
             "❌ Произошла ошибка при загрузке меню покупок.\n"
             "Попробуйте позже или свяжитесь с поддержкой."
@@ -167,32 +238,17 @@ async def show_payment_menu_callback(callback: CallbackQuery):
             )
             return
 
-        # Сформировать описание
-        text_parts = ["💰 Пополнить баланс\n"]
+        # Проверить скидку по инвайт-ссылке
+        from src.services.db.invite_link_repo import get_user_active_discount
+        discount_percent = await get_user_active_discount(user_id) or 0
 
-        if token_packages:
-            text_parts.append("\n📦 Разовая покупка:")
-            for package in token_packages:
-                text_parts.append(
-                    f"  • {package['name']} — {int(package['price_rub'])}₽"
-                )
-
-        if subscription_plans:
-            text_parts.append("\n📅 Подписка:")
-            for plan in subscription_plans:
-                qty = plan.get('tokens_included', 0)
-                tokens_info = f"({pluralize_questions(qty)}/мес)" if qty else ""
-                text_parts.append(
-                    f"  • {plan['name']} — {int(plan['price_rub'])}₽/мес {tokens_info}"
-                )
-
-        text_parts.append("\nВыберите подходящий вариант:")
-
-        keyboard = get_payment_menu_keyboard(subscription_plans, token_packages)
+        menu_text = _build_menu_text(token_packages, subscription_plans, discount_percent)
+        keyboard = get_payment_menu_keyboard(subscription_plans, token_packages, discount_percent)
 
         await callback.message.edit_text(
-            "\n".join(text_parts),
-            reply_markup=keyboard
+            menu_text,
+            reply_markup=keyboard,
+            parse_mode="HTML",
         )
 
         logger.info(f"Payment menu shown to user {user_id} (callback)")

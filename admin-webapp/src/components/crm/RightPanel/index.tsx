@@ -1,4 +1,4 @@
-// Right Panel - Activity Feed with Topic View and Article View
+// Right Panel - Activity Feed with Topic View, Article View, and Chat Messages
 import { useState, useEffect, useCallback, useRef } from 'react'
 import type { ActivityEvent, ActivityEventType } from '@/types'
 import { api } from '@/services/api'
@@ -21,6 +21,7 @@ interface RightPanelProps {
 }
 
 const ALL_EVENT_TYPES: ActivityEventType[] = [
+  'chat_message',
   'consultation',
   'article',
   'task_created',
@@ -57,7 +58,7 @@ export function RightPanel({
     try {
       const data = await api.getClientActivity(clientId, {
         types: activeFilters.length === ALL_EVENT_TYPES.length ? undefined : activeFilters,
-        limit: 100,
+        limit: 500,
       })
       // Reverse to show oldest first, newest at bottom
       setActivity(data.reverse())
@@ -162,7 +163,6 @@ export function RightPanel({
     <div className={styles.panel}>
       {/* Header with filters */}
       <div className={styles.header}>
-        <h3 className={styles.title}>Лента активности</h3>
         <ActivityFilters
           activeFilters={activeFilters}
           allFilters={ALL_EVENT_TYPES}

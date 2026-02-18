@@ -36,7 +36,10 @@ def _serialize_value(value):
 
 def _serialize_dict(d: dict) -> dict:
     """Serialize all values in a dict."""
-    return {k: _serialize_value(v) for k, v in d.items()}
+    result = {k: _serialize_value(v) for k, v in d.items()}
+    avatar_path = result.pop('avatar_path', None)
+    result['avatar_url'] = f"/api/admin/avatars/{avatar_path}" if avatar_path else None
+    return result
 
 
 # =============================================================================

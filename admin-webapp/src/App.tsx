@@ -14,6 +14,8 @@ import { PromptsPage } from '@/components/prompts'
 import { PromptPreviewPage } from '@/components/promptPreview'
 import { PaymentsList } from '@/components/payments/PaymentsList'
 import { SettingsPage } from '@/components/settings'
+import { InviteLinksPage } from '@/components/inviteLinks'
+import { GuidesPage } from '@/components/guides'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
@@ -68,11 +70,17 @@ function App() {
       {/* Аналитика - существующий StatsPanel */}
       {currentView === 'stats' && <StatsPanel />}
 
+      {/* Инвайт-ссылки - отслеживание кампаний */}
+      {currentView === 'invite-links' && <InviteLinksPage />}
+
       {/* Расходы */}
       {currentView === 'expenses' && <ExpensesPage />}
 
       {/* Списки - Платежи */}
       {currentView === 'payments' && <PaymentsList />}
+
+      {/* Готовые решения — PDF-гайды */}
+      {currentView === 'guides' && <GuidesPage />}
 
       {/* Настройки — модели, temperature, RAG */}
       {currentView === 'settings' && <SettingsPage />}

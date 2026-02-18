@@ -42,6 +42,9 @@ def _serialize_row(row: dict) -> dict:
             result[key] = value.isoformat()
         elif isinstance(value, Decimal):
             result[key] = float(value)
+    # Конвертируем avatar_path → avatar_url
+    avatar_path = result.pop('avatar_path', None)
+    result['avatar_url'] = f"/api/admin/avatars/{avatar_path}" if avatar_path else None
     return result
 
 
@@ -493,6 +496,9 @@ async def get_clients_in_funnel(funnel_id: str) -> Dict[str, List[Dict[str, Any]
     """
     Получить клиентов в воронке, сгруппированных по этапам.
 
+    Для CRM-воронки автоматически включает пользователей без записи
+    в client_funnel_position (новые пользователи, не попавшие в воронку).
+
     Возвращает словарь: {'new': [...], 'tried': [...], ...}
     """
     pool = get_pool()
@@ -500,6 +506,30 @@ async def get_clients_in_funnel(funnel_id: str) -> Dict[str, List[Dict[str, Any]
     async with pool.acquire() as conn:
         # Получаем все этапы
         stages = await get_funnel_stages(funnel_id)
+
+        # Для CRM: автоматически добавляем пользователей без позиции в воронке
+        # Исключаем бота (telegram_user_id = ID из BOT_TOKEN)
+        if funnel_id == 'crm':
+            bot_tg_id = None
+            try:
+                from src.config import get_settings
+                bot_tg_id = int(get_settings().telegram_bot_token.split(":")[0])
+            except Exception:
+                pass
+
+            await conn.execute(
+                """
+                INSERT INTO client_funnel_position (user_id, funnel_id, stage_key)
+                SELECT u.id, 'crm', 'new'
+                FROM users u
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM client_funnel_position cfp
+                    WHERE cfp.user_id = u.id
+                )
+                AND u.telegram_user_id != $1
+                """,
+                bot_tg_id or 0
+            )
 
         # Получаем клиентов с метриками
         rows = await conn.fetch(
@@ -510,6 +540,7 @@ async def get_clients_in_funnel(funnel_id: str) -> Dict[str, List[Dict[str, Any]
                 u.username,
                 u.first_name,
                 u.last_name,
+                u.avatar_path,
                 u.created_at as user_created_at,
                 cfp.stage_key as status,
                 cfp.manual_override,

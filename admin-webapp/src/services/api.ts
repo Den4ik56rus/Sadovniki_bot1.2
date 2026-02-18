@@ -76,6 +76,15 @@ import type {
   // Prompt Preview
   PromptPreviewResponse,
   PromptPreviewOptionsResponse,
+  // Chat History
+  ChatHistoryResponse,
+  // Invite Links
+  InviteLink,
+  InviteLinksResponse,
+  // Guides
+  GuideOrder,
+  GuideOrdersResponse,
+  GuideStats,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -415,6 +424,10 @@ export const api = {
 
     const query = searchParams.toString()
     return fetchApi<ActivityEvent[]>(`/crm/clients/${clientId}/activity${query ? `?${query}` : ''}`)
+  },
+
+  async getClientChatHistory(clientId: number): Promise<ChatHistoryResponse> {
+    return fetchApi<ChatHistoryResponse>(`/crm/clients/${clientId}/chat`)
   },
 
   // CRM: Funnel columns (Kanban)
@@ -1068,5 +1081,62 @@ export const api = {
     params.set('category', category)
     params.set('culture', culture)
     return fetchApi<PromptPreviewResponse>(`/prompts/preview?${params.toString()}`)
+  },
+
+  // =========================================================================
+  // Invite Links (Инвайт-ссылки)
+  // =========================================================================
+
+  async getInviteLinks(params?: { start_date?: string; end_date?: string }): Promise<InviteLinksResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.start_date) searchParams.set('start_date', params.start_date)
+    if (params?.end_date) searchParams.set('end_date', params.end_date)
+    const query = searchParams.toString()
+    return fetchApi<InviteLinksResponse>(`/invite-links${query ? `?${query}` : ''}`)
+  },
+
+  async createInviteLink(data: { name: string; bonus_tokens?: number; discount_percent?: number; discount_duration_days?: number }): Promise<InviteLink> {
+    return fetchApi<InviteLink>('/invite-links', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updateInviteLink(id: number, data: { name: string; bonus_tokens?: number; discount_percent?: number; discount_duration_days?: number }): Promise<InviteLink> {
+    return fetchApi<InviteLink>(`/invite-links/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteInviteLink(id: number): Promise<{ success: boolean }> {
+    return fetchApi<{ success: boolean }>(`/invite-links/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  // =========================================================================
+  // Guides (Готовые решения — PDF-гайды)
+  // =========================================================================
+
+  async getGuideOrders(params?: {
+    limit?: number
+    offset?: number
+    status?: string
+  }): Promise<GuideOrdersResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    if (params?.status) searchParams.set('status', params.status)
+    const query = searchParams.toString()
+    return fetchApi<GuideOrdersResponse>(`/guides${query ? `?${query}` : ''}`)
+  },
+
+  async getGuideStats(): Promise<GuideStats> {
+    return fetchApi<GuideStats>('/guides/stats')
+  },
+
+  async getGuideDetail(id: number): Promise<GuideOrder> {
+    return fetchApi<GuideOrder>(`/guides/${id}`)
   },
 }

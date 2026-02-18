@@ -151,6 +151,10 @@ export function ConsultationView() {
             classification_tokens: data.classification_tokens || 0,
             classification_cost_usd: data.classification_cost_usd || 0,
             llm_cost_usd: data.llm_cost_usd || 0,
+            complexity_tier: data.complexity_tier || null,
+            complexity_metadata: data.complexity_metadata || {},
+            complexity_classification_cost_usd: data.complexity_classification_cost_usd || 0,
+            complexity_classification_tokens: data.complexity_classification_tokens || 0,
           }
 
           console.log('[ConsultationView] Adding normalized log to store')
@@ -196,6 +200,7 @@ export function ConsultationView() {
     let totalCompose = 0
     let totalEmbedding = 0
     let totalLlm = 0
+    let totalComplexity = 0
     let totalCost = 0
 
     for (const log of logs) {
@@ -203,6 +208,7 @@ export function ConsultationView() {
       totalCompose += log.compose_cost_usd || 0
       totalEmbedding += log.embedding_cost_usd || 0
       totalLlm += log.llm_cost_usd || 0
+      totalComplexity += log.complexity_classification_cost_usd || 0
       totalCost += log.cost_usd || 0
     }
 
@@ -211,6 +217,7 @@ export function ConsultationView() {
       compose: totalCompose,
       embedding: totalEmbedding,
       llm: totalLlm,
+      complexity: totalComplexity,
       total: totalCost,
       count: logs.length,
     }
@@ -282,6 +289,9 @@ export function ConsultationView() {
               >
                 <div className={styles.timelineLabel}>
                   {msg.direction === 'user' ? '👤 Пользователь' : '🤖 Бот'}
+                  {msg.meta?.type === 'callback' && (
+                    <span className={styles.badgeCallback}>кнопка</span>
+                  )}
                   {msg.created_at && (
                     <span className={styles.timelineTime}>
                       {format(new Date(msg.created_at), 'HH:mm:ss', { locale: ru })}
@@ -289,6 +299,20 @@ export function ConsultationView() {
                   )}
                 </div>
                 <div className={styles.timelineText}>{msg.text}</div>
+                {/* Кнопки клавиатуры — как в Telegram */}
+                {msg.direction === 'bot' && msg.meta?.keyboard && (
+                  <div className={styles.keyboardButtons}>
+                    {msg.meta.keyboard.buttons.map((row, rowIdx) => (
+                      <div key={rowIdx} className={styles.keyboardRow}>
+                        {row.map((btn, btnIdx) => (
+                          <span key={btnIdx} className={styles.keyboardButton}>
+                            {btn.text}
+                          </span>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
+                )}
                 {/* Стоимость LLM консультации — только для ответов бота */}
                 {msg.direction === 'bot' && linkedLog && (
                   <>
@@ -353,6 +377,7 @@ export function ConsultationView() {
             const ragCost = (log.compose_cost_usd || 0) + (log.embedding_cost_usd || 0)
             const ragTokens = (log.compose_tokens || 0) + (log.embedding_tokens || 0)
             const hasClassification = (log.classification_cost_usd || 0) > 0
+            const hasComplexity = (log.complexity_classification_cost_usd || 0) > 0
             return (
               <div key={`log-${log.id}`}>
                 {/* Блок классификации — показываем первым, если есть */}
@@ -384,6 +409,35 @@ export function ConsultationView() {
                       </span>
                       <span className={styles.classificationCostValue}>
                         💰 {toRub(log.classification_cost_usd || 0)}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Блок классификации сложности */}
+                {hasComplexity && (
+                  <div className={`${styles.timelineItem} ${styles.timelineClassification}`}>
+                    <div className={styles.timelineLabel}>
+                      📊 Сложность
+                      {log.created_at && (
+                        <span className={styles.timelineTime}>
+                          {format(new Date(log.created_at), 'HH:mm:ss', { locale: ru })}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.classificationInfo}>
+                      {log.complexity_tier && (
+                        <span className={styles.classificationCategory}>
+                          уровень: {log.complexity_tier}
+                        </span>
+                      )}
+                    </div>
+                    <div className={styles.classificationCostInline}>
+                      <span className={styles.classificationCostTokens}>
+                        {(log.complexity_classification_tokens || 0).toLocaleString()} tok
+                      </span>
+                      <span className={styles.classificationCostValue}>
+                        💰 {toRub(log.complexity_classification_cost_usd || 0)}
                       </span>
                     </div>
                   </div>

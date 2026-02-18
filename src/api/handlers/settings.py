@@ -41,16 +41,20 @@ AVAILABLE_MODELS = [
 TASK_LABELS = {
     "consultation": "Консультации",
     "classification": "Классификация",
+    "complexity": "Классификатор сложности",
     "article": "Статьи",
     "utility": "Утилиты",
+    "guide": "Готовые решения",
 }
 
 # Маппинг task → .env атрибут для модели
 _ENV_MODEL_MAP = {
     "consultation": "openai_model_consultation",
     "classification": "openai_model_classification",
+    "complexity": "openai_model_classification",
     "article": "openai_model_article",
     "utility": "openai_model_utility",
+    "guide": "openai_model_consultation",
 }
 
 

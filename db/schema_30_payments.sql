@@ -21,7 +21,7 @@ CREATE TABLE IF NOT EXISTS subscription_plans (
 
 -- Initial data: Standard subscription
 INSERT INTO subscription_plans (name, description, price_rub, duration_days, tokens_included, is_active)
-VALUES ('Стандарт', 'Месячная подписка с безлимитными вопросами', 500.00, 30, 999, true)
+VALUES ('Стандарт', 'Месячная подписка с безлимитными токенами', 500.00, 30, 999, true)
 ON CONFLICT DO NOTHING;
 
 -- ============================================================================
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS token_packages (
 
 -- Initial data: 20 questions package
 INSERT INTO token_packages (name, description, price_rub, tokens_amount, is_active)
-VALUES ('20 вопросов', 'Разовая покупка 20 вопросов', 200.00, 20, true)
+VALUES ('20 токенов', 'Разовая покупка 20 токенов', 200.00, 20, true)
 ON CONFLICT DO NOTHING;
 
 -- ============================================================================

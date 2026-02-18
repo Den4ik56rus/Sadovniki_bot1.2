@@ -5,6 +5,11 @@ import type { ActivityEvent } from '@/types'
 import { useCurrencyStore } from '@/store'
 import styles from './ActivityItem.module.css'
 
+/** Удаляет HTML-теги из текста (для chat_message) */
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, '')
+}
+
 interface ActivityItemProps {
   event: ActivityEvent
   onTaskComplete?: (taskId: number) => void
@@ -44,6 +49,8 @@ export function ActivityItem({
     switch (event.event_type) {
       case 'consultation':
         return '💬'
+      case 'chat_message':
+        return event.event_data.direction === 'user' ? '👤' : '🤖'
       case 'task_created':
         return '📋'
       case 'task_completed':
@@ -83,6 +90,40 @@ export function ActivityItem({
     const data = event.event_data
 
     switch (event.event_type) {
+      case 'chat_message': {
+        const direction = data.direction as string
+        const text = stripHtml(data.text as string)
+        const meta = data.meta as {
+          type?: string
+          callback_data?: string
+          keyboard?: {
+            type: string
+            buttons: Array<Array<{ text: string; callback_data?: string }>>
+          }
+        } | null
+        const isCallback = meta?.type === 'callback'
+        const hasKeyboard = direction === 'bot' && meta?.keyboard?.buttons
+        return (
+          <div className={`${styles.chatBubble} ${direction === 'user' ? styles.chatUser : styles.chatBot}`}>
+            {isCallback && <span className={styles.chatCallbackBadge}>кнопка</span>}
+            <div className={styles.chatText}>{text}</div>
+            {hasKeyboard && meta?.keyboard && (
+              <div className={styles.keyboardButtons}>
+                {meta.keyboard.buttons.map((row, rowIdx) => (
+                  <div key={rowIdx} className={styles.keyboardRow}>
+                    {row.map((btn, btnIdx) => (
+                      <span key={btnIdx} className={styles.keyboardButton}>
+                        {btn.text}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      }
+
       case 'consultation':
         return (
           <div
@@ -278,6 +319,21 @@ export function ActivityItem({
       paid: 'Купил',
     }
     return labels[status] || status
+  }
+
+  // Chat messages use a different layout (full-width, aligned bubbles)
+  if (event.event_type === 'chat_message') {
+    const direction = event.event_data.direction as string
+    return (
+      <div className={`${styles.chatItem} ${direction === 'user' ? styles.chatItemUser : styles.chatItemBot}`}>
+        <div className={styles.content}>
+          <div className={styles.body}>{renderContent()}</div>
+          <div className={`${styles.time} ${direction === 'user' ? styles.chatTimeRight : ''}`}>
+            {formatDate(event.created_at)}
+          </div>
+        </div>
+      </div>
+    )
   }
 
   return (

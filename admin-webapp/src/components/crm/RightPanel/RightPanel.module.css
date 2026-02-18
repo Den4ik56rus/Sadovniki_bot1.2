@@ -6,6 +6,9 @@
 }
 
 .header {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
   padding: 1rem;
   border-bottom: 1px solid var(--border-default);
   flex-shrink: 0;

@@ -44,6 +44,15 @@ async def log_consultation(
     compose_tokens: int = 0,
     classification_cost_usd: float = 0.0,
     classification_tokens: int = 0,
+    # Complexity tracking
+    complexity_tier: Optional[str] = None,
+    complexity_metadata: Optional[Dict] = None,
+    complexity_classification_cost_usd: float = 0.0,
+    complexity_classification_tokens: int = 0,
+    # Phase tracking
+    phase_mode: Optional[str] = None,
+    phase_key: Optional[str] = None,
+    phase_number: int = 0,
 ) -> int:
     """
     Записывает лог консультации в БД.
@@ -64,9 +73,12 @@ async def log_consultation(
                     consultation_category, culture,
                     embedding_tokens, embedding_cost_usd, embedding_model,
                     composed_question, compose_cost_usd, compose_tokens,
-                    classification_cost_usd, classification_tokens
+                    classification_cost_usd, classification_tokens,
+                    complexity_tier, complexity_metadata,
+                    complexity_classification_cost_usd, complexity_classification_tokens,
+                    phase_mode, phase_key, phase_number
                 )
-                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29)
                 RETURNING id, created_at
                 """,
                 user_id,
@@ -91,6 +103,13 @@ async def log_consultation(
                 compose_tokens,
                 classification_cost_usd,
                 classification_tokens,
+                complexity_tier,
+                json.dumps(complexity_metadata or {}, ensure_ascii=False),
+                complexity_classification_cost_usd,
+                complexity_classification_tokens,
+                phase_mode,
+                phase_key,
+                phase_number,
             )
             log_id = row["id"]
             created_at = row["created_at"]
@@ -114,7 +133,7 @@ async def log_consultation(
                 total_tokens = prompt_tokens + completion_tokens
 
                 # Calculate llm_cost_usd (same logic as in get_logs_by_topic line 445)
-                llm_cost_usd = max(0, float(cost_usd) - float(embedding_cost_usd) - float(compose_cost_usd) - float(classification_cost_usd))
+                llm_cost_usd = max(0, float(cost_usd) - float(embedding_cost_usd) - float(compose_cost_usd) - float(classification_cost_usd) - float(complexity_classification_cost_usd))
 
                 # Парсим JSON поля если они строки
                 parsed_rag_snippets = rag_snippets
@@ -155,6 +174,10 @@ async def log_consultation(
                     "embedding_cost_usd": float(embedding_cost_usd) if embedding_cost_usd else 0.0,
                     "classification_tokens": classification_tokens or 0,
                     "classification_cost_usd": float(classification_cost_usd) if classification_cost_usd else 0.0,
+                    "complexity_tier": complexity_tier,
+                    "complexity_metadata": complexity_metadata or {},
+                    "complexity_classification_cost_usd": float(complexity_classification_cost_usd) if complexity_classification_cost_usd else 0.0,
+                    "complexity_classification_tokens": complexity_classification_tokens or 0,
                     "created_at": created_at.isoformat() if created_at else None,
                     "user": {
                         "username": user_row["username"] if user_row else None,
@@ -417,7 +440,11 @@ async def get_logs_by_topic(topic_id: int) -> Dict[str, Any]:
                 COALESCE(compose_cost_usd, 0) AS compose_cost_usd,
                 COALESCE(compose_tokens, 0) AS compose_tokens,
                 COALESCE(classification_cost_usd, 0) AS classification_cost_usd,
-                COALESCE(classification_tokens, 0) AS classification_tokens
+                COALESCE(classification_tokens, 0) AS classification_tokens,
+                complexity_tier,
+                COALESCE(complexity_metadata, '{}'::jsonb) AS complexity_metadata,
+                COALESCE(complexity_classification_cost_usd, 0) AS complexity_classification_cost_usd,
+                COALESCE(complexity_classification_tokens, 0) AS complexity_classification_tokens
             FROM consultation_logs
             WHERE topic_id = $1
             ORDER BY created_at ASC
@@ -445,7 +472,18 @@ async def get_logs_by_topic(topic_id: int) -> Dict[str, Any]:
             embedding_cost_usd = float(row["embedding_cost_usd"]) if row["embedding_cost_usd"] else 0
             compose_cost_usd = float(row["compose_cost_usd"]) if row["compose_cost_usd"] else 0
             classification_cost_usd = float(row["classification_cost_usd"]) if row["classification_cost_usd"] else 0
-            llm_cost_usd = max(0, cost_usd - embedding_cost_usd - compose_cost_usd - classification_cost_usd)
+            complexity_cost_usd = float(row["complexity_classification_cost_usd"]) if row["complexity_classification_cost_usd"] else 0
+            llm_cost_usd = max(0, cost_usd - embedding_cost_usd - compose_cost_usd - classification_cost_usd - complexity_cost_usd)
+
+            # Парсим complexity_metadata
+            complexity_metadata = row["complexity_metadata"]
+            if isinstance(complexity_metadata, str):
+                try:
+                    complexity_metadata = json.loads(complexity_metadata)
+                except:
+                    complexity_metadata = {}
+            elif complexity_metadata is None:
+                complexity_metadata = {}
 
             logs.append({
                 "id": row["id"],
@@ -472,12 +510,17 @@ async def get_logs_by_topic(topic_id: int) -> Dict[str, Any]:
                 "classification_cost_usd": classification_cost_usd,
                 "classification_tokens": row["classification_tokens"] or 0,
                 "llm_cost_usd": llm_cost_usd,
+                # Complexity tracking (shadow mode)
+                "complexity_tier": row["complexity_tier"],
+                "complexity_metadata": complexity_metadata,
+                "complexity_classification_cost_usd": complexity_cost_usd,
+                "complexity_classification_tokens": row["complexity_classification_tokens"] or 0,
             })
 
         # Получаем все сообщения топика (переписку)
         message_rows = await conn.fetch(
             """
-            SELECT id, direction, text, created_at
+            SELECT id, direction, text, created_at, meta
             FROM messages
             WHERE topic_id = $1
             ORDER BY created_at ASC
@@ -492,6 +535,7 @@ async def get_logs_by_topic(topic_id: int) -> Dict[str, Any]:
                 "direction": row["direction"],
                 "text": row["text"],
                 "created_at": row["created_at"].isoformat() if row["created_at"] else None,
+                "meta": row["meta"],
             })
 
         return {"topic": topic, "logs": logs, "messages": messages}

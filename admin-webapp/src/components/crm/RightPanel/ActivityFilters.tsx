@@ -9,7 +9,8 @@ interface ActivityFiltersProps {
 }
 
 const _FILTER_LABELS: Record<ActivityEventType, { label: string; icon: string }> = {
-  consultation: { label: 'Консультации', icon: '💬' },
+  chat_message: { label: 'Сообщения', icon: '💬' },
+  consultation: { label: 'Консультации', icon: '🧠' },
   article: { label: 'Статьи', icon: '📄' },
   task_created: { label: 'Задачи', icon: '✅' },
   task_completed: { label: 'Задачи', icon: '✅' },
@@ -23,7 +24,8 @@ void _FILTER_LABELS // Available for future use
 
 // Group task_created and task_completed into one filter
 const VISIBLE_FILTERS: { type: ActivityEventType | 'tasks'; label: string; icon: string; includes: ActivityEventType[] }[] = [
-  { type: 'consultation', label: 'Консультации', icon: '💬', includes: ['consultation'] },
+  { type: 'chat_message', label: 'Чат', icon: '💬', includes: ['chat_message'] },
+  { type: 'consultation', label: 'Консультации', icon: '🧠', includes: ['consultation'] },
   { type: 'tasks', label: 'Задачи', icon: '✅', includes: ['task_created', 'task_completed'] },
   { type: 'note', label: 'Заметки', icon: '📝', includes: ['note'] },
   { type: 'status_change', label: 'Изменения', icon: '🔄', includes: ['status_change', 'tag_change'] },

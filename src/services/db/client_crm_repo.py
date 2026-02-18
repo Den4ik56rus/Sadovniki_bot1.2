@@ -724,12 +724,33 @@ async def get_client_activity_with_consultations(
         WHERE t.user_id = $1
     """
 
+    # Запрос для сообщений чата — только системные/меню (без topic_id)
+    # Сообщения с topic_id видны внутри консультации (TopicView)
+    messages_query = """
+        SELECT
+            m.id,
+            'message' as source,
+            'chat_message' as event_type,
+            jsonb_build_object(
+                'direction', m.direction,
+                'text', LEFT(m.text, 500),
+                'topic_id', m.topic_id,
+                'meta', m.meta
+            ) as event_data,
+            m.created_at
+        FROM messages m
+        WHERE m.user_id = $1
+          AND m.topic_id IS NULL
+    """
+
     # Объединяем
     combined_query = f"""
         WITH combined AS (
             {activity_query}
             UNION ALL
             {consultation_query}
+            UNION ALL
+            {messages_query}
         )
         SELECT * FROM combined
     """
@@ -840,6 +861,7 @@ async def get_client_full_data(user_id: int) -> Optional[Dict[str, Any]]:
                 u.username,
                 u.first_name,
                 u.last_name,
+                u.avatar_path,
                 u.token_balance,
                 u.region,
                 u.created_at as user_created_at,

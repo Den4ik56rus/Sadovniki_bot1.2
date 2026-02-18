@@ -1,9 +1,12 @@
 // Universal Funnel Client Card
+import { useState } from 'react'
 import { useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import type { FunnelClient } from '@/types'
 import { useCurrencyStore } from '@/store'
 import styles from './FunnelClientCard.module.css'
+
+const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
 
 interface FunnelClientCardProps {
   client: FunnelClient
@@ -32,6 +35,7 @@ function formatDate(dateStr: string | null): string {
 
 export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
   const { usdRate } = useCurrencyStore()
+  const [imgError, setImgError] = useState(false)
 
   const {
     attributes,
@@ -82,9 +86,18 @@ export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
       {/* Header: Avatar + Name + Date */}
       <div className={styles.header}>
         <div className={styles.avatarSection}>
-          <div className={styles.avatar}>
-            {displayName.charAt(0).toUpperCase()}
-          </div>
+          {client.avatar_url && !imgError ? (
+            <img
+              src={`${API_BASE}${client.avatar_url.replace('/api/admin', '')}`}
+              alt={displayName}
+              className={styles.avatarImg}
+              onError={() => setImgError(true)}
+            />
+          ) : (
+            <div className={styles.avatar}>
+              {displayName.charAt(0).toUpperCase()}
+            </div>
+          )}
           <div className={styles.info}>
             <span className={styles.source}>от: {source}</span>
             <span className={styles.name}>{displayName}</span>

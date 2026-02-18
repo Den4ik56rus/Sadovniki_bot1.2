@@ -1,9 +1,22 @@
 # src/services/db/users_repo.py
 
+import logging
 from typing import Optional  # username / first_name / last_name могут быть None
 
 from src.services.db.pool import get_pool  # Берём функцию, которая отдаёт пул подключений
 from src.pricing import TRIAL_QUESTIONS, get_trial_questions
+
+logger = logging.getLogger(__name__)
+
+
+def _get_bot_telegram_id() -> Optional[int]:
+    """Получить telegram_user_id бота из BOT_TOKEN (первая часть до ':')."""
+    try:
+        from src.config import get_settings
+        token = get_settings().telegram_bot_token
+        return int(token.split(":")[0])
+    except Exception:
+        return None
 
 
 async def get_or_create_user(
@@ -14,9 +27,15 @@ async def get_or_create_user(
 ) -> int:
     """
     Ищет пользователя по telegram_user_id, если нет — создаёт.
-    Новым пользователям начисляет бесплатные вопросы (триал).
+    Новым пользователям начисляет бесплатные токены (триал).
     Возвращает внутренний users.id.
     """
+    # Не регистрируем самого бота как пользователя
+    bot_id = _get_bot_telegram_id()
+    if bot_id and telegram_user_id == bot_id:
+        logger.warning(f"Попытка зарегистрировать бота (tg_id={telegram_user_id}) как пользователя — пропускаем")
+        return -1
+
     # Получаем пул подключений
     pool = get_pool()
 
@@ -37,7 +56,7 @@ async def get_or_create_user(
             return row["id"]
 
         # Если не нашли — создаём нового пользователя и начисляем триал
-        # Получаем количество триальных вопросов из настроек (динамическое)
+        # Получаем количество триальных токенов из настроек (динамическое)
         trial_qty = await get_trial_questions()
 
         async with conn.transaction():
@@ -56,7 +75,7 @@ async def get_or_create_user(
 
             new_user_id = row["id"]
 
-            # Начисляем бесплатные вопросы
+            # Начисляем бесплатные токены
             await conn.execute(
                 """
                 UPDATE users
@@ -78,10 +97,38 @@ async def get_or_create_user(
                 new_user_id,
                 trial_qty,
                 "trial_grant",
-                "Бесплатные вопросы для новых пользователей",
+                "Бесплатные токены для новых пользователей",
+            )
+
+            # Добавляем в CRM-воронку и legacy client_funnel_status
+            await conn.execute(
+                """
+                INSERT INTO client_funnel_position (user_id, funnel_id, stage_key)
+                VALUES ($1, 'crm', 'new')
+                ON CONFLICT (user_id, funnel_id) DO NOTHING
+                """,
+                new_user_id,
+            )
+            await conn.execute(
+                """
+                INSERT INTO client_funnel_status (user_id, status, auto_status)
+                VALUES ($1, 'new', 'new')
+                ON CONFLICT (user_id) DO NOTHING
+                """,
+                new_user_id,
             )
 
             return new_user_id
+
+
+async def update_user_avatar(user_id: int, avatar_path: str) -> None:
+    """Обновляет путь к аватару пользователя."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE users SET avatar_path = $1 WHERE id = $2",
+            avatar_path, user_id,
+        )
 
 
 async def user_exists(telegram_user_id: int) -> bool:

@@ -98,6 +98,8 @@ _TASK_MODEL_MAP = {
     "classification": "openai_model_classification",
     "article": "openai_model_article",
     "utility": "openai_model_utility",
+    "complexity": "openai_model_classification",  # Fallback на classification модель
+    "guide": "openai_model_consultation",  # Fallback на consultation модель
 }
 
 

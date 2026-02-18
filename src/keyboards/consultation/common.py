@@ -79,24 +79,37 @@ def get_example_questions_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_followup_keyboard(category: str = "") -> InlineKeyboardMarkup:
+def get_followup_keyboard(category: str = "", phase_eligible: bool = False, phase_button_label: str = "", phase_cost: int = 2) -> InlineKeyboardMarkup:
     """Инлайн-клавиатура после получения ответа — выбор типа следующего вопроса."""
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text="✅ Задать уточняющий вопрос",
-                    callback_data="followup_type:clarification"
-                ),
-            ],
-            [
-                InlineKeyboardButton(
-                    text="✅ Задать вопрос по новой теме",
-                    callback_data="followup_type:new_topic"
-                ),
-            ],
-        ]
-    )
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="✅ Задать уточняющий вопрос",
+                callback_data="followup_type:clarification"
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="✅ Задать вопрос по новой теме",
+                callback_data="followup_type:new_topic"
+            ),
+        ],
+    ]
+
+    if phase_eligible:
+        detail_text = (
+            f"{phase_button_label} ({phase_cost} вопроса)"
+            if phase_button_label
+            else f"📋 Подробнее по фазам роста ({phase_cost} вопроса)"
+        )
+        buttons.append([
+            InlineKeyboardButton(
+                text=detail_text,
+                callback_data="complexity_confirm:long",
+            ),
+        ])
+
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
 # ==== Клавиатура подтверждения стоимости (complexity-based) ====

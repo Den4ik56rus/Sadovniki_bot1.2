@@ -24,7 +24,7 @@ from src.keyboards.main.main_menu import get_main_keyboard, get_admin_start_keyb
 
 # Импортируем инлайн-меню консультаций (6 тем + кнопка "Закрыть")
 from src.keyboards.consultation.common import CONSULTATION_MENU_INLINE_KB, CONSULTATION_ENTRY_TEXT, EXAMPLE_QUESTIONS, get_example_questions_keyboard
-from src.handlers.consultation.entry import _log_bot_msg, _log_user_callback, serialize_keyboard
+from src.handlers.consultation.entry import _log_bot_msg, _log_user_callback, serialize_keyboard, run_consultation_pipeline
 
 # Импортируем список админов
 from src.handlers.admin import ADMIN_IDS
@@ -501,18 +501,18 @@ async def handle_example_question(callback: CallbackQuery) -> None:
 
     await callback.answer()
 
-    # Сохраняем выбранный пример в контексте
-    CONSULTATION_CONTEXT[user.id] = {"example_question": question_text}
-    CONSULTATION_STATE[user.id] = "waiting_example_details"
+    # Очищаем старый контекст и сразу запускаем пайплайн с примером вопроса
+    CONSULTATION_CONTEXT.pop(user.id, None)
+    CONSULTATION_STATE[user.id] = "waiting_consultation_question"
 
-    # Просим пользователя уточнить детали
-    example_prompt = (
-        f"📝 Вы выбрали: «{question_text}»\n\n"
-        "Напишите уточнения — например, какая культура, регион, "
-        "сорт или другие детали, чтобы ответ был максимально полезным:"
+    await run_consultation_pipeline(
+        message=callback.message,
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        question_text=question_text,
     )
-    await callback.message.answer(example_prompt)
-    await _log_bot_msg(example_prompt, telegram_user_id=user.id)
 
 
 @router.callback_query(F.data == "custom_question")

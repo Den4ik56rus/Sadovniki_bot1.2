@@ -56,7 +56,6 @@ from src.keyboards.consultation.common import (
     CONSULTATION_ENTRY_TEXT,
     get_example_questions_keyboard,
     get_complexity_confirm_keyboard,
-    get_phase_eligible_keyboard,
     get_next_phase_keyboard,
     get_phase_select_keyboard,
     get_topic_select_keyboard,
@@ -442,8 +441,34 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
                     "telegram_user_id": telegram_user_id,
                 }
         else:
-            response_keyboard = get_followup_keyboard(category)
+            # Проверяем phase_eligible — предлагаем кнопку "Подробнее по фазам"
+            _pe = cr.get("phase_eligible", False) if cr else False
+            _pe_label = cr.get("phase_button_label", "") if cr else ""
+            response_keyboard = get_followup_keyboard(
+                category,
+                phase_eligible=_pe,
+                phase_button_label=_pe_label,
+                phase_cost=PHASE_COST,
+            )
             next_state = "waiting_followup"
+
+            # Если phase_eligible — сохраняем контекст для callback complexity_confirm:long
+            if _pe and cr:
+                CONSULTATION_CONTEXT[telegram_user_id] = {
+                    **CONSULTATION_CONTEXT.get(telegram_user_id, {}),
+                    "_pending_complexity": True,
+                    "_phase_eligible": True,
+                    "question_text": composed_q,
+                    "internal_user_id": user_id,
+                    "category": category,
+                    "culture": culture,
+                    "correction_hint": context.get("correction_hint"),
+                    "classification_cost": context["classification_cost_usd"],
+                    "classification_tokens": context["classification_tokens"],
+                    "complexity_result": cr,
+                    "tier": "short_answer",
+                    "telegram_user_id": telegram_user_id,
+                }
 
         # Финализируем: edit стриминг-сообщения с полным отформатированным текстом
         await finalize_streaming_message(
@@ -913,51 +938,7 @@ async def run_consultation_pipeline(
         print(f"[unified_entry] Showing complexity confirmation for tier={tier}")
         return
 
-    # === short_answer: проверяем phase_eligible ===
-    phase_eligible = complexity_result.get("phase_eligible", False) if complexity_result else False
-
-    if phase_eligible and complexity_result:
-        # Вопрос простой, но можно ответить подробнее по фазам — предлагаем выбор
-        balance = await get_token_balance(internal_user_id)
-        confirm_msg = complexity_result.get("confirm_message", "")
-        phase_label = complexity_result.get("phase_button_label", "")
-
-        CONSULTATION_CONTEXT[telegram_user_id] = {
-            "_pending_complexity": True,
-            "_phase_eligible": True,
-            "question_text": question_text,
-            "question_msg_id": question_msg_id,
-            "internal_user_id": internal_user_id,
-            "category": category,
-            "culture": culture,
-            "correction_hint": correction_hint,
-            "classification_cost": classification_cost,
-            "classification_tokens": classification_tokens,
-            "complexity_result": complexity_result,
-            "tier": "short_answer",
-            "telegram_user_id": telegram_user_id,
-            "username": username,
-            "first_name": first_name,
-            "last_name": last_name,
-        }
-        CONSULTATION_STATE[telegram_user_id] = "waiting_complexity_confirm"
-
-        personal_text = confirm_msg or "Этот вопрос можно раскрыть кратко или подробнее по фазам роста."
-
-        phase_eligible_text = (
-            f"{personal_text}\n\n"
-            f"Выберите формат ответа:"
-        )
-        kb = get_phase_eligible_keyboard(
-            phase_button_label=phase_label,
-            phase_cost=PHASE_COST,
-        )
-        await message.answer(phase_eligible_text, reply_markup=kb)
-        await _log_bot_msg(phase_eligible_text, user_id=internal_user_id, session_id=f"tg:{telegram_user_id}", telegram_user_id=telegram_user_id, meta=serialize_keyboard(kb))
-        print(f"[unified_entry] Showing phase_eligible choice for short_answer")
-        return
-
-    # === short_answer (не phase_eligible): списываем 1 токен и идём дальше ===
+    # === short_answer: сразу отвечаем (phase_eligible предложим после ответа) ===
     await deduct_tokens(
         internal_user_id,
         cost,
@@ -1639,46 +1620,7 @@ async def process_followup_question_logic(message: Message) -> None:
             print(f"[followup] Showing complexity confirmation for tier={followup_tier}")
             return
 
-        # phase_eligible → предлагаем выбор формата (краткий / по фазам / под ключ)
-        followup_phase_eligible = followup_complexity.get("phase_eligible", False) if followup_complexity else False
-        if followup_phase_eligible and followup_complexity:
-            balance = await get_token_balance(user_id)
-            confirm_msg = followup_complexity.get("confirm_message", "")
-            phase_label = followup_complexity.get("phase_button_label", "")
-
-            CONSULTATION_CONTEXT[telegram_user_id] = {
-                "_pending_complexity": True,
-                "_phase_eligible": True,
-                "question_text": user_text,
-                "internal_user_id": user_id,
-                "category": detected_category,
-                "culture": culture,
-                "correction_hint": correction_hint,
-                "classification_cost": classification_cost_usd,
-                "classification_tokens": classification_tokens,
-                "complexity_result": followup_complexity,
-                "tier": "short_answer",
-                "telegram_user_id": telegram_user_id,
-                "_is_followup": True,
-                "topic_id": topic_id,
-                "session_id": session_id,
-            }
-            CONSULTATION_STATE[telegram_user_id] = "waiting_complexity_confirm"
-
-            personal_text = confirm_msg or "Этот вопрос можно раскрыть кратко или подробнее по фазам роста."
-
-            fu_pe_text = (
-                f"{personal_text}\n\n"
-                f"Выберите формат ответа:"
-            )
-            kb = get_phase_eligible_keyboard(
-                phase_button_label=phase_label,
-                phase_cost=PHASE_COST,
-            )
-            await message.answer(fu_pe_text, reply_markup=kb)
-            await _log_bot_msg(fu_pe_text, user_id=user_id, session_id=session_id, topic_id=topic_id, meta=serialize_keyboard(kb))
-            print(f"[followup] Showing phase_eligible choice for short_answer follow-up")
-            return
+        # phase_eligible: сразу отвечаем кратко, предложим фазы после ответа
 
         # short_answer → списываем 1 токен сразу
         followup_cost = COST_NEW_TOPIC  # 1

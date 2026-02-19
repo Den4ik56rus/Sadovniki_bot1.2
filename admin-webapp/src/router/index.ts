@@ -12,6 +12,7 @@ export interface RouteMatch {
   view: string
   funnelId?: string
   clientId?: number
+  topicId?: number
   searchQuery?: string
 }
 
@@ -50,10 +51,16 @@ export function matchRoute(appPath?: string): RouteMatch {
 
     const match: RouteMatch = { view, funnelId }
 
-    // /funnel/:funnelId/client/:clientId
+    // /funnel/:funnelId/client/:clientId[/topic/:topicId]
     if (segments[2] === 'client' && segments[3]) {
       const id = parseInt(segments[3], 10)
       if (!isNaN(id)) match.clientId = id
+
+      // /funnel/:funnelId/client/:clientId/topic/:topicId
+      if (segments[4] === 'topic' && segments[5]) {
+        const tid = parseInt(segments[5], 10)
+        if (!isNaN(tid)) match.topicId = tid
+      }
     }
 
     const search = searchParams.get('search')
@@ -78,6 +85,9 @@ export function buildPath(match: RouteMatch): string {
     let path = `/funnel/${encodeURIComponent(match.funnelId)}`
     if (match.clientId) {
       path += `/client/${match.clientId}`
+      if (match.topicId) {
+        path += `/topic/${match.topicId}`
+      }
     }
     if (match.searchQuery) {
       path += `?search=${encodeURIComponent(match.searchQuery)}`

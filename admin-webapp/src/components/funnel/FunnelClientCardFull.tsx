@@ -2,6 +2,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import type { CrmClientFull, ClientTag } from '@/types'
 import { api } from '@/services/api'
+import { navigate as routerNavigate, matchRoute } from '@/router'
+import { useUIStore } from '@/store'
 import { LeftPanel } from '../crm/LeftPanel'
 import { RightPanel } from '../crm/RightPanel'
 import styles from './FunnelClientCardFull.module.css'
@@ -13,10 +15,26 @@ interface FunnelClientCardFullProps {
 }
 
 export function FunnelClientCardFull({ clientId, funnelId, onClose }: FunnelClientCardFullProps) {
+  const { currentView } = useUIStore()
   const [client, setClient] = useState<CrmClientFull | null>(null)
   const [allTags, setAllTags] = useState<ClientTag[]>([])
   const [isLoading, setIsLoading] = useState(true)
-  const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
+
+  // Read initial topicId from URL
+  const [selectedTopicId, setSelectedTopicIdRaw] = useState<number | null>(() => {
+    const match = matchRoute()
+    return match.topicId ?? null
+  })
+
+  // Wrapper that syncs topicId to URL
+  const setSelectedTopicId = useCallback((topicId: number | null) => {
+    setSelectedTopicIdRaw(topicId)
+    if (topicId) {
+      routerNavigate({ view: currentView, funnelId, clientId, topicId })
+    } else {
+      routerNavigate({ view: currentView, funnelId, clientId }, { replace: true })
+    }
+  }, [currentView, funnelId, clientId])
 
   const fetchData = useCallback(async () => {
     try {

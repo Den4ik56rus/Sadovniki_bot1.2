@@ -109,12 +109,12 @@ export function RightPanel({
     }
   }, [sseRefreshKey, silentRefetchActivity])
 
-  // Scroll to bottom after activity loads
+  // Scroll to bottom after activity loads or when returning from TopicView/ArticleView
   useEffect(() => {
-    if (!isLoading && activity.length > 0) {
-      scrollToBottom()
+    if (!isLoading && activity.length > 0 && !selectedTopicId && !selectedArticleId) {
+      requestAnimationFrame(() => scrollToBottom())
     }
-  }, [isLoading, activity.length, scrollToBottom])
+  }, [isLoading, activity.length, selectedTopicId, selectedArticleId, scrollToBottom])
 
   const handleFilterChange = (filters: ActivityEventType[]) => {
     setActiveFilters(filters)

@@ -22,29 +22,35 @@ function Sparkline({
   const min = Math.min(...data, 0)
   const range = max - min || 1
 
+  // Оставляем отступ сверху для линии, снизу — мягкий fade
+  const paddingTop = 4
+  const chartHeight = height - paddingTop
+
   const points = data.map((val, i) => {
     const x = (i / (data.length - 1)) * width
-    const y = height - ((val - min) / range) * (height - 4) - 2
+    const y = paddingTop + chartHeight - ((val - min) / range) * chartHeight
     return `${x},${y}`
   })
 
-  const areaPoints = [
-    `0,${height}`,
-    ...points,
-    `${width},${height}`,
-  ].join(' ')
+  // Area path: линия графика → вниз за пределы видимости (без горизонтальной линии внизу)
+  const firstPoint = points[0]
+  const lastPoint = points[points.length - 1]
+  const pathD = `M${firstPoint} ${points.slice(1).map(p => `L${p}`).join(' ')} L${lastPoint.split(',')[0]},${height + 2} L0,${height + 2} Z`
+
+  const gradId = `grad-${color.replace(/[^a-zA-Z0-9]/g, '')}-${height}`
 
   return (
-    <svg width={width} height={height} className={styles.sparkline}>
+    <svg width={width} height={height} className={styles.sparkline} style={{ overflow: 'hidden' }}>
       <defs>
-        <linearGradient id={`grad-${color.replace('#', '')}`} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor={color} stopOpacity="0.3" />
-          <stop offset="100%" stopColor={color} stopOpacity="0.02" />
+        <linearGradient id={gradId} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
+          <stop offset="70%" stopColor={color} stopOpacity="0.06" />
+          <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>
-      <polygon
-        points={areaPoints}
-        fill={`url(#grad-${color.replace('#', '')})`}
+      <path
+        d={pathD}
+        fill={`url(#${gradId})`}
       />
       <polyline
         points={points.join(' ')}

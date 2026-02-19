@@ -427,10 +427,11 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
         # === Enforcement длины ответа ===
         cr_tier = _complexity_kwargs.get("complexity_tier")
         _is_extended = cr_tier in ("extended_non_phase",) or _phase_mode in ("seasonal_phase", "single_phase")
-        if cr_tier == "short_answer":
-            reply_text = _truncate_to_single_message(reply_text)
-        elif _is_extended:
+        if _is_extended:
+            # Расширенный / фазовый ответ — приоритет выше чем cr_tier
             reply_text = _enforce_two_message_format(reply_text)
+        elif cr_tier == "short_answer":
+            reply_text = _truncate_to_single_message(reply_text)
 
         # Определяем клавиатуру: фазовая (любой phase_mode) или стандартная
         if _phase_mode in ("seasonal_phase", "single_phase"):

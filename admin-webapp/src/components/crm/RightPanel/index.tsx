@@ -6,6 +6,7 @@ import { ActivityFilters } from './ActivityFilters'
 import { ActivityItem } from './ActivityItem'
 import { AddTaskModal } from './AddTaskModal'
 import { AddNoteModal } from './AddNoteModal'
+import { AdminMessageInput } from './AdminMessageInput'
 import { TopicView } from './TopicView'
 import { ArticleView } from './ArticleView'
 import styles from './RightPanel.module.css'
@@ -233,6 +234,9 @@ export function RightPanel({
           ))
         )}
       </div>
+
+      {/* Admin message input */}
+      <AdminMessageInput clientId={clientId} />
 
       {/* Action buttons */}
       <div className={styles.actions}>

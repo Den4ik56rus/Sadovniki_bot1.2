@@ -175,20 +175,25 @@ export function ChatHistory({ clientId, onTopicClick, sseNewMessages }: ChatHist
 
           const msg = item.data
           const isUser = msg.direction === 'user'
+          const isAdminManual = msg.direction === 'bot' && msg.meta?.source === 'admin'
           const isCallback = msg.meta?.type === 'callback'
           const hasKeyboard = msg.direction === 'bot' && msg.meta?.keyboard
-          const isSystemBot = msg.direction === 'bot' && !msg.topic_id
+          const isSystemBot = msg.direction === 'bot' && !msg.topic_id && !isAdminManual
 
           return (
             <div
               key={`msg-${msg.id}`}
               className={`${styles.messageBubble} ${
                 isUser ? styles.userMessage :
+                isAdminManual ? styles.adminMessage :
                 isSystemBot ? styles.systemMessage :
                 styles.botMessage
               }`}
             >
               <div className={styles.messageContent}>
+                {isAdminManual && (
+                  <span className={styles.adminBadge}>Админ</span>
+                )}
                 {msg.text}
                 {isCallback && (
                   <span className={styles.callbackBadge}>кнопка</span>

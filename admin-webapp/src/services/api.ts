@@ -433,6 +433,13 @@ export const api = {
     return fetchApi<ChatHistoryResponse>(`/crm/clients/${clientId}/chat`)
   },
 
+  async sendMessageToClient(clientId: number, text: string): Promise<{ success: boolean; message_id: number }> {
+    return fetchApi(`/crm/clients/${clientId}/send-message`, {
+      method: 'POST',
+      body: JSON.stringify({ text }),
+    })
+  },
+
   // CRM: Funnel columns (Kanban)
   async getFunnelColumns(): Promise<FunnelColumnConfig[]> {
     return fetchApi<FunnelColumnConfig[]>('/crm/columns')

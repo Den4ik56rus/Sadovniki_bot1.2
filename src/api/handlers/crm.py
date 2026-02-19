@@ -13,6 +13,7 @@ from aiohttp import web
 from src.services.db import client_funnel_repo
 from src.services.db import consultation_logs_repo
 from src.services.db import client_crm_repo
+from src.services.db.pool import get_pool
 
 logger = logging.getLogger(__name__)
 
@@ -1072,6 +1073,66 @@ async def get_client_referrals(request: web.Request) -> web.Response:
     except Exception as e:
         logger.error(f"Error getting client referrals: {e}")
         raise web.HTTPInternalServerError(text="Database error")
+
+
+async def send_message_to_client(request: web.Request) -> web.Response:
+    """
+    POST /api/admin/crm/clients/{id}/send-message
+    Отправить сообщение клиенту через Telegram из панели администратора.
+
+    Body: {"text": "string"}
+    Returns: {"success": true, "message_id": 123}
+    """
+    try:
+        user_id = int(request.match_info["id"])
+        body = await request.json()
+
+        text = body.get("text", "").strip()
+        if not text:
+            raise web.HTTPBadRequest(text="Missing or empty 'text' field")
+        if len(text) > 4096:
+            raise web.HTTPBadRequest(text="Message too long (max 4096 chars)")
+
+        # Получить telegram_user_id из БД
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT telegram_user_id FROM users WHERE id = $1",
+                user_id
+            )
+
+        if not row:
+            raise web.HTTPNotFound(text="Client not found")
+
+        telegram_user_id = row["telegram_user_id"]
+
+        # Отправить сообщение через бота
+        from src.bot import get_bot
+        bot = get_bot()
+        await bot.send_message(chat_id=telegram_user_id, text=text)
+
+        # Залогировать сообщение — SSE broadcast произойдёт автоматически
+        from src.services.db.messages_repo import log_message
+        msg_id = await log_message(
+            user_id=user_id,
+            direction="bot",
+            text=text,
+            session_id=f"admin:{user_id}",
+            topic_id=None,
+            meta={"source": "admin", "type": "manual"},
+        )
+
+        return web.json_response({"success": True, "message_id": msg_id})
+
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid client ID")
+    except web.HTTPBadRequest:
+        raise
+    except web.HTTPNotFound:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending message to client: {e}")
+        raise web.HTTPInternalServerError(text=f"Failed to send message: {e}")
 
 
 async def reorder_funnel_columns(request: web.Request) -> web.Response:

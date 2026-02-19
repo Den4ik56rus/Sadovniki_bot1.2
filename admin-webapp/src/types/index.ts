@@ -97,8 +97,9 @@ export interface Message {
   topic_id?: number | null
   meta?: {
     keyboard?: KeyboardMeta
-    type?: 'callback'
+    type?: 'callback' | 'manual'
     callback_data?: string
+    source?: 'admin' | string
   } | null
 }
 

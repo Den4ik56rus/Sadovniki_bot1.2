@@ -82,6 +82,7 @@ def setup_routes(app: web.Application) -> None:
     # CRM: Лента активности
     app.router.add_get("/api/admin/crm/clients/{id}/activity", crm.get_client_activity)
     app.router.add_get("/api/admin/crm/clients/{id}/chat", crm.get_client_chat_history)
+    app.router.add_post("/api/admin/crm/clients/{id}/send-message", crm.send_message_to_client)
 
     # CRM: Колонки воронки (Kanban)
     app.router.add_get("/api/admin/crm/columns", crm.get_funnel_columns)

@@ -259,10 +259,24 @@ async def process_nutrition_consultation(
             kb = get_followup_keyboard(category)
             next_state = "waiting_followup"
 
+        # Enforcement длины ответа
+        _is_extended_nutrition = phase_mode in ("seasonal_phase", "single_phase")
+        if not _is_extended_nutrition and complexity_result:
+            cr_tier = complexity_result.get("tier")
+            if cr_tier == "short_answer":
+                from src.handlers.consultation.entry import _truncate_to_single_message
+                answer_text = _truncate_to_single_message(answer_text)
+            elif cr_tier in ("extended_non_phase",):
+                _is_extended_nutrition = True
+        if _is_extended_nutrition:
+            from src.handlers.consultation.entry import _enforce_two_message_format
+            answer_text = _enforce_two_message_format(answer_text)
+
         await finalize_streaming_message(
             streaming_msg, message, answer_text,
             keyboard=kb,
             show_followup_prompt=(next_state == "waiting_followup"),
+            force_two_parts=_is_extended_nutrition,
         )
         CONSULTATION_CONTEXT[telegram_user_id]["full_question"] = root_question
         CONSULTATION_STATE[telegram_user_id] = next_state
@@ -1146,11 +1160,16 @@ async def handle_detailed_plan(message: Message) -> None:
     streaming_msg = status_mgr.get_streaming_message()
     await status_mgr.complete()
 
+    # Enforcement: детальный план — расширенный формат (2 сообщения)
+    from src.handlers.consultation.entry import _enforce_two_message_format
+    detailed_plan = _enforce_two_message_format(detailed_plan)
+
     # Отправляем детальный план
     await finalize_streaming_message(
         streaming_msg, message, detailed_plan,
         keyboard=get_followup_keyboard(category),
         show_followup_prompt=True,
+        force_two_parts=True,
     )
 
     # Логируем запрос и ответ

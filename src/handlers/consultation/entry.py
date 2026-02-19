@@ -424,6 +424,14 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
         streaming_msg = status_mgr.get_streaming_message()
         await status_mgr.complete()
 
+        # === Enforcement длины ответа ===
+        cr_tier = _complexity_kwargs.get("complexity_tier")
+        _is_extended = cr_tier in ("extended_non_phase",) or _phase_mode in ("seasonal_phase", "single_phase")
+        if cr_tier == "short_answer":
+            reply_text = _truncate_to_single_message(reply_text)
+        elif _is_extended:
+            reply_text = _enforce_two_message_format(reply_text)
+
         # Определяем клавиатуру: фазовая (любой phase_mode) или стандартная
         if _phase_mode in ("seasonal_phase", "single_phase"):
             # Определяем фазу: если phase_key задан — используем его, иначе определяем из ответа
@@ -485,6 +493,7 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
             streaming_msg, message, reply_text,
             keyboard=response_keyboard,
             show_followup_prompt=True,
+            force_two_parts=_is_extended,
         )
 
         # Логируем ответ бота
@@ -514,6 +523,38 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
 
 # Константа: максимальная длина сообщения в Telegram
 TELEGRAM_MAX_MESSAGE_LENGTH = 4096
+
+
+def _truncate_to_single_message(text: str, max_chars: int = 4070) -> str:
+    """Обрезает markdown-текст чтобы HTML-конверсия уместилась в одно сообщение Telegram."""
+    html = markdown_to_telegram_html(text)
+    if len(html) <= max_chars:
+        return text
+    paragraphs = text.split("\n\n")
+    result = ""
+    for para in paragraphs:
+        candidate = result + ("\n\n" if result else "") + para
+        if len(markdown_to_telegram_html(candidate)) > max_chars - 50:
+            break
+        result = candidate
+    return result if result else text[:max_chars - 200]
+
+
+def _enforce_two_message_format(text: str) -> str:
+    """Обрезает текст чтобы после HTML-конверсии получилось максимум 2 сообщения Telegram."""
+    html = markdown_to_telegram_html(text)
+    # Два сообщения по 4070 символов каждое, минус запас на [Часть X/Y] префиксы
+    max_total = 4070 * 2 - 100
+    if len(html) <= max_total:
+        return text
+    paragraphs = text.split("\n\n")
+    result = ""
+    for para in paragraphs:
+        candidate = result + ("\n\n" if result else "") + para
+        if len(markdown_to_telegram_html(candidate)) > max_total:
+            break
+        result = candidate
+    return result if result else text[:max_total - 200]
 
 
 def split_long_message(text: str, max_length: int = TELEGRAM_MAX_MESSAGE_LENGTH) -> list[str]:
@@ -639,6 +680,7 @@ async def finalize_streaming_message(
     text: str,
     keyboard=None,
     show_followup_prompt: bool = False,
+    force_two_parts: bool = False,
 ) -> None:
     """
     Финализирует стриминг-сообщение: делает edit с полным отформатированным текстом.
@@ -646,6 +688,7 @@ async def finalize_streaming_message(
     Если текст короткий (≤4070) — edit существующего сообщения (мгновенно).
     Если текст длинный — удаляем стриминг-сообщение и отправляем частями.
     Если streaming_msg=None — fallback на обычную отправку.
+    Если force_two_parts=True — принудительно разбиваем на 2 части (для расширенных ответов).
 
     Args:
         streaming_msg: Стриминг-сообщение из StatusMessageManager.get_streaming_message()
@@ -653,9 +696,20 @@ async def finalize_streaming_message(
         text: Полный текст ответа (markdown)
         keyboard: Клавиатура для последнего сообщения
         show_followup_prompt: Показывать ли подсказку "Выберите вариант следующего вопроса"
+        force_two_parts: Принудительно разбить на 2 сообщения (для расширенных ответов)
     """
     html_text = markdown_to_telegram_html(text)
     parts = split_long_message(html_text, max_length=4070)
+
+    # Принудительное разбиение на 2 части для расширенных ответов
+    if force_two_parts and len(parts) == 1 and len(html_text) > 2000:
+        mid = len(html_text) // 2
+        # Ищем ближайший разрыв абзаца к середине
+        split_pos = html_text.rfind("\n\n", 0, mid + 500)
+        if split_pos == -1 or split_pos < len(html_text) // 4:
+            split_pos = html_text.rfind("\n", 0, mid + 500)
+        if split_pos > 0:
+            parts = [html_text[:split_pos].strip(), html_text[split_pos:].strip()]
 
     if streaming_msg and len(parts) == 1:
         # Короткий ответ — edit стриминг-сообщения (мгновенно, без мигания)
@@ -675,7 +729,13 @@ async def finalize_streaming_message(
                 await streaming_msg.delete()
             except Exception:
                 pass
-        await send_long_message(message, text)
+        # Если parts уже разбиты (force_two_parts или split_long_message), отправляем их напрямую
+        if len(parts) > 1:
+            for i, part in enumerate(parts, 1):
+                part_text = f"[Часть {i}/{len(parts)}]\n\n{part}"
+                await message.answer(part_text)
+        else:
+            await send_long_message(message, text)
 
     # Показываем кнопки отдельным сообщением (всегда, если есть keyboard)
     if keyboard:
@@ -973,10 +1033,6 @@ async def run_consultation_pipeline(
         }
         CONSULTATION_STATE[telegram_user_id] = "waiting_complexity_confirm"
 
-        # Персонализированное сообщение от классификатора
-        confirm_msg = complexity_result.get("confirm_message", "")
-        personal_text = confirm_msg or "Выберите формат ответа:"
-
         # Проверяем хватает ли на расширенный ответ (2 токена)
         has_enough_extended = await has_sufficient_tokens(internal_user_id, PHASE_COST)
 
@@ -986,7 +1042,18 @@ async def run_consultation_pipeline(
             extended_cost=PHASE_COST,
         )
 
-        choice_text = f"{personal_text}\n\nВаш баланс: {pluralize_questions(balance)}."
+        # Новый шаблон сообщения выбора формата
+        topic_case = complexity_result.get("topic_in_correct_case", "")
+        if topic_case:
+            choice_text = (
+                f"Тема {topic_case}….. достаточно емкая.\n\n"
+                "Я могу дать стандартный ответ - в него не войдут некоторые мелочи, "
+                "но все будет понятно👍\n\n"
+                "А так же расширенный ответ - если Вы хотите разобрать эту тему детально✅\n\n"
+                f"Сейчас на балансе: {pluralize_questions(balance)}"
+            )
+        else:
+            choice_text = f"Выберите формат ответа:\n\nСейчас на балансе: {pluralize_questions(balance)}"
         if not has_enough_extended:
             choice_text += f"\n\n⚠️ Для расширенного ответа требуется {pluralize_questions(PHASE_COST)}."
 

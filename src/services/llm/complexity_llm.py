@@ -34,6 +34,7 @@ class ComplexityResult(TypedDict):
     confirm_message: str               # Персонализированное сообщение для пользователя
     phase_button_label: str            # Короткая подпись для кнопки фазы (макс 35 символов)
     phase_eligible: bool               # True если short_answer, но можно ответить подробнее по фазам
+    topic_in_correct_case: str         # Тема вопроса в правильном русском падеже для шаблона
 
 
 # Фазы сезона
@@ -114,6 +115,12 @@ def _build_complexity_prompt() -> str:
    - НЕ упоминай стоимость, варианты ответа или кнопки — это добавится отдельно.
    - Тон: дружелюбный, экспертный. Укажи культуру в правильном падеже.
 
+   ОБЯЗАТЕЛЬНО для ВСЕХ short_answer заполни topic_in_correct_case:
+   - Тема вопроса пользователя в правильном русском падеже (родительном).
+   - Краткая формулировка (2-5 слов).
+   - Примеры: "питания клубники", "кислотности почвы для голубики", "обрезки малины",
+     "защиты от вредителей", "подкормок весной", "полива клубники"
+
    Если phase_eligible=true, заполни также:
    - phase_button_label: короткая подпись (макс 35 символов), формат "Подробно: [тема] по фазам"
      Пример: "Подробно: подкормки по фазам"
@@ -185,7 +192,8 @@ def _build_complexity_prompt() -> str:
     },
     "suggest_turnkey": false,
     "confirm_message": "Вопрос о кислотности почвы для голубики — конкретный вопрос с точным ответом. Я могу дать краткий ответ или более развёрнутую рекомендацию с пояснениями.",
-    "phase_button_label": ""
+    "phase_button_label": "",
+    "topic_in_correct_case": "кислотности почвы для голубики"
 }
 
 Для short_answer (phase_eligible=true):
@@ -202,7 +210,8 @@ def _build_complexity_prompt() -> str:
     },
     "suggest_turnkey": false,
     "confirm_message": "Вопрос о питании клубники — тема, которая сильно зависит от фазы роста. Я могу дать краткий ответ с основными рекомендациями или подробно расписать подкормки по фазам развития.",
-    "phase_button_label": "Подробно: подкормки по фазам"
+    "phase_button_label": "Подробно: подкормки по фазам",
+    "topic_in_correct_case": "питания клубники"
 }
 
 Для long_answer (Тип B — одна фаза):
@@ -260,6 +269,7 @@ def _default_result(cost_usd: float = 0.0, tokens: int = 0) -> ComplexityResult:
         "confirm_message": "",
         "phase_button_label": "",
         "phase_eligible": False,
+        "topic_in_correct_case": "",
     }
 
 
@@ -334,6 +344,9 @@ def _parse_complexity_response(raw: str) -> dict:
         if tier == "short_answer" and not confirm_message:
             confirm_message = "Выберите формат ответа на ваш вопрос."
 
+        # topic_in_correct_case: тема в правильном падеже для шаблона
+        topic_in_correct_case = str(data.get("topic_in_correct_case", "")).strip()
+
         return {
             "tier": tier,
             "metadata": {
@@ -348,6 +361,7 @@ def _parse_complexity_response(raw: str) -> dict:
             "confirm_message": confirm_message,
             "phase_button_label": phase_button_label,
             "phase_eligible": phase_eligible,
+            "topic_in_correct_case": topic_in_correct_case,
         }
 
     except (json.JSONDecodeError, KeyError, TypeError) as e:
@@ -366,6 +380,7 @@ def _parse_complexity_response(raw: str) -> dict:
             "confirm_message": "",
             "phase_button_label": "",
             "phase_eligible": False,
+            "topic_in_correct_case": "",
         }
 
 

@@ -11,10 +11,10 @@ Before making ANY changes:
 2. Read `session-summary.md` — contains latest session changes
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
-**Current Project State (2026-02-18):**
-- Version: 1.2.5
+**Current Project State (2026-02-19):**
+- Version: 1.2.6
 - Phase: Complexity flow + user experience features
-- Latest changes: Complexity classification (complexity_llm.py), user avatars, invite links campaign tracking, full message logging, CRM ChatHistory component
+- Latest changes: Enforce answer length limits (standard=1 msg, extended=2 msgs), single-phase answers, new choice template with topic_in_correct_case
 - CRITICAL: DB schemas 48-51 NOT YET APPLIED — must apply before running bot
 - See: `session-summary.md` for details
 

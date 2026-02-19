@@ -11,6 +11,7 @@
  */
 
 import { usePromptStore } from '@/store/promptStore'
+import { setParams } from '@/router'
 import type { PromptGroup, PromptSubgroup, Prompt } from '@/types'
 import styles from './PromptGroupTree.module.css'
 
@@ -83,6 +84,7 @@ export function PromptGroupTree() {
 
   const handlePromptClick = (prompt: Prompt) => {
     selectPrompt(prompt.id)
+    setParams({ prompt: String(prompt.id) })
   }
 
   const handleToggleEnabled = (e: React.MouseEvent, prompt: Prompt) => {

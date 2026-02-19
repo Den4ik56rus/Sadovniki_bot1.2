@@ -1,9 +1,10 @@
 // Expenses Page - Spendee-like layout
 
 import { useEffect, useState } from 'react'
-import { format, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns'
+import { format, startOfMonth, endOfMonth, subMonths, addMonths, parse } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { useExpenseStore } from '@/store/expenseStore'
+import { getParam, setParams } from '@/router'
 import { ExpenseStats } from './ExpenseStats'
 import { ExpenseFilters } from './ExpenseFilters'
 import { ExpenseList } from './ExpenseList'
@@ -23,11 +24,19 @@ export function ExpensesPage() {
     closeForm,
   } = useExpenseStore()
 
-  // View mode: month or all time
-  const [viewMode, setViewMode] = useState<ViewMode>('month')
+  // Restore state from URL
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const urlMode = getParam('view')
+    return urlMode === 'all' ? 'all' : 'month'
+  })
 
-  // Current month navigation
-  const [currentDate, setCurrentDate] = useState(new Date())
+  const [currentDate, setCurrentDate] = useState(() => {
+    const urlMonth = getParam('month') // format: yyyy-MM
+    if (urlMonth) {
+      try { return parse(urlMonth + '-01', 'yyyy-MM-dd', new Date()) } catch { /* fallback */ }
+    }
+    return new Date()
+  })
 
   // Format date range label
   const dateRangeLabel = `${format(startOfMonth(currentDate), 'd MMM yyyy', { locale: ru })} – ${format(endOfMonth(currentDate), 'd MMM yyyy', { locale: ru })}`
@@ -36,6 +45,7 @@ export function ExpensesPage() {
   const goToPrevMonth = () => {
     const newDate = subMonths(currentDate, 1)
     setCurrentDate(newDate)
+    setParams({ month: format(newDate, 'yyyy-MM') })
     setFilters({
       start_date: format(startOfMonth(newDate), 'yyyy-MM-dd'),
       end_date: format(endOfMonth(newDate), 'yyyy-MM-dd'),
@@ -45,6 +55,7 @@ export function ExpensesPage() {
   const goToNextMonth = () => {
     const newDate = addMonths(currentDate, 1)
     setCurrentDate(newDate)
+    setParams({ month: format(newDate, 'yyyy-MM') })
     setFilters({
       start_date: format(startOfMonth(newDate), 'yyyy-MM-dd'),
       end_date: format(endOfMonth(newDate), 'yyyy-MM-dd'),
@@ -54,6 +65,7 @@ export function ExpensesPage() {
   // Switch view mode
   const switchToMonth = () => {
     setViewMode('month')
+    setParams({ view: null, month: format(currentDate, 'yyyy-MM') })
     setFilters({
       start_date: format(startOfMonth(currentDate), 'yyyy-MM-dd'),
       end_date: format(endOfMonth(currentDate), 'yyyy-MM-dd'),
@@ -62,6 +74,7 @@ export function ExpensesPage() {
 
   const switchToAll = () => {
     setViewMode('all')
+    setParams({ view: 'all', month: null })
     setFilters({
       start_date: undefined,
       end_date: undefined,
@@ -75,12 +88,17 @@ export function ExpensesPage() {
     fetchStats()
   }, [fetchExpenses, fetchCategories, fetchStats])
 
-  // Set initial date filter to current month
+  // Set initial date filter based on viewMode
   useEffect(() => {
-    setFilters({
-      start_date: format(startOfMonth(currentDate), 'yyyy-MM-dd'),
-      end_date: format(endOfMonth(currentDate), 'yyyy-MM-dd'),
-    })
+    if (viewMode === 'month') {
+      setFilters({
+        start_date: format(startOfMonth(currentDate), 'yyyy-MM-dd'),
+        end_date: format(endOfMonth(currentDate), 'yyyy-MM-dd'),
+      })
+    } else {
+      setFilters({ start_date: undefined, end_date: undefined })
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   return (

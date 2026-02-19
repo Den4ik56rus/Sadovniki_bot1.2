@@ -2,6 +2,7 @@
 import { useState, useEffect } from 'react'
 import type { Payment, PaymentStats, PaymentStatus, PaymentType } from '@/types'
 import { api } from '@/services/api'
+import { getParam, setParams } from '@/router'
 import { format } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import styles from './PaymentsList.module.css'
@@ -10,10 +11,22 @@ export function PaymentsList() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [stats, setStats] = useState<PaymentStats | null>(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState<PaymentStatus | ''>('')
-  const [typeFilter, setTypeFilter] = useState<PaymentType | ''>('')
-  const [page, setPage] = useState(0)
+  const [statusFilter, setStatusFilter] = useState<PaymentStatus | ''>(() => (getParam('status') as PaymentStatus) || '')
+  const [typeFilter, setTypeFilter] = useState<PaymentType | ''>(() => (getParam('type') as PaymentType) || '')
+  const [page, setPage] = useState(() => {
+    const p = getParam('page')
+    return p ? Math.max(0, parseInt(p, 10) - 1) : 0
+  })
   const limit = 50
+
+  // Sync filters to URL
+  useEffect(() => {
+    setParams({
+      status: statusFilter || null,
+      type: typeFilter || null,
+      page: page > 0 ? String(page + 1) : null,
+    })
+  }, [statusFilter, typeFilter, page])
 
   useEffect(() => {
     const fetchData = async () => {

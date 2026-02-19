@@ -1,10 +1,23 @@
 import { useEffect } from 'react'
 import { useStatsStore, useCurrencyStore } from '@/store'
+import { getParam, setParams } from '@/router'
 import styles from './StatsPanel.module.css'
+
+const VALID_PERIODS = ['day', 'week', 'month', 'all'] as const
+type Period = typeof VALID_PERIODS[number]
 
 export function StatsPanel() {
   const { stats, embeddingStats, period, isLoading, error, fetchStats, fetchEmbeddingStats, setPeriod } = useStatsStore()
   const { usdRate, fetchRate } = useCurrencyStore()
+
+  // Restore period from URL on mount
+  useEffect(() => {
+    const urlPeriod = getParam('period') as Period | null
+    if (urlPeriod && VALID_PERIODS.includes(urlPeriod) && urlPeriod !== period) {
+      setPeriod(urlPeriod)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   useEffect(() => {
     fetchStats(period)
@@ -15,8 +28,9 @@ export function StatsPanel() {
   // Convert USD to RUB
   const toRub = (usd: number) => (usd * usdRate).toFixed(2)
 
-  const handlePeriodChange = (newPeriod: 'day' | 'week' | 'month' | 'all') => {
+  const handlePeriodChange = (newPeriod: Period) => {
     setPeriod(newPeriod)
+    setParams({ period: newPeriod === 'all' ? null : newPeriod })
   }
 
   if (error) {

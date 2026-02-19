@@ -14,6 +14,8 @@ export interface RouteMatch {
   clientId?: number
   topicId?: number
   searchQuery?: string
+  /** Arbitrary query params (for filters, pagination, etc.) */
+  params?: Record<string, string>
 }
 
 /** Returns Vite base path (e.g. '/' in dev, '/Sadovniki_bot1.2/' in prod) */
@@ -32,6 +34,36 @@ export function getAppPath(): string {
   return path
 }
 
+/** Read a single query param from current URL */
+export function getParam(key: string): string | null {
+  return new URLSearchParams(window.location.search).get(key)
+}
+
+/** Read all query params from current URL */
+export function getParams(): Record<string, string> {
+  const result: Record<string, string> = {}
+  new URLSearchParams(window.location.search).forEach((v, k) => {
+    result[k] = v
+  })
+  return result
+}
+
+/** Update query params on current URL without changing the path (replaceState) */
+export function setParams(params: Record<string, string | undefined | null>) {
+  const url = new URL(window.location.href)
+  for (const [k, v] of Object.entries(params)) {
+    if (v == null || v === '') {
+      url.searchParams.delete(k)
+    } else {
+      url.searchParams.set(k, v)
+    }
+  }
+  const newUrl = url.pathname + url.search
+  if (window.location.pathname + window.location.search !== newUrl) {
+    window.history.replaceState(null, '', newUrl)
+  }
+}
+
 /** Parse an app-relative path into a RouteMatch */
 export function matchRoute(appPath?: string): RouteMatch {
   const path = appPath ?? getAppPath()
@@ -40,7 +72,7 @@ export function matchRoute(appPath?: string): RouteMatch {
   // Strip leading/trailing slashes, split into segments
   const segments = path.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean)
 
-  // /funnel/:funnelId[/client/:clientId]
+  // /funnel/:funnelId[/client/:clientId[/topic/:topicId]]
   if (segments[0] === 'funnel' && segments[1]) {
     const funnelId = decodeURIComponent(segments[1])
     // Map funnelId to view name (legacy compat)
@@ -89,18 +121,37 @@ export function buildPath(match: RouteMatch): string {
         path += `/topic/${match.topicId}`
       }
     }
-    if (match.searchQuery) {
-      path += `?search=${encodeURIComponent(match.searchQuery)}`
+    // Build query string from searchQuery + params
+    const qp = new URLSearchParams()
+    if (match.searchQuery) qp.set('search', match.searchQuery)
+    if (match.params) {
+      for (const [k, v] of Object.entries(match.params)) {
+        if (v) qp.set(k, v)
+      }
     }
+    const qs = qp.toString()
+    if (qs) path += `?${qs}`
     return path
   }
 
   // Simple views
   const viewName = match.view.startsWith('funnel:')
-    ? match.view // shouldn't happen without funnelId, but safety
+    ? match.view
     : match.view
 
-  return `/${viewName}`
+  let path = `/${viewName}`
+
+  // Append params as query string
+  if (match.params) {
+    const qp = new URLSearchParams()
+    for (const [k, v] of Object.entries(match.params)) {
+      if (v) qp.set(k, v)
+    }
+    const qs = qp.toString()
+    if (qs) path += `?${qs}`
+  }
+
+  return path
 }
 
 /** Navigate to a route — updates URL and dispatches popstate for listeners */

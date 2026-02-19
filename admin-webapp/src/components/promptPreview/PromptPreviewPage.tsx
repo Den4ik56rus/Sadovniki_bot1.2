@@ -1,14 +1,15 @@
 import { useState, useEffect, useCallback } from 'react'
 import type { PromptPreviewResponse, PromptPreviewOption } from '@/types'
 import { api } from '@/services/api'
+import { getParam, setParams } from '@/router'
 import { PromptSection } from './PromptSection'
 import styles from './PromptPreviewPage.module.css'
 
 export function PromptPreviewPage() {
   const [categories, setCategories] = useState<PromptPreviewOption[]>([])
   const [cultures, setCultures] = useState<PromptPreviewOption[]>([])
-  const [selectedCategory, setSelectedCategory] = useState('')
-  const [selectedCulture, setSelectedCulture] = useState('')
+  const [selectedCategory, setSelectedCategory] = useState(() => getParam('category') || '')
+  const [selectedCulture, setSelectedCulture] = useState(() => getParam('culture') || '')
   const [preview, setPreview] = useState<PromptPreviewResponse | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -20,6 +21,7 @@ export function PromptPreviewPage() {
         const opts = await api.getPromptPreviewOptions()
         setCategories(opts.categories)
         setCultures(opts.cultures)
+        setOptionsLoaded(true)
       } catch (e) {
         setError('Не удалось загрузить опции: ' + String(e))
       }
@@ -44,8 +46,18 @@ export function PromptPreviewPage() {
     }
   }, [])
 
+  // Auto-load preview from URL params on mount (after options loaded)
+  const [optionsLoaded, setOptionsLoaded] = useState(false)
+  useEffect(() => {
+    if (optionsLoaded && selectedCategory && selectedCulture) {
+      loadPreview(selectedCategory, selectedCulture)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [optionsLoaded])
+
   const handleCategoryChange = (value: string) => {
     setSelectedCategory(value)
+    setParams({ category: value || null, culture: selectedCulture || null })
     if (value && selectedCulture) {
       loadPreview(value, selectedCulture)
     }
@@ -53,6 +65,7 @@ export function PromptPreviewPage() {
 
   const handleCultureChange = (value: string) => {
     setSelectedCulture(value)
+    setParams({ category: selectedCategory || null, culture: value || null })
     if (selectedCategory && value) {
       loadPreview(selectedCategory, value)
     }

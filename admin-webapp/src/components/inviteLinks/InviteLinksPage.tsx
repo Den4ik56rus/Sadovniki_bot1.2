@@ -1,9 +1,10 @@
 // Invite Links Page — управление инвайт-ссылками для отслеживания кампаний
 
 import { useEffect, useState, useCallback } from 'react'
-import { format, startOfMonth, endOfMonth, subMonths, addMonths } from 'date-fns'
+import { format, startOfMonth, endOfMonth, subMonths, addMonths, parse } from 'date-fns'
 import { ru } from 'date-fns/locale'
 import { useInviteLinksStore } from '@/store/inviteLinksStore'
+import { getParam, setParams } from '@/router'
 import type { InviteLink } from '@/types'
 import styles from './InviteLinksPage.module.css'
 
@@ -22,8 +23,17 @@ export function InviteLinksPage() {
     deleteLink,
   } = useInviteLinksStore()
 
-  const [viewMode, setViewMode] = useState<ViewMode>('all')
-  const [currentDate, setCurrentDate] = useState(new Date())
+  const [viewMode, setViewMode] = useState<ViewMode>(() => {
+    const urlMode = getParam('view')
+    return urlMode === 'month' ? 'month' : 'all'
+  })
+  const [currentDate, setCurrentDate] = useState(() => {
+    const urlMonth = getParam('month')
+    if (urlMonth) {
+      try { return parse(urlMonth + '-01', 'yyyy-MM-dd', new Date()) } catch { /* fallback */ }
+    }
+    return new Date()
+  })
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [newLinkName, setNewLinkName] = useState('')
   const [newBonusTokens, setNewBonusTokens] = useState(0)
@@ -43,6 +53,7 @@ export function InviteLinksPage() {
   const goToPrevMonth = useCallback(() => {
     const newDate = subMonths(currentDate, 1)
     setCurrentDate(newDate)
+    setParams({ month: format(newDate, 'yyyy-MM') })
     setDateRange(
       format(startOfMonth(newDate), 'yyyy-MM-dd'),
       format(endOfMonth(newDate), 'yyyy-MM-dd'),
@@ -52,6 +63,7 @@ export function InviteLinksPage() {
   const goToNextMonth = useCallback(() => {
     const newDate = addMonths(currentDate, 1)
     setCurrentDate(newDate)
+    setParams({ month: format(newDate, 'yyyy-MM') })
     setDateRange(
       format(startOfMonth(newDate), 'yyyy-MM-dd'),
       format(endOfMonth(newDate), 'yyyy-MM-dd'),
@@ -60,6 +72,7 @@ export function InviteLinksPage() {
 
   const switchToMonth = useCallback(() => {
     setViewMode('month')
+    setParams({ view: 'month', month: format(currentDate, 'yyyy-MM') })
     setDateRange(
       format(startOfMonth(currentDate), 'yyyy-MM-dd'),
       format(endOfMonth(currentDate), 'yyyy-MM-dd'),
@@ -68,8 +81,20 @@ export function InviteLinksPage() {
 
   const switchToAll = useCallback(() => {
     setViewMode('all')
+    setParams({ view: null, month: null })
     setDateRange(undefined, undefined)
   }, [setDateRange])
+
+  // Set initial date range from URL state on mount
+  useEffect(() => {
+    if (viewMode === 'month') {
+      setDateRange(
+        format(startOfMonth(currentDate), 'yyyy-MM-dd'),
+        format(endOfMonth(currentDate), 'yyyy-MM-dd'),
+      )
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Fetch on mount
   useEffect(() => {

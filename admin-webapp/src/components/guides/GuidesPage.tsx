@@ -2,6 +2,7 @@
 
 import { Fragment, useEffect, useState } from 'react'
 import { useGuidesStore } from '@/store/guidesStore'
+import { getParam, setParams } from '@/router'
 import type { GuideOrder, GuideSectionMeta } from '@/types'
 import styles from './GuidesPage.module.css'
 
@@ -190,6 +191,15 @@ export function GuidesPage() {
     toggleExpanded,
   } = useGuidesStore()
 
+  // Restore statusFilter from URL on mount
+  useEffect(() => {
+    const urlStatus = getParam('status')
+    if (urlStatus) {
+      setStatusFilter(urlStatus)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   useEffect(() => {
     fetchOrders()
     fetchStats()
@@ -232,7 +242,7 @@ export function GuidesPage() {
           <button
             key={f.label}
             className={`${styles.filterButton} ${statusFilter === f.value ? styles.filterActive : ''}`}
-            onClick={() => setStatusFilter(f.value)}
+            onClick={() => { setStatusFilter(f.value); setParams({ status: f.value || null }) }}
           >
             {f.label}
           </button>

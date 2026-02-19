@@ -8,21 +8,29 @@
 
 import { useEffect } from 'react'
 import { usePromptStore } from '@/store/promptStore'
+import { getParam } from '@/router'
 import { PromptGroupTree } from './PromptGroupTree'
 import { PromptEditor } from './PromptEditor'
 import styles from './PromptsPage.module.css'
 
 export function PromptsPage() {
-  const { fetchGroups, fetchPrompts, isLoading, error, setError } = usePromptStore()
+  const { fetchGroups, fetchPrompts, selectPrompt, isLoading, error, setError } = usePromptStore()
 
   useEffect(() => {
     // Загружаем группы и все промпты при монтировании
     const loadData = async () => {
       await fetchGroups()
       await fetchPrompts()
+
+      // Restore selected prompt from URL
+      const promptId = getParam('prompt')
+      if (promptId) {
+        selectPrompt(Number(promptId))
+      }
     }
     loadData()
-  }, [fetchGroups, fetchPrompts])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   return (
     <div className={styles.container}>

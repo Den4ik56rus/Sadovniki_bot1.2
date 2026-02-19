@@ -2,7 +2,7 @@
 
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
-import type { User, Topic, ConsultationLog, RecentLog, Stats, EmbeddingStats, View, Document, Message, CrmClient, FunnelStatus, Buyer, BuyerStatus } from '@/types'
+import type { User, Topic, ConsultationLog, RecentLog, Stats, EmbeddingStats, View, Document, Message, CrmClient, FunnelStatus, Buyer, BuyerStatus, OpenAIBalance } from '@/types'
 import { api } from '@/services/api'
 
 // UI Store with persistence
@@ -922,6 +922,49 @@ export const useBuyersStore = create<BuyersState>()((set, get) => ({
     } catch (error) {
       console.error('Failed to reorder buyer columns:', error)
       get().fetchColumns()
+    }
+  },
+}))
+
+// OpenAI Balance Store
+interface OpenAIBalanceState {
+  balance: OpenAIBalance | null
+  isLoading: boolean
+  isEditingBudget: boolean
+  error: string | null
+  fetchBalance: () => Promise<void>
+  updateBudget: (budgetUsd: number) => Promise<boolean>
+}
+
+export const useOpenAIBalanceStore = create<OpenAIBalanceState>((set, get) => ({
+  balance: null,
+  isLoading: false,
+  isEditingBudget: false,
+  error: null,
+  fetchBalance: async () => {
+    // Не рефетчим если загрузка уже идёт
+    if (get().isLoading) return
+    set({ isLoading: true, error: null })
+    try {
+      const balance = await api.getOpenAIBalance(30)
+      set({ balance, isLoading: false })
+    } catch (error) {
+      console.error('Error fetching OpenAI balance:', error)
+      set({ error: 'Не удалось загрузить данные OpenAI', isLoading: false })
+    }
+  },
+  updateBudget: async (budgetUsd: number) => {
+    set({ isEditingBudget: true })
+    try {
+      await api.updateOpenAIBudget(budgetUsd)
+      // Рефетчим баланс после обновления
+      const balance = await api.getOpenAIBalance(30)
+      set({ balance, isEditingBudget: false })
+      return true
+    } catch (error) {
+      console.error('Error updating OpenAI budget:', error)
+      set({ isEditingBudget: false })
+      return false
     }
   },
 }))

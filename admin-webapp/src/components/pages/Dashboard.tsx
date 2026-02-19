@@ -2,6 +2,7 @@
 import { useEffect } from 'react'
 import { useStatsStore, useCrmStore, useCurrencyStore } from '@/store'
 import { ServerMetricsPanel } from './ServerMetrics'
+import { OpenAIBalanceCard } from './OpenAIBalanceCard'
 import styles from './Dashboard.module.css'
 
 export function Dashboard() {
@@ -93,6 +94,9 @@ export function Dashboard() {
             <span className={styles.cardLabel}>Токенов использовано</span>
           </div>
         </div>
+
+        {/* Баланс OpenAI */}
+        <OpenAIBalanceCard />
 
         {/* Мониторинг сервера */}
         <ServerMetricsPanel />

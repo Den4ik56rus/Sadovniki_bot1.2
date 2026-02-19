@@ -99,7 +99,7 @@ async def update(plan_id: int, **fields) -> Optional[Dict[str, Any]]:
     Returns:
         Обновлённый план или None
     """
-    allowed = {'name', 'description', 'price_rub', 'tokens_included', 'is_active'}
+    allowed = {'name', 'description', 'price_rub', 'tokens_included', 'is_active', 'max_carryover', 'token_discount_percent'}
     updates = {k: v for k, v in fields.items() if k in allowed}
     if not updates:
         return None
@@ -127,6 +127,8 @@ async def create(
     duration_days: int,
     tokens_included: int,
     description: str = "",
+    max_carryover: int = 0,
+    token_discount_percent: int = 0,
 ) -> Dict[str, Any]:
     """
     Создаёт новый план подписки.
@@ -137,6 +139,8 @@ async def create(
         duration_days: Длительность в днях
         tokens_included: Количество токенов
         description: Описание
+        max_carryover: Максимум переноса токенов на след. месяц
+        token_discount_percent: Скидка на доп. пакеты (0-100%)
 
     Returns:
         Созданный план
@@ -145,10 +149,13 @@ async def create(
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            INSERT INTO subscription_plans (name, description, price_rub, duration_days, tokens_included, is_active)
-            VALUES ($1, $2, $3, $4, $5, true)
+            INSERT INTO subscription_plans
+              (name, description, price_rub, duration_days, tokens_included, is_active,
+               max_carryover, token_discount_percent)
+            VALUES ($1, $2, $3, $4, $5, true, $6, $7)
             RETURNING *
             """,
             name, description, Decimal(str(price_rub)), duration_days, tokens_included,
+            max_carryover, token_discount_percent,
         )
         return dict(row)

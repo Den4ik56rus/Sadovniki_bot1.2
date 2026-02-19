@@ -88,6 +88,7 @@ import type {
   // Server Metrics
   ServerMetrics,
   ServerMetricsHistory,
+  OpenAIBalance,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -959,6 +960,8 @@ export const api = {
     tokens_included: number
     duration_days?: number
     description?: string
+    max_carryover?: number
+    token_discount_percent?: number
   }): Promise<{ plan: SubscriptionPlan; success: boolean }> {
     return fetchApi('/settings/pricing/plans', {
       method: 'POST',
@@ -1177,5 +1180,21 @@ export const api = {
   async getServerMetricsHistory(hours?: number): Promise<ServerMetricsHistory> {
     const query = hours ? `?hours=${hours}` : ''
     return fetchApi<ServerMetricsHistory>(`/server-metrics/history${query}`)
+  },
+
+  // =========================================================================
+  // OpenAI Balance (Мониторинг расходов OpenAI)
+  // =========================================================================
+
+  async getOpenAIBalance(days?: number): Promise<OpenAIBalance> {
+    const query = days ? `?days=${days}` : ''
+    return fetchApi<OpenAIBalance>(`/openai-balance${query}`)
+  },
+
+  async updateOpenAIBudget(budgetUsd: number): Promise<{ success: boolean; budget_usd: number }> {
+    return fetchApi<{ success: boolean; budget_usd: number }>('/openai-balance/budget', {
+      method: 'PATCH',
+      body: JSON.stringify({ budget_usd: budgetUsd }),
+    })
   },
 }

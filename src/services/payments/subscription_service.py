@@ -13,7 +13,7 @@ from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 
 from src.services.db import user_subscription_repo, subscription_plan_repo
-from src.services.db.tokens_repo import add_tokens
+from src.services.db.tokens_repo import add_tokens, reset_subscription_tokens_with_carryover
 from src.services.db.pool import get_pool
 
 logger = logging.getLogger(__name__)
@@ -79,18 +79,19 @@ async def activate_subscription(
                 expires_at,
             )
 
-            # Начислить токены
-            new_balance = await add_tokens(
+            # Начислить токены с учётом переноса
+            max_carryover = plan.get("max_carryover", 0)
+            carryover_result = await reset_subscription_tokens_with_carryover(
                 user_id=user_id,
-                amount=plan["tokens_included"],
-                operation_type="subscription_activation",
-                description=f"Активация подписки {plan['name']}",
+                new_amount=plan["tokens_included"],
+                max_carryover=max_carryover,
             )
 
             logger.info(
                 f"Subscription activated: user={user_id}, plan={plan['name']}, "
                 f"expires={expires_at}, tokens={plan['tokens_included']}, "
-                f"new_balance={new_balance}"
+                f"carryover={carryover_result['carryover']}, "
+                f"new_balance={carryover_result['total_balance']}"
             )
 
             # Обновить Buyers секцию если есть запись
@@ -111,7 +112,9 @@ async def activate_subscription(
                 logger.debug(f"Could not update buyer status: {e}")
 
             # Отправить уведомление в Telegram
-            await _send_subscription_notification(user_id, subscription, plan)
+            await _send_subscription_notification(
+                user_id, subscription, plan, carryover_result
+            )
 
             return subscription
 
@@ -304,6 +307,7 @@ async def _send_subscription_notification(
     user_id: int,
     subscription: Dict[str, Any],
     plan: Dict[str, Any],
+    carryover_result: Optional[Dict[str, int]] = None,
 ) -> None:
     """Отправляет уведомление в Telegram об активации подписки."""
     try:
@@ -328,11 +332,15 @@ async def _send_subscription_notification(
         expires_at = subscription["expires_at"]
         expires_str = expires_at.strftime("%d.%m.%Y") if hasattr(expires_at, "strftime") else str(expires_at)
 
+        carryover = carryover_result.get("carryover", 0) if carryover_result else 0
+        carryover_line = f"\n🔄 Перенесено с прошлого периода: {carryover}" if carryover > 0 else ""
+
         message_text = (
             "🎉 <b>Подписка активирована!</b>\n\n"
             f"📅 План: {plan['name']}\n"
             f"⏱ Действует до: {expires_str}\n"
-            f"🎁 Начислено токенов: {plan['tokens_included']}\n\n"
+            f"🎁 Начислено токенов: {plan['tokens_included']}"
+            f"{carryover_line}\n\n"
             "Спасибо за вашу поддержку! 🌱"
         )
 

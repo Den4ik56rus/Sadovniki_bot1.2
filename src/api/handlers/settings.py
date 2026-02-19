@@ -174,6 +174,8 @@ async def create_subscription_plan(request: web.Request) -> web.Response:
             duration_days=int(duration_days),
             tokens_included=int(tokens_included),
             description=data.get("description", ""),
+            max_carryover=int(data.get("max_carryover", 0)),
+            token_discount_percent=int(data.get("token_discount_percent", 0)),
         )
 
         logger.info(f"Subscription plan created: {name} — {price_rub}₽")

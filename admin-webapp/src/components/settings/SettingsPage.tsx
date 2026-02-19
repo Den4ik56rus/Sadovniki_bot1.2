@@ -58,7 +58,7 @@ export function SettingsPage() {
   // Create new plan/package
   const [showNewPlan, setShowNewPlan] = useState(false)
   const [showNewPackage, setShowNewPackage] = useState(false)
-  const [newPlan, setNewPlan] = useState({ name: '', price_rub: 0, tokens_included: 0, duration_days: 30 })
+  const [newPlan, setNewPlan] = useState({ name: '', price_rub: 0, tokens_included: 0, duration_days: 30, max_carryover: 0, token_discount_percent: 0 })
   const [newPackage, setNewPackage] = useState({ name: '', price_rub: 0, tokens_amount: 0 })
   const [creatingPlan, setCreatingPlan] = useState(false)
   const [creatingPackage, setCreatingPackage] = useState(false)
@@ -667,6 +667,33 @@ export function SettingsPage() {
                     onChange={e => updatePlanEdit(plan.id, { tokens_included: parseInt(e.target.value) || 0 })}
                   />
                 </div>
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>Макс. перенос</label>
+                  <div className={styles.inputRow}>
+                    <input
+                      type="number"
+                      className={styles.numberInput}
+                      value={(getPlanValue(plan, 'max_carryover') as number) ?? 0}
+                      min={0}
+                      onChange={e => updatePlanEdit(plan.id, { max_carryover: parseInt(e.target.value) || 0 })}
+                    />
+                    <span className={styles.inputSuffix}>шт</span>
+                  </div>
+                </div>
+                <div className={styles.field}>
+                  <label className={styles.fieldLabel}>Скидка на допы</label>
+                  <div className={styles.inputRow}>
+                    <input
+                      type="number"
+                      className={styles.numberInput}
+                      value={(getPlanValue(plan, 'token_discount_percent') as number) ?? 0}
+                      min={0}
+                      max={100}
+                      onChange={e => updatePlanEdit(plan.id, { token_discount_percent: parseInt(e.target.value) || 0 })}
+                    />
+                    <span className={styles.inputSuffix}>%</span>
+                  </div>
+                </div>
               </div>
 
               <button
@@ -720,11 +747,40 @@ export function SettingsPage() {
                   onChange={e => setNewPlan(p => ({ ...p, tokens_included: parseInt(e.target.value) || 0 }))}
                 />
               </div>
+              <div className={styles.field}>
+                <label className={styles.fieldLabel}>Макс. перенос</label>
+                <div className={styles.inputRow}>
+                  <input
+                    type="number"
+                    className={styles.numberInput}
+                    value={newPlan.max_carryover || ''}
+                    min={0}
+                    placeholder="0"
+                    onChange={e => setNewPlan(p => ({ ...p, max_carryover: parseInt(e.target.value) || 0 }))}
+                  />
+                  <span className={styles.inputSuffix}>шт</span>
+                </div>
+              </div>
+              <div className={styles.field}>
+                <label className={styles.fieldLabel}>Скидка на допы</label>
+                <div className={styles.inputRow}>
+                  <input
+                    type="number"
+                    className={styles.numberInput}
+                    value={newPlan.token_discount_percent || ''}
+                    min={0}
+                    max={100}
+                    placeholder="0"
+                    onChange={e => setNewPlan(p => ({ ...p, token_discount_percent: parseInt(e.target.value) || 0 }))}
+                  />
+                  <span className={styles.inputSuffix}>%</span>
+                </div>
+              </div>
             </div>
             <div className={styles.cardActions}>
               <button
                 className={styles.reasoningButton}
-                onClick={() => { setShowNewPlan(false); setNewPlan({ name: '', price_rub: 0, tokens_included: 0, duration_days: 30 }) }}
+                onClick={() => { setShowNewPlan(false); setNewPlan({ name: '', price_rub: 0, tokens_included: 0, duration_days: 30, max_carryover: 0, token_discount_percent: 0 }) }}
               >
                 Отмена
               </button>

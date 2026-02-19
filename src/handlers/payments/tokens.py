@@ -71,6 +71,21 @@ async def buy_tokens_handler(callback: CallbackQuery):
             )
             return
 
+        # Проверить активную подписку — допы только для подписчиков
+        from src.services.payments.subscription_service import check_subscription_status
+        if not await check_subscription_status(user_id):
+            await callback.message.edit_text(
+                "⚠️ Покупка дополнительных токенов доступна только подписчикам.\n\n"
+                "Оформите подписку, чтобы получить токены и возможность покупать дополнительные.",
+                reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                    [InlineKeyboardButton(
+                        text="📅 Смотреть подписки",
+                        callback_data="show_payment_menu"
+                    )]
+                ])
+            )
+            return
+
         # Создать платеж (скидка применяется внутри payment_service)
         payment = await payment_service.create_token_payment(
             user_id=user_id,

@@ -87,6 +87,10 @@ class Settings(BaseSettings):
         None,  # None = не передавать temperature (для o1/gpt-5 моделей)
         description="Temperature для OpenAI (None = не передавать, 0.0-1.0 = конкретное значение)",
     )
+    openai_admin_key: str = Field(
+        "",
+        description="Admin API Key для мониторинга расходов OpenAI (sk-admin-...)",
+    )
 
     # --- QueryRouter (Gemini Embeddings) ---
     queryrouter_api_key: str = Field(

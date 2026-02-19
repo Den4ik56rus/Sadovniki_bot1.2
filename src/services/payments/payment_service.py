@@ -21,7 +21,7 @@ from decimal import Decimal
 from src.services.payments.yookassa_client import yookassa_client
 from src.services.db import payment_repo, token_package_repo, subscription_plan_repo, user_subscription_repo, client_crm_repo, guide_repo
 from src.services.db.pool import get_pool
-from src.services.db.tokens_repo import add_tokens
+from src.services.db.tokens_repo import add_tokens, add_purchased_tokens
 from src.config import settings
 
 logger = logging.getLogger(__name__)
@@ -113,6 +113,12 @@ async def create_token_payment(
     Raises:
         ValueError: Если пакет не найден или неактивен
     """
+    # Проверить активную подписку — допы только для подписчиков
+    from src.services.payments.subscription_service import get_active_subscription
+    active_sub = await get_active_subscription(user_id)
+    if not active_sub:
+        raise ValueError("Покупка дополнительных токенов доступна только подписчикам")
+
     # Получить пакет токенов
     package = await token_package_repo.get_by_id(package_id)
     if not package:
@@ -121,9 +127,27 @@ async def create_token_payment(
     if not package["is_active"]:
         raise ValueError(f"Token package {package_id} is not active")
 
-    # Применить скидку по инвайт-ссылке
+    # Применить скидку: подписочная или инвайтовая (берём максимальную)
     original_price = Decimal(str(package["price_rub"]))
-    final_price, discount_percent = await _apply_invite_discount(user_id, original_price)
+
+    sub_discount = 0
+    plan_data = active_sub.get("plan")
+    if plan_data:
+        sub_discount = plan_data.get("token_discount_percent", 0) or 0
+
+    _, invite_discount = await _apply_invite_discount(user_id, original_price)
+    invite_discount = invite_discount or 0
+
+    discount_percent = max(sub_discount, invite_discount) if (sub_discount or invite_discount) else 0
+
+    if discount_percent > 0:
+        discount_amount = original_price * Decimal(discount_percent) / Decimal(100)
+        final_price = original_price - discount_amount
+        if final_price < Decimal('1.00'):
+            final_price = Decimal('1.00')
+    else:
+        final_price = original_price
+        discount_percent = None
 
     # Генерировать ключ идемпотентности
     idempotency_key = f"tokens_{user_id}_{package_id}_{int(datetime.now().timestamp())}"
@@ -673,8 +697,8 @@ async def _process_token_payment_success(
     if not package:
         raise ValueError(f"Token package {payment['token_package_id']} not found")
 
-    # Начислить токены
-    new_balance = await add_tokens(
+    # Начислить купленные токены
+    new_balance = await add_purchased_tokens(
         user_id=payment["user_id"],
         amount=package["tokens_amount"],
         operation_type="payment_yookassa",

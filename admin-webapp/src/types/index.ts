@@ -684,6 +684,8 @@ export interface SubscriptionPlan {
   duration_days: number
   tokens_included: number
   is_active: boolean
+  max_carryover: number
+  token_discount_percent: number
   created_at: string | null
 }
 
@@ -1081,4 +1083,18 @@ export interface MetricsHistoryPoint {
 export interface ServerMetricsHistory {
   history: MetricsHistoryPoint[]
   hours: number
+}
+
+// =============================================================================
+// OpenAI Balance (Мониторинг расходов OpenAI)
+// =============================================================================
+
+export interface OpenAIBalance {
+  total_cost_usd: number
+  budget_usd: number | null
+  remaining_usd: number | null
+  daily_costs: Array<{ date: string; cost_usd: number }>
+  days: number
+  error: string | null
+  has_admin_key: boolean
 }

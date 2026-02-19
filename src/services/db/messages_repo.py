@@ -40,7 +40,7 @@ async def log_message(
         msg_id = row["id"]
         created_at = row["created_at"]
 
-        # SSE broadcast для admin panel
+        # SSE broadcast для admin panel — topic-level (ConsultationView)
         if topic_id:
             try:
                 from src.api.sse_manager import sse_manager
@@ -58,6 +58,25 @@ async def log_message(
                 )
             except Exception as e:
                 logger.warning(f"Failed to broadcast SSE message event: {e}")
+
+        # SSE broadcast для карточки клиента — client-level (ChatHistory)
+        try:
+            from src.api.sse_manager import sse_manager
+            await sse_manager.broadcast(
+                event_type='new_message',
+                data={
+                    "id": msg_id,
+                    "direction": direction,
+                    "text": text,
+                    "created_at": created_at.isoformat() if created_at else None,
+                    "meta": meta,
+                    "topic_id": topic_id,
+                },
+                endpoint_type='client',
+                entity_id=user_id,
+            )
+        except Exception as e:
+            logger.warning(f"Failed to broadcast SSE client message event: {e}")
 
         return msg_id
 

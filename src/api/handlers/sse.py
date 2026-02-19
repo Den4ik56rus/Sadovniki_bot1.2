@@ -6,6 +6,7 @@ Endpoints:
 - /api/admin/events/logs/{topic_id} - стрим логов конкретного топика
 - /api/admin/events/documents/{document_id} - стрим статуса обработки документа
 - /api/admin/events/funnel/{funnel_id} - стрим изменений воронки (CRM, Покупатели и т.д.)
+- /api/admin/events/client/{user_id} - стрим событий конкретного клиента (сообщения, консультации, топики)
 """
 
 import asyncio
@@ -467,6 +468,89 @@ async def funnel_stream(request: web.Request) -> web.StreamResponse:
         logger.info(
             f"SSE client {client_id} disconnected "
             f"({endpoint_type})"
+        )
+
+    return response
+
+
+async def client_stream(request: web.Request) -> web.StreamResponse:
+    """
+    SSE endpoint для real-time обновлений конкретного клиента.
+
+    Отправляет события при активности клиента:
+    - new_message — новое сообщение (user или bot)
+    - new_consultation — новая консультация залогирована
+    - new_topic — новый топик создан
+
+    Path params:
+        user_id (int): Внутренний ID пользователя (users.id)
+    """
+    try:
+        user_id = int(request.match_info['user_id'])
+    except (KeyError, ValueError) as e:
+        logger.error(f"Invalid user_id in path: {e}")
+        raise web.HTTPBadRequest(text="Invalid user_id")
+
+    response = web.StreamResponse(
+        status=200,
+        reason='OK',
+        headers={
+            'Content-Type': 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+        }
+    )
+
+    await response.prepare(request)
+
+    client_id = str(uuid.uuid4())
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+
+    logger.info(
+        f"New SSE client connected: {client_id} "
+        f"(client, user_id={user_id})"
+    )
+
+    await sse_manager.add_client(
+        client_id=client_id,
+        queue=queue,
+        endpoint_type='client',
+        entity_id=user_id,
+    )
+
+    try:
+        while True:
+            event = await queue.get()
+
+            if event is None:
+                logger.info(f"Received shutdown signal for {client_id}")
+                break
+
+            await send_sse_event(
+                response,
+                event['type'],
+                event['data'],
+                event.get('id')
+            )
+
+    except asyncio.CancelledError:
+        logger.info(f"SSE client {client_id} cancelled")
+    except ConnectionResetError:
+        logger.info(f"SSE client {client_id} connection reset")
+    except Exception as e:
+        logger.error(f"Error in client_stream for {client_id}: {e}")
+    finally:
+        await sse_manager.remove_client(client_id)
+
+        try:
+            await response.write_eof()
+        except Exception as e:
+            logger.error(f"Error closing response for {client_id}: {e}")
+
+        logger.info(
+            f"SSE client {client_id} disconnected "
+            f"(client, user_id={user_id})"
         )
 
     return response

@@ -1,7 +1,8 @@
 // Full Client Card Modal - Full Screen Layout (i2crm inspired)
 import { useEffect, useState, useCallback } from 'react'
-import type { CrmClientFull, ClientTag } from '@/types'
+import type { CrmClientFull, ClientTag, Message } from '@/types'
 import { api } from '@/services/api'
+import { useSSE } from '@/hooks/useSSE'
 import { LeftPanel } from './LeftPanel'
 import { RightPanel } from './RightPanel'
 import styles from './ClientCardFull.module.css'
@@ -17,6 +18,10 @@ export function ClientCardFull({ clientId, onClose }: ClientCardFullProps) {
   const [isLoading, setIsLoading] = useState(true)
   const [selectedTopicId, setSelectedTopicId] = useState<number | null>(null)
   const [selectedArticleId, setSelectedArticleId] = useState<number | null>(null)
+
+  // SSE state for real-time updates
+  const [sseRefreshKey, setSseRefreshKey] = useState(0)
+  const [sseNewMessages, setSseNewMessages] = useState<Message[]>([])
 
   const fetchData = useCallback(async () => {
     try {
@@ -36,6 +41,41 @@ export function ClientCardFull({ clientId, onClose }: ClientCardFullProps) {
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Reset SSE state when clientId changes
+  useEffect(() => {
+    setSseRefreshKey(0)
+    setSseNewMessages([])
+  }, [clientId])
+
+  // SSE: subscribe to client events
+  const handleClientSSE = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data)
+
+      if (event.type === 'heartbeat') return
+
+      if (event.type === 'new_message') {
+        // Append new message for ChatHistory
+        setSseNewMessages(prev => {
+          if (prev.some(m => m.id === data.id)) return prev
+          return [...prev, data as Message]
+        })
+      }
+
+      // Trigger activity feed refetch for any event
+      setSseRefreshKey(k => k + 1)
+    } catch (e) {
+      console.error('[SSE Client] Failed to parse event:', e)
+    }
+  }, [])
+
+  useSSE({
+    endpoint: api.sse.clientEvents(clientId),
+    onMessage: handleClientSSE,
+    enabled: !isLoading,
+    eventTypes: ['new_message', 'new_consultation', 'new_topic', 'heartbeat'],
+  })
 
   const handleUpdate = () => {
     fetchData()
@@ -105,6 +145,8 @@ export function ClientCardFull({ clientId, onClose }: ClientCardFullProps) {
               selectedArticleId={selectedArticleId}
               onArticleClick={handleArticleClick}
               onBackToFeed={handleBackToFeed}
+              sseRefreshKey={sseRefreshKey}
+              sseNewMessages={sseNewMessages}
             />
           </div>
         </div>

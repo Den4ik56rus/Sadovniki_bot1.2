@@ -1,6 +1,6 @@
 // Right Panel - Activity Feed with Topic View, Article View, and Chat Messages
 import { useState, useEffect, useCallback, useRef } from 'react'
-import type { ActivityEvent, ActivityEventType } from '@/types'
+import type { ActivityEvent, ActivityEventType, Message } from '@/types'
 import { api } from '@/services/api'
 import { ActivityFilters } from './ActivityFilters'
 import { ActivityItem } from './ActivityItem'
@@ -18,6 +18,8 @@ interface RightPanelProps {
   selectedArticleId?: number | null
   onArticleClick?: (articleId: number) => void
   onBackToFeed?: () => void
+  sseRefreshKey?: number
+  sseNewMessages?: Message[]
 }
 
 const ALL_EVENT_TYPES: ActivityEventType[] = [
@@ -39,6 +41,8 @@ export function RightPanel({
   selectedArticleId,
   onArticleClick,
   onBackToFeed,
+  sseRefreshKey,
+  // sseNewMessages available via props for ChatHistory integration
 }: RightPanelProps) {
   const [activity, setActivity] = useState<ActivityEvent[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -47,6 +51,7 @@ export function RightPanel({
   const [showAddTask, setShowAddTask] = useState(false)
   const [showAddNote, setShowAddNote] = useState(false)
   const listRef = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
 
   const scrollToBottom = useCallback(() => {
     if (listRef.current) {
@@ -72,9 +77,37 @@ export function RightPanel({
     }
   }, [clientId, activeFilters])
 
+  // Silent refetch without loading spinner (for SSE updates)
+  const silentRefetchActivity = useCallback(async () => {
+    try {
+      const data = await api.getClientActivity(clientId, {
+        types: activeFilters.length === ALL_EVENT_TYPES.length ? undefined : activeFilters,
+        limit: 500,
+      })
+      setActivity(data.reverse())
+      // Auto-scroll to bottom after new data
+      requestAnimationFrame(() => scrollToBottom())
+    } catch (e) {
+      console.error('Failed to silently refetch activity:', e)
+    }
+  }, [clientId, activeFilters, scrollToBottom])
+
   useEffect(() => {
     fetchActivity()
   }, [fetchActivity])
+
+  // SSE: debounced activity refetch when sseRefreshKey changes
+  useEffect(() => {
+    if (sseRefreshKey && sseRefreshKey > 0) {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+      debounceRef.current = setTimeout(() => {
+        silentRefetchActivity()
+      }, 500)
+    }
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [sseRefreshKey, silentRefetchActivity])
 
   // Scroll to bottom after activity loads
   useEffect(() => {

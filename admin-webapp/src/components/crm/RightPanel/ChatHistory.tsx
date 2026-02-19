@@ -9,9 +9,10 @@ import styles from './ChatHistory.module.css'
 interface ChatHistoryProps {
   clientId: number
   onTopicClick?: (topicId: number) => void
+  sseNewMessages?: Message[]
 }
 
-export function ChatHistory({ clientId, onTopicClick }: ChatHistoryProps) {
+export function ChatHistory({ clientId, onTopicClick, sseNewMessages }: ChatHistoryProps) {
   const [messages, setMessages] = useState<Message[]>([])
   const [topics, setTopics] = useState<ChatHistoryTopic[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -39,6 +40,25 @@ export function ChatHistory({ clientId, onTopicClick }: ChatHistoryProps) {
       listRef.current.scrollTop = listRef.current.scrollHeight
     }
   }, [isLoading, messages.length])
+
+  // SSE: append new messages in real-time
+  useEffect(() => {
+    if (!sseNewMessages || sseNewMessages.length === 0) return
+
+    setMessages(prev => {
+      const existingIds = new Set(prev.map(m => m.id))
+      const newMsgs = sseNewMessages.filter(m => !existingIds.has(m.id))
+      if (newMsgs.length === 0) return prev
+      return [...prev, ...newMsgs]
+    })
+
+    // Auto-scroll to bottom for new messages
+    requestAnimationFrame(() => {
+      if (listRef.current) {
+        listRef.current.scrollTop = listRef.current.scrollHeight
+      }
+    })
+  }, [sseNewMessages])
 
   // Build topics map for quick lookup
   const topicsMap = useMemo(() => {

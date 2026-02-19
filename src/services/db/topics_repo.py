@@ -72,7 +72,7 @@ async def get_or_create_open_topic(user_id: int, session_id: str, force_new: boo
         await sse_manager.broadcast(
             event_type='new_topic',
             data={'topic_id': topic_id, 'user_id': user_id, 'status': 'open'},
-            endpoint_type='users',
+            endpoint_type='client',
             entity_id=user_id
         )
 

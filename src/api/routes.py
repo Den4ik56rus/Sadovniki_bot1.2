@@ -109,6 +109,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get(r"/api/admin/events/logs/{topic_id:\d+}", sse.topic_logs_stream)
     app.router.add_get(r"/api/admin/events/documents/{document_id:\d+}", sse.document_status_stream)
     app.router.add_get("/api/admin/events/funnel/{funnel_id}", sse.funnel_stream)
+    app.router.add_get(r"/api/admin/events/client/{user_id:\d+}", sse.client_stream)
     app.router.add_get("/api/admin/events/stats", sse.sse_stats)
 
     # Documents API (загрузка документов в базу знаний)

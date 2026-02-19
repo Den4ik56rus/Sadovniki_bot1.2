@@ -836,6 +836,14 @@ export const api = {
     funnelEvents: (funnelId: string): string => {
       return `${API_BASE}/events/funnel/${funnelId}`
     },
+
+    /**
+     * SSE endpoint для real-time обновлений конкретного клиента
+     * @param userId - Внутренний ID пользователя (users.id)
+     */
+    clientEvents: (userId: number): string => {
+      return `${API_BASE}/events/client/${userId}`
+    },
   },
 
   // ============================================

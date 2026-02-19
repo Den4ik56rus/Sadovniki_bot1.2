@@ -262,7 +262,7 @@ export function SettingsPage() {
     try {
       const result = await api.createSubscriptionPlan(newPlan)
       setPlans(prev => [...prev, result.plan])
-      setNewPlan({ name: '', price_rub: 0, tokens_included: 0, duration_days: 30 })
+      setNewPlan({ name: '', price_rub: 0, tokens_included: 0, duration_days: 30, max_carryover: 0, token_discount_percent: 0 })
       setShowNewPlan(false)
     } catch (e) {
       console.error('Ошибка создания плана:', e)

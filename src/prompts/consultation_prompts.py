@@ -389,6 +389,27 @@ async def get_prompt_document_section(culture: str, consultation_category: str) 
     return ""
 
 
+def _get_varieties_slug_for_culture(culture: str) -> str:
+    """Маппинг культуры → slug справочника сортов в БД."""
+    culture_lower = culture.lower().strip()
+    CULTURE_SLUG_MAP = {
+        'клубника летняя': 'varieties_strawberry',
+        'клубника ремонтантная': 'varieties_strawberry',
+        'клубника общая': 'varieties_strawberry',
+        'клубника': 'varieties_strawberry',
+        'малина летняя': 'varieties_raspberry',
+        'малина ремонтантная': 'varieties_raspberry',
+        'малина общая': 'varieties_raspberry',
+        'малина': 'varieties_raspberry',
+        'ежевика': 'varieties_blackberry',
+        'смородина': 'varieties_currant',
+        'голубика': 'varieties_blueberry',
+        'жимолость': 'varieties_honeysuckle',
+        'крыжовник': 'varieties_gooseberry',
+    }
+    return CULTURE_SLUG_MAP.get(culture_lower, 'varieties_strawberry')
+
+
 async def _load_reference_section(consultation_category: str, culture: str = "") -> str:
     """
     Загружает справочник (удобрения/СЗР/сорта) для вставки как отдельную секцию.
@@ -397,20 +418,21 @@ async def _load_reference_section(consultation_category: str, culture: str = "")
     Используется ТОЛЬКО когда категорийный промпт загружен из БД
     (в Python-версии справочник уже встроен через f-string).
     """
-    CATEGORY_REFERENCES = {
-        "питание растений": ("fertilizers", lambda: get_fertilizers_reference()),
-        "защита растений": ("pesticides", lambda: get_pesticides_reference()),
-        "болезни и вредители": ("pesticides", lambda: get_pesticides_reference()),
-        "подбор сортов": ("varieties", lambda: get_varieties_reference(culture)),
-        "подбор сорта": ("varieties", lambda: get_varieties_reference(culture)),
-    }
-
     normalized = consultation_category.lower().strip()
-    ref_info = CATEGORY_REFERENCES.get(normalized)
-    if not ref_info:
+
+    # Для сортов — определяем slug по культуре
+    if normalized in ("подбор сортов", "подбор сорта"):
+        ref_slug = _get_varieties_slug_for_culture(culture)
+        ref_python_func = lambda: get_varieties_reference(culture)
+    elif normalized == "питание растений":
+        ref_slug = "fertilizers"
+        ref_python_func = lambda: get_fertilizers_reference()
+    elif normalized in ("защита растений", "болезни и вредители"):
+        ref_slug = "pesticides"
+        ref_python_func = lambda: get_pesticides_reference()
+    else:
         return ""
 
-    ref_slug, ref_python_func = ref_info
     ref_content = None
 
     # Пробуем из БД
@@ -1148,15 +1170,17 @@ async def build_prompt_preview(
         })
 
     # --- 6. Справочники (удобрения, СЗР, сорта) — ДОПОЛНЯЮТ промт-документ ---
-    # Маппинг категория → (slug в БД, python fallback, метка)
-    CATEGORY_REFERENCES = {
-        "питание растений": [("fertilizers", lambda: get_fertilizers_reference(), "Справочник удобрений")],
-        "защита растений": [("pesticides", lambda: get_pesticides_reference(), "Справочник СЗР")],
-        "подбор сортов": [("varieties", lambda: get_varieties_reference(culture), "Справочник сортов")],
-        "подбор сорта": [("varieties", lambda: get_varieties_reference(culture), "Справочник сортов")],
-    }
-
-    ref_list = CATEGORY_REFERENCES.get(consultation_category.lower().strip(), [])
+    # Маппинг категория → [(slug, python fallback, метка)]
+    cat_norm = consultation_category.lower().strip()
+    if cat_norm == "питание растений":
+        ref_list = [("fertilizers", lambda: get_fertilizers_reference(), "Справочник удобрений")]
+    elif cat_norm in ("защита растений",):
+        ref_list = [("pesticides", lambda: get_pesticides_reference(), "Справочник СЗР")]
+    elif cat_norm in ("подбор сортов", "подбор сорта"):
+        varieties_slug = _get_varieties_slug_for_culture(culture)
+        ref_list = [(varieties_slug, lambda: get_varieties_reference(culture), "Справочник сортов")]
+    else:
+        ref_list = []
     for ref_slug, ref_python_func, ref_label in ref_list:
         # Если категорийный промпт из Python — справочник уже встроен через f-string
         if category_source == "python":

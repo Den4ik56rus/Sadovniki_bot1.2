@@ -207,7 +207,7 @@ def get_category_prompts() -> dict:
 
 
 def get_references() -> dict:
-    """Извлекает справочники из _fertilizers_reference.py."""
+    """Извлекает справочники из _fertilizers_reference.py и _varieties_reference.py."""
     from src.prompts.category_prompts._fertilizers_reference import (
         get_fertilizers_reference,
         get_pesticides_reference,
@@ -217,13 +217,20 @@ def get_references() -> dict:
         get_varieties_instruction,
     )
 
-    # Для миграции в БД — собираем справочник по всем культурам
-    all_cultures = ['клубника', 'малина', 'ежевика', 'голубика', 'жимолость', 'смородина', 'крыжовник']
-    varieties_parts = [get_varieties_reference(c) for c in all_cultures]
-    varieties_content = '\n\n'.join(p for p in varieties_parts if p)
-    varieties_content += '\n\n' + get_varieties_instruction()
+    instruction = get_varieties_instruction()
 
-    return {
+    # Per-culture variety references
+    CULTURE_SLUGS = {
+        'клубника': ('varieties_strawberry', 'Справочник сортов — Клубника', 'Рекомендуемые сорта клубники (летние и ремонтантные)'),
+        'малина': ('varieties_raspberry', 'Справочник сортов — Малина', 'Рекомендуемые сорта малины (летние и ремонтантные)'),
+        'ежевика': ('varieties_blackberry', 'Справочник сортов — Ежевика', 'Рекомендуемые сорта ежевики'),
+        'голубика': ('varieties_blueberry', 'Справочник сортов — Голубика', 'Рекомендуемые сорта голубики'),
+        'жимолость': ('varieties_honeysuckle', 'Справочник сортов — Жимолость', 'Рекомендуемые сорта жимолости'),
+        'смородина': ('varieties_currant', 'Справочник сортов — Смородина', 'Рекомендуемые сорта смородины'),
+        'крыжовник': ('varieties_gooseberry', 'Справочник сортов — Крыжовник', 'Рекомендуемые сорта крыжовника'),
+    }
+
+    result = {
         "fertilizers": {
             "name": "Справочник удобрений",
             "description": "Рекомендуемые удобрения: водорастворимые, гранулированные, пролонгированные, органика",
@@ -236,13 +243,22 @@ def get_references() -> dict:
             "content": get_pesticides_reference(),
             "use_minimal_base": False,
         },
-        "varieties": {
-            "name": "Справочник сортов",
-            "description": "Рекомендуемые сорта ягодных культур по группам",
-            "content": varieties_content,
-            "use_minimal_base": False,
-        },
     }
+
+    for culture, (slug, name, description) in CULTURE_SLUGS.items():
+        ref_text = get_varieties_reference(culture)
+        if ref_text:
+            content = ref_text + '\n\n' + instruction
+        else:
+            content = instruction
+        result[slug] = {
+            "name": name,
+            "description": description,
+            "content": content,
+            "use_minimal_base": False,
+        }
+
+    return result
 
 
 def get_article_prompt() -> dict:

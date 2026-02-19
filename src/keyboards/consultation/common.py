@@ -74,6 +74,7 @@ def get_example_questions_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     for key, text in EXAMPLE_QUESTIONS.items():
         buttons.append([InlineKeyboardButton(text=text, callback_data=f"example_q:{key}")])
+    buttons.append([InlineKeyboardButton(text="✅ Или напишите свой вопрос👇", callback_data="custom_question")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

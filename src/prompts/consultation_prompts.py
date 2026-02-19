@@ -43,6 +43,7 @@ from src.prompts.category_prompts import (
 )
 from src.prompts.category_prompts._varieties_reference import (
     get_varieties_reference,
+    get_varieties_instruction,
 )
 
 logger = logging.getLogger(__name__)
@@ -448,16 +449,34 @@ async def _load_reference_section(consultation_category: str, culture: str = "")
     if not ref_content:
         ref_content = ref_python_func()
 
-    if ref_content:
-        return f"""
+    if not ref_content:
+        return ""
+
+    # Для сортов — загружаем инструкцию отдельно (не дублируется в каждом справочнике культуры)
+    instruction_text = ""
+    if normalized in ("подбор сортов", "подбор сорта"):
+        try:
+            from src.services.db.prompt_repo import get_reference_content
+            instr_result = await get_reference_content("varieties_instruction")
+            if instr_result:
+                instruction_text = instr_result["content"]
+        except Exception:
+            pass
+        if not instruction_text:
+            instruction_text = get_varieties_instruction()
+
+    combined = ref_content.strip()
+    if instruction_text:
+        combined += "\n\n" + instruction_text.strip()
+
+    return f"""
 📙 СПРАВОЧНИК (дополнительные рекомендации по препаратам/удобрениям/сортам):
 
 ИНСТРУКЦИЯ: Используй справочник как ДОПОЛНЕНИЕ к промт-документу выше.
 Сначала бери рекомендации из промт-документа, потом дополняй из справочника.
 
-{ref_content.strip()}
+{combined}
 """
-    return ""
 
 
 def _get_fallback_prompt_python(culture: str) -> Tuple[str, bool]:

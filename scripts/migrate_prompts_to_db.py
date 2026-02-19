@@ -247,16 +247,22 @@ def get_references() -> dict:
 
     for culture, (slug, name, description) in CULTURE_SLUGS.items():
         ref_text = get_varieties_reference(culture)
-        if ref_text:
-            content = ref_text + '\n\n' + instruction
-        else:
-            content = instruction
+        if not ref_text:
+            ref_text = f"Данные по {culture} ограничены. ИИ дополняет рекомендации из своей базы знаний."
         result[slug] = {
             "name": name,
             "description": description,
-            "content": content,
+            "content": ref_text,
             "use_minimal_base": False,
         }
+
+    # Отдельная инструкция для ИИ (общая для всех культур)
+    result["varieties_instruction"] = {
+        "name": "Инструкция ИИ — Подбор сортов",
+        "description": "Общая инструкция для ИИ при рекомендации сортов (добавляется автоматически ко всем культурам)",
+        "content": instruction,
+        "use_minimal_base": False,
+    }
 
     return result
 

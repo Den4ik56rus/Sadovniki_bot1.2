@@ -32,7 +32,6 @@ export const useUIStore = create<UIState>()(
     {
       name: 'admin-ui-state',
       partialize: (state) => ({
-        currentView: state.currentView,
         selectedUserId: state.selectedUserId,
         selectedTopicId: state.selectedTopicId,
       }),

@@ -434,8 +434,8 @@ export const useFunnelStore = create<FunnelStore>()(
     }),
     {
       name: 'funnel-storage',
-      // Only persist currentFunnelId
-      partialize: (state) => ({ currentFunnelId: state.currentFunnelId }),
+      // URL is now the source of truth for currentFunnelId
+      partialize: () => ({}),
     }
   )
 )

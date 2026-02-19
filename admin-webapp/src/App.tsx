@@ -19,11 +19,15 @@ import { GuidesPage } from '@/components/guides'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
+import { useRouter } from '@/hooks/useRouter'
 import styles from './App.module.css'
 
 function App() {
   const { currentView } = useUIStore()
   const { currentFunnelId } = useFunnelStore()
+
+  // Sync URL ↔ Zustand stores (must be before useRestoreState)
+  useRouter()
 
   // Auto-refresh data and restore state on page reload
   useAutoRefresh()

@@ -21,9 +21,10 @@ import {
 } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { useFunnelStore } from '@/store/funnelStore'
-import { useCurrencyStore } from '@/store'
+import { useCurrencyStore, useUIStore } from '@/store'
 import { useSSE } from '@/hooks/useSSE'
 import { api } from '@/services/api'
+import { navigate as routerNavigate, matchRoute } from '@/router'
 import { FunnelColumn } from './FunnelColumn'
 import { FunnelClientCard } from './FunnelClientCard'
 import { FunnelClientCardFull } from './FunnelClientCardFull'
@@ -99,32 +100,35 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
 
   const { usdRate, fetchRate } = useCurrencyStore()
 
+  const { currentView } = useUIStore()
+
   const [activeClient, setActiveClient] = useState<FunnelClient | null>(null)
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null)
-  const [selectedClientId, setSelectedClientId] = useState<number | null>(() => {
-    const saved = sessionStorage.getItem(`funnel-${funnelId}-selectedClient`)
-    return saved ? Number(saved) : null
+
+  // Read initial state from URL
+  const [selectedClientId, setSelectedClientIdRaw] = useState<number | null>(() => {
+    const match = matchRoute()
+    return match.clientId ?? null
   })
-  const [searchQuery, setSearchQuery] = useState(() => {
-    return sessionStorage.getItem(`funnel-${funnelId}-search`) || ''
+  const [searchQuery, setSearchQueryRaw] = useState(() => {
+    const match = matchRoute()
+    return match.searchQuery || ''
   })
 
-  // Сохраняем UI state в sessionStorage
-  useEffect(() => {
-    if (selectedClientId !== null) {
-      sessionStorage.setItem(`funnel-${funnelId}-selectedClient`, String(selectedClientId))
+  // Wrappers that sync state to URL
+  const setSelectedClientId = useCallback((clientId: number | null) => {
+    setSelectedClientIdRaw(clientId)
+    if (clientId) {
+      routerNavigate({ view: currentView, funnelId, clientId })
     } else {
-      sessionStorage.removeItem(`funnel-${funnelId}-selectedClient`)
+      routerNavigate({ view: currentView, funnelId, searchQuery: searchQuery || undefined }, { replace: true })
     }
-  }, [selectedClientId, funnelId])
+  }, [currentView, funnelId, searchQuery])
 
-  useEffect(() => {
-    if (searchQuery) {
-      sessionStorage.setItem(`funnel-${funnelId}-search`, searchQuery)
-    } else {
-      sessionStorage.removeItem(`funnel-${funnelId}-search`)
-    }
-  }, [searchQuery, funnelId])
+  const setSearchQuery = useCallback((query: string) => {
+    setSearchQueryRaw(query)
+    routerNavigate({ view: currentView, funnelId, searchQuery: query || undefined }, { replace: true })
+  }, [currentView, funnelId])
 
   // Self-echo suppression: отслеживаем собственные действия чтобы не дублировать SSE
   const recentActions = useRef<Map<string, number>>(new Map())

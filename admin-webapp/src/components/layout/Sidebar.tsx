@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import type { View } from '@/types'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
+import { navigate } from '@/router'
 import styles from './Sidebar.module.css'
 
 interface SubmenuItem {
@@ -130,8 +131,8 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
 ]
 
 export function Sidebar() {
-  const { currentView, setView } = useUIStore()
-  const { funnels, fetchFunnels, setCurrentFunnel } = useFunnelStore()
+  const { currentView } = useUIStore()
+  const { funnels, fetchFunnels } = useFunnelStore()
 
   // Fetch funnels on mount
   useEffect(() => {
@@ -193,22 +194,12 @@ export function Sidebar() {
 
     if (submenuId.startsWith('funnel:')) {
       const funnelId = submenuId.replace('funnel:', '')
-      // Set current funnel in store
-      setCurrentFunnel(funnelId)
-
-      // Use the funnelId as the view - for crm/buyers keep legacy names for compatibility
-      if (funnelId === 'crm') {
-        setView('crm')
-      } else if (funnelId === 'buyers') {
-        setView('buyers')
-      } else {
-        // Custom funnels use funnel: prefix
-        setView(`funnel:${funnelId}` as View)
-      }
+      const view = funnelId === 'crm' ? 'crm' : funnelId === 'buyers' ? 'buyers' : `funnel:${funnelId}`
+      navigate({ view, funnelId })
       return
     }
 
-    setView(submenuId as View)
+    navigate({ view: submenuId })
   }
 
   return (
@@ -259,7 +250,7 @@ export function Sidebar() {
             <button
               key={item.id}
               className={`${styles.navItem} ${currentView === item.id ? styles.active : ''}`}
-              onClick={() => setView(item.id as View)}
+              onClick={() => navigate({ view: item.id as string })}
               title={item.label}
             >
               <span className={styles.navIcon}>{item.icon}</span>

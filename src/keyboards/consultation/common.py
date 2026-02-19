@@ -125,7 +125,7 @@ def get_simple_question_choice_keyboard(
         ],
         [
             InlineKeyboardButton(
-                text=f"⭐ Расширенный ответ ({pluralize_questions(extended_cost)}) — рекомендуемый",
+                text=f"⭐ Расширенный ответ ({pluralize_questions(extended_cost)})",
                 callback_data="complexity_confirm:long",
             ),
         ],

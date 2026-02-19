@@ -1,7 +1,8 @@
 // Full Client Card Modal for Universal Funnels
 import { useEffect, useState, useCallback } from 'react'
-import type { CrmClientFull, ClientTag } from '@/types'
+import type { CrmClientFull, ClientTag, Message } from '@/types'
 import { api } from '@/services/api'
+import { useSSE } from '@/hooks/useSSE'
 import { navigate as routerNavigate, matchRoute } from '@/router'
 import { useUIStore } from '@/store'
 import { LeftPanel } from '../crm/LeftPanel'
@@ -19,6 +20,10 @@ export function FunnelClientCardFull({ clientId, funnelId, onClose }: FunnelClie
   const [client, setClient] = useState<CrmClientFull | null>(null)
   const [allTags, setAllTags] = useState<ClientTag[]>([])
   const [isLoading, setIsLoading] = useState(true)
+
+  // SSE state for real-time updates
+  const [sseRefreshKey, setSseRefreshKey] = useState(0)
+  const [sseNewMessages, setSseNewMessages] = useState<Message[]>([])
 
   // Read initial topicId from URL
   const [selectedTopicId, setSelectedTopicIdRaw] = useState<number | null>(() => {
@@ -54,6 +59,40 @@ export function FunnelClientCardFull({ clientId, funnelId, onClose }: FunnelClie
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  // Reset SSE state when clientId changes
+  useEffect(() => {
+    setSseRefreshKey(0)
+    setSseNewMessages([])
+  }, [clientId])
+
+  // SSE: subscribe to client events
+  const handleClientSSE = useCallback((event: MessageEvent) => {
+    try {
+      const data = JSON.parse(event.data)
+
+      if (event.type === 'heartbeat') return
+
+      if (event.type === 'new_message') {
+        setSseNewMessages(prev => {
+          if (prev.some(m => m.id === data.id)) return prev
+          return [...prev, data as Message]
+        })
+      }
+
+      // Trigger activity feed refetch for any event
+      setSseRefreshKey(k => k + 1)
+    } catch (e) {
+      console.error('[SSE Client] Failed to parse event:', e)
+    }
+  }, [])
+
+  useSSE({
+    endpoint: api.sse.clientEvents(clientId),
+    onMessage: handleClientSSE,
+    enabled: !isLoading,
+    eventTypes: ['new_message', 'new_consultation', 'new_topic', 'heartbeat'],
+  })
 
   const handleUpdate = () => {
     fetchData()
@@ -114,6 +153,8 @@ export function FunnelClientCardFull({ clientId, funnelId, onClose }: FunnelClie
               selectedTopicId={selectedTopicId}
               onTopicClick={handleTopicClick}
               onBackToFeed={handleBackToFeed}
+              sseRefreshKey={sseRefreshKey}
+              sseNewMessages={sseNewMessages}
             />
           </div>
         </div>

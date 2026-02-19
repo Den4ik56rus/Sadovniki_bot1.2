@@ -713,7 +713,7 @@ async def get_client_activity_with_consultations(
                     0
                 ),
                 'first_question', COALESCE(
-                    (SELECT LEFT(text, 150) FROM messages
+                    (SELECT text FROM messages
                      WHERE topic_id = t.id AND direction = 'user'
                      ORDER BY created_at ASC LIMIT 1),
                     ''
@@ -733,7 +733,7 @@ async def get_client_activity_with_consultations(
             'chat_message' as event_type,
             jsonb_build_object(
                 'direction', m.direction,
-                'text', LEFT(m.text, 500),
+                'text', m.text,
                 'topic_id', m.topic_id,
                 'meta', m.meta
             ) as event_data,

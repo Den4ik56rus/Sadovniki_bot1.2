@@ -886,6 +886,15 @@ async def get_client_activity(request: web.Request) -> web.Response:
             offset=offset
         )
 
+        # Обрезаем длинные тексты в event_data (LEFT в SQL ломается на невалидных UTF-8)
+        for item in activity:
+            ed = item.get("event_data")
+            if isinstance(ed, dict):
+                if "text" in ed and isinstance(ed["text"], str) and len(ed["text"]) > 500:
+                    ed["text"] = ed["text"][:500]
+                if "first_question" in ed and isinstance(ed["first_question"], str) and len(ed["first_question"]) > 150:
+                    ed["first_question"] = ed["first_question"][:150]
+
         return web.json_response([_serialize_dict(a) for a in activity])
 
     except ValueError:

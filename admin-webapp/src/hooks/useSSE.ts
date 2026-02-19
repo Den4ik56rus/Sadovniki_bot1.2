@@ -26,18 +26,8 @@ interface UseSSEReturn {
  * Особенности:
  * - Автоматический reconnect при обрыве связи
  * - Поддержка last_event_id для восстановления пропущенных событий
+ * - Стабильное подключение — не переподключается при изменении callback-ов
  * - Graceful cleanup при размонтировании компонента
- *
- * @example
- * ```tsx
- * const { isConnected, error } = useSSE({
- *   endpoint: '/api/admin/events/live-feed',
- *   onMessage: (event) => {
- *     const data = JSON.parse(event.data)
- *     console.log('New event:', data)
- *   }
- * })
- * ```
  */
 export function useSSE({
   endpoint,
@@ -46,95 +36,142 @@ export function useSSE({
   enabled = true,
   reconnectInterval = 3000,
   maxReconnectAttempts = 5,
-  lastEventId: _lastEventId,
+  lastEventId,
   eventTypes = DEFAULT_EVENT_TYPES,
 }: UseSSEOptions): UseSSEReturn {
   const [isConnected, setIsConnected] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [reconnectAttempts, setReconnectAttempts] = useState(0)
+  // Инкрементируется для принудительного reconnect через публичный метод
+  const [connectKey, setConnectKey] = useState(0)
 
+  // Refs для стабильности — изменения callback-ов и счётчиков не вызывают переподключение
+  const onMessageRef = useRef(onMessage)
+  const onErrorRef = useRef(onError)
+  const reconnectAttemptsRef = useRef(0)
+  const lastEventIdRef = useRef(lastEventId)
   const eventSourceRef = useRef<EventSource | null>(null)
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null)
   const isMountedRef = useRef(true)
 
-  const connect = useCallback(() => {
-    if (!enabled) return
+  // Обновляем refs при изменении props (без вызова переподключения)
+  useEffect(() => { onMessageRef.current = onMessage }, [onMessage])
+  useEffect(() => { onErrorRef.current = onError }, [onError])
+  useEffect(() => { lastEventIdRef.current = lastEventId }, [lastEventId])
 
-    // endpoint уже содержит last_event_id если нужно (формируется в api.ts)
-    try {
-      const eventSource = new EventSource(endpoint)
-      eventSourceRef.current = eventSource
-
-      eventSource.onopen = () => {
-        console.log('[SSE] Connected:', endpoint)
-        setIsConnected(true)
-        setError(null)
-        setReconnectAttempts(0)
-      }
-
-      // Обработка дефолтных message событий
-      eventSource.onmessage = onMessage
-
-      // Обработка кастомных типов событий
-      // SSE спецификация требует addEventListener для кастомных типов
-      const messageHandler = onMessage as EventListener
-      for (const eventType of eventTypes) {
-        eventSource.addEventListener(eventType, messageHandler)
-      }
-
-      eventSource.onerror = (event) => {
-        console.error('[SSE] Error:', event)
-        setIsConnected(false)
-
-        if (onError) onError(event)
-
-        // Auto-reconnect с экспоненциальным backoff
-        if (reconnectAttempts < maxReconnectAttempts) {
-          setError(`Переподключение... (${reconnectAttempts + 1}/${maxReconnectAttempts})`)
-
-          reconnectTimeoutRef.current = setTimeout(() => {
-            if (isMountedRef.current) {
-              setReconnectAttempts(prev => prev + 1)
-              eventSource.close()
-              connect()
-            }
-          }, reconnectInterval)
-        } else {
-          setError('Не удалось подключиться. Обновите страницу.')
-        }
-      }
-    } catch (err) {
-      console.error('[SSE] Connection error:', err)
-      setError(String(err))
-      setIsConnected(false)
-    }
-  }, [endpoint, enabled, onMessage, onError, reconnectAttempts, reconnectInterval, maxReconnectAttempts, eventTypes])
-
-  const close = useCallback(() => {
+  const cleanup = useCallback(() => {
     if (eventSourceRef.current) {
       eventSourceRef.current.close()
       eventSourceRef.current = null
     }
     if (reconnectTimeoutRef.current) {
       clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
     }
-    setIsConnected(false)
   }, [])
 
-  const reconnect = useCallback(() => {
-    close()
-    setReconnectAttempts(0)
-    setError(null)
-    connect()
-  }, [close, connect])
-
+  // Основной эффект подключения — зависит только от endpoint, enabled и connectKey
   useEffect(() => {
+    isMountedRef.current = true
+
+    if (!enabled) {
+      cleanup()
+      setIsConnected(false)
+      return
+    }
+
+    const connect = () => {
+      // Закрываем предыдущее соединение если есть
+      cleanup()
+
+      // Формируем URL с last_event_id при reconnect
+      let url = endpoint
+      const currentLastEventId = lastEventIdRef.current
+      if (currentLastEventId && reconnectAttemptsRef.current > 0) {
+        const separator = url.includes('?') ? '&' : '?'
+        url = `${url}${separator}last_event_id=${currentLastEventId}`
+      }
+
+      try {
+        const eventSource = new EventSource(url)
+        eventSourceRef.current = eventSource
+
+        eventSource.onopen = () => {
+          if (!isMountedRef.current) return
+          console.log('[SSE] Connected:', endpoint)
+          setIsConnected(true)
+          setError(null)
+          reconnectAttemptsRef.current = 0
+        }
+
+        // Handler через ref — не вызывает переподключение при изменении
+        const messageHandler = (event: MessageEvent) => {
+          onMessageRef.current(event)
+        }
+
+        eventSource.onmessage = messageHandler
+
+        // SSE спецификация: addEventListener для кастомных event types
+        for (const eventType of eventTypes) {
+          eventSource.addEventListener(eventType, messageHandler as EventListener)
+        }
+
+        eventSource.onerror = (event) => {
+          if (!isMountedRef.current) return
+          console.error('[SSE] Error:', event)
+          setIsConnected(false)
+
+          if (onErrorRef.current) onErrorRef.current(event)
+
+          // Закрываем сломанное соединение
+          eventSource.close()
+          eventSourceRef.current = null
+
+          // Auto-reconnect с backoff
+          if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+            reconnectAttemptsRef.current += 1
+            const attempt = reconnectAttemptsRef.current
+            const delay = reconnectInterval * Math.min(attempt, 3)
+
+            setError(`Переподключение... (${attempt}/${maxReconnectAttempts})`)
+
+            reconnectTimeoutRef.current = setTimeout(() => {
+              if (isMountedRef.current) {
+                connect()
+              }
+            }, delay)
+          } else {
+            setError('Не удалось подключиться. Обновите страницу.')
+          }
+        }
+      } catch (err) {
+        console.error('[SSE] Connection error:', err)
+        setError(String(err))
+        setIsConnected(false)
+      }
+    }
+
     connect()
+
     return () => {
       isMountedRef.current = false
-      close()
+      cleanup()
+      setIsConnected(false)
+      reconnectAttemptsRef.current = 0
     }
-  }, [connect, close])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endpoint, enabled, connectKey])
+
+  const close = useCallback(() => {
+    cleanup()
+    setIsConnected(false)
+  }, [cleanup])
+
+  const reconnect = useCallback(() => {
+    cleanup()
+    reconnectAttemptsRef.current = 0
+    setError(null)
+    setConnectKey(k => k + 1)
+  }, [cleanup])
 
   return { isConnected, error, reconnect, close }
 }

@@ -62,7 +62,7 @@ export function LiveFeed() {
   )
 
   const { isConnected, error: sseError } = useSSE({
-    endpoint: api.sse.liveFeed(lastId?.toString()),
+    endpoint: api.sse.liveFeed(),
     onMessage: handleSSEMessage,
     enabled: !isLiveFeedPaused,
     lastEventId: lastId?.toString(),

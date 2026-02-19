@@ -42,6 +42,7 @@ export function RightPanel({
 }: RightPanelProps) {
   const [activity, setActivity] = useState<ActivityEvent[]>([])
   const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [activeFilters, setActiveFilters] = useState<ActivityEventType[]>(ALL_EVENT_TYPES)
   const [showAddTask, setShowAddTask] = useState(false)
   const [showAddNote, setShowAddNote] = useState(false)
@@ -55,6 +56,7 @@ export function RightPanel({
 
   const fetchActivity = useCallback(async () => {
     setIsLoading(true)
+    setError(null)
     try {
       const data = await api.getClientActivity(clientId, {
         types: activeFilters.length === ALL_EVENT_TYPES.length ? undefined : activeFilters,
@@ -64,6 +66,7 @@ export function RightPanel({
       setActivity(data.reverse())
     } catch (e) {
       console.error('Failed to fetch activity:', e)
+      setError(String(e))
     } finally {
       setIsLoading(false)
     }
@@ -174,6 +177,13 @@ export function RightPanel({
       <div className={styles.activityList} ref={listRef}>
         {isLoading ? (
           <div className={styles.loading}>Загрузка...</div>
+        ) : error ? (
+          <div className={styles.empty}>
+            <div>Ошибка загрузки</div>
+            <button className={styles.addBtn} onClick={fetchActivity} style={{ marginTop: 8 }}>
+              Повторить
+            </button>
+          </div>
         ) : activity.length === 0 ? (
           <div className={styles.empty}>Нет активности</div>
         ) : (

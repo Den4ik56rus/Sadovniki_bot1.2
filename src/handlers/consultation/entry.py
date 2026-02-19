@@ -50,6 +50,19 @@ FEATURE_COMPLEXITY_ENABLED = os.getenv("FEATURE_COMPLEXITY_ENABLED", "true").low
 # Обратная совместимость
 FEATURE_COMPLEXITY_SHADOW = FEATURE_COMPLEXITY_ENABLED
 
+
+def detect_phase_from_response(text: str) -> str | None:
+    """Определяет фазу из ответа ИИ по ключевым словам в тексте."""
+    text_lower = text.lower()
+    if "ранняя весна" in text_lower or "весна — начало цветения" in text_lower or "весна-цветение" in text_lower:
+        return "весна-цветение"
+    if "цветение — окончание плодоношения" in text_lower or "цветение-плодоношение" in text_lower or "цветение — плодоношение" in text_lower:
+        return "цветение-плодоношение"
+    if "конец плодоношения" in text_lower or "уход в зиму" in text_lower or "плодоношение-зима" in text_lower or "плодоношение — зима" in text_lower:
+        return "плодоношение-зима"
+    return "весна-цветение"  # fallback — самая распространённая фаза
+
+
 # Keyboards
 from src.keyboards.consultation.common import (
     get_followup_keyboard,
@@ -412,63 +425,60 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
         await status_mgr.complete()
 
         # Определяем клавиатуру: фазовая (любой phase_mode) или стандартная
-        if _phase_mode in ("seasonal_phase", "single_phase") and _phase_key:
-            next_phase = get_next_phase(_phase_key)
-            if next_phase:
-                next_phase_display = get_phase_display_name(next_phase)
-                response_keyboard = get_next_phase_keyboard(next_phase_display)
+        if _phase_mode in ("seasonal_phase", "single_phase"):
+            # Определяем фазу: если phase_key задан — используем его, иначе определяем из ответа
+            effective_phase_key = _phase_key
+            if not effective_phase_key and reply_text:
+                # ИИ сам выбрал фазу — определяем из текста ответа
+                effective_phase_key = detect_phase_from_response(reply_text)
+                print(f"[_process_culture_and_respond] Auto-detected phase from response: {effective_phase_key}")
+
+            if effective_phase_key:
+                next_phase = get_next_phase(effective_phase_key)
+                if next_phase:
+                    next_phase_display = get_phase_display_name(next_phase)
+                    response_keyboard = get_next_phase_keyboard(next_phase_display)
+                else:
+                    # Последняя фаза — клавиатура без кнопки "Следующая фаза"
+                    response_keyboard = get_followup_keyboard(category)
+                next_state = "waiting_phase_continue"
+
+                # Обновляем контекст для фазового продолжения
+                existing_ctx = CONSULTATION_CONTEXT.get(telegram_user_id, {})
+                if existing_ctx.get("_phase_continuation"):
+                    # Обновляем phases_delivered с определённой фазой
+                    phases_delivered = existing_ctx.get("phases_delivered", [])
+                    if effective_phase_key not in phases_delivered:
+                        phases_delivered.append(effective_phase_key)
+                    existing_ctx["current_phase"] = effective_phase_key
+                    existing_ctx["next_phase"] = next_phase
+                    existing_ctx["phases_delivered"] = phases_delivered
+                    CONSULTATION_CONTEXT[telegram_user_id] = existing_ctx
+                else:
+                    CONSULTATION_CONTEXT[telegram_user_id] = {
+                        **existing_ctx,
+                        "_phase_continuation": True,
+                        "current_phase": effective_phase_key,
+                        "next_phase": next_phase,
+                        "phases_delivered": [effective_phase_key],
+                        "topic": _phase_topic or category,
+                        "question_text": composed_q,
+                        "internal_user_id": user_id,
+                        "category": category,
+                        "culture": culture,
+                        "classification_cost": context["classification_cost_usd"],
+                        "classification_tokens": context["classification_tokens"],
+                        "complexity_result": cr,
+                        "telegram_user_id": telegram_user_id,
+                    }
             else:
-                # Последняя фаза — клавиатура без кнопки "Следующая фаза"
+                # Не удалось определить фазу — стандартная клавиатура
                 response_keyboard = get_followup_keyboard(category)
-            next_state = "waiting_phase_continue"
-
-            # Сохраняем контекст для фазового продолжения (если ещё нет)
-            if not CONSULTATION_CONTEXT.get(telegram_user_id, {}).get("_phase_continuation"):
-                CONSULTATION_CONTEXT[telegram_user_id] = {
-                    **CONSULTATION_CONTEXT.get(telegram_user_id, {}),
-                    "_phase_continuation": True,
-                    "current_phase": _phase_key,
-                    "next_phase": next_phase,
-                    "phases_delivered": [_phase_key],
-                    "topic": _phase_topic or category,
-                    "question_text": composed_q,
-                    "internal_user_id": user_id,
-                    "category": category,
-                    "culture": culture,
-                    "classification_cost": context["classification_cost_usd"],
-                    "classification_tokens": context["classification_tokens"],
-                    "complexity_result": cr,
-                    "telegram_user_id": telegram_user_id,
-                }
+                next_state = "waiting_followup"
         else:
-            # Проверяем phase_eligible — предлагаем кнопку "Подробнее по фазам"
-            _pe = cr.get("phase_eligible", False) if cr else False
-            _pe_label = cr.get("phase_button_label", "") if cr else ""
-            response_keyboard = get_followup_keyboard(
-                category,
-                phase_eligible=_pe,
-                phase_button_label=_pe_label,
-                phase_cost=PHASE_COST,
-            )
+            # Стандартная клавиатура (без фаз)
+            response_keyboard = get_followup_keyboard(category)
             next_state = "waiting_followup"
-
-            # Если phase_eligible — сохраняем контекст для callback complexity_confirm:long
-            if _pe and cr:
-                CONSULTATION_CONTEXT[telegram_user_id] = {
-                    **CONSULTATION_CONTEXT.get(telegram_user_id, {}),
-                    "_pending_complexity": True,
-                    "_phase_eligible": True,
-                    "question_text": composed_q,
-                    "internal_user_id": user_id,
-                    "category": category,
-                    "culture": culture,
-                    "correction_hint": context.get("correction_hint"),
-                    "classification_cost": context["classification_cost_usd"],
-                    "classification_tokens": context["classification_tokens"],
-                    "complexity_result": cr,
-                    "tier": "short_answer",
-                    "telegram_user_id": telegram_user_id,
-                }
 
         # Финализируем: edit стриминг-сообщения с полным отформатированным текстом
         await finalize_streaming_message(
@@ -938,7 +948,55 @@ async def run_consultation_pipeline(
         print(f"[unified_entry] Showing complexity confirmation for tier={tier}")
         return
 
-    # === short_answer: сразу отвечаем (phase_eligible предложим после ответа) ===
+    # === short_answer: показываем выбор формата ПЕРЕД ответом ===
+    if complexity_result:
+        balance = await get_token_balance(internal_user_id)
+
+        # Сохраняем контекст для callback-обработчика
+        CONSULTATION_CONTEXT[telegram_user_id] = {
+            "_pending_complexity": True,
+            "_simple_question_choice": True,  # Флаг: это выбор для простого вопроса
+            "question_text": question_text,
+            "question_msg_id": question_msg_id,
+            "internal_user_id": internal_user_id,
+            "category": category,
+            "culture": culture,
+            "correction_hint": correction_hint,
+            "classification_cost": classification_cost,
+            "classification_tokens": classification_tokens,
+            "complexity_result": complexity_result,
+            "tier": "short_answer",
+            "telegram_user_id": telegram_user_id,
+            "username": username,
+            "first_name": first_name,
+            "last_name": last_name,
+        }
+        CONSULTATION_STATE[telegram_user_id] = "waiting_complexity_confirm"
+
+        # Персонализированное сообщение от классификатора
+        confirm_msg = complexity_result.get("confirm_message", "")
+        personal_text = confirm_msg or "Выберите формат ответа:"
+
+        # Проверяем хватает ли на расширенный ответ (2 токена)
+        has_enough_extended = await has_sufficient_tokens(internal_user_id, PHASE_COST)
+
+        from src.keyboards.consultation.common import get_simple_question_choice_keyboard
+        kb = get_simple_question_choice_keyboard(
+            standard_cost=COST_NEW_TOPIC,
+            extended_cost=PHASE_COST,
+        )
+
+        choice_text = f"{personal_text}\n\nВаш баланс: {pluralize_questions(balance)}."
+        if not has_enough_extended:
+            choice_text += f"\n\n⚠️ Для расширенного ответа требуется {pluralize_questions(PHASE_COST)}."
+
+        await message.answer(choice_text, reply_markup=kb)
+        await _log_bot_msg(choice_text, user_id=internal_user_id, session_id=f"tg:{telegram_user_id}", telegram_user_id=telegram_user_id, meta=serialize_keyboard(kb))
+
+        print(f"[unified_entry] Showing simple question choice keyboard (phase_eligible={complexity_result.get('phase_eligible', False)})")
+        return
+
+    # Fallback: классификатор не сработал — старое поведение (1 токен, ответить сразу)
     await deduct_tokens(
         internal_user_id,
         cost,
@@ -1901,6 +1959,10 @@ async def handle_complexity_confirm(callback: CallbackQuery) -> None:
     is_last_phase = False
     phase_number = 0
 
+    # Флаг: это выбор для простого вопроса (short_answer) или для long_answer
+    is_simple_choice = ctx.get("_simple_question_choice", False)
+    phase_eligible = complexity_result.get("phase_eligible", False) if complexity_result else False
+
     # Определяем стоимость по выбору пользователя
     if action == "long":
         cost = PHASE_COST  # 2
@@ -1909,47 +1971,96 @@ async def handle_complexity_confirm(callback: CallbackQuery) -> None:
             balance = await get_token_balance(internal_user_id)
             await callback.answer("Недостаточно токенов")
             if callback.message:
-                insuf_plan_cb_text = f"Недостаточно токенов для плана.\nВаш баланс: {pluralize_questions(balance)}."
+                insuf_plan_cb_text = f"Недостаточно токенов для расширенного ответа.\nВаш баланс: {pluralize_questions(balance)}."
                 await callback.message.answer(insuf_plan_cb_text)
                 await _log_bot_msg(insuf_plan_cb_text, telegram_user_id=telegram_user_id)
             return
 
-        # Определяем phase mode
-        current_phase = metadata.get("current_phase", "весна-цветение")
-        next_phase = get_next_phase(current_phase)
-        topics_list = metadata.get("topics", [])
-        user_requested_more = metadata.get("user_requested_more", False)
-        total_phases = metadata.get("total_phases", 1)
+        if is_simple_choice and phase_eligible:
+            # === Простой вопрос + phase_eligible + расширенный → ответ по фазам (ИИ выбирает) ===
+            topics_list = metadata.get("topics", [])
+            phase_topic = topics_list[0] if topics_list else category
+            phase_key = None  # ИИ сам выберет фазу
+            phase_mode = "seasonal_phase"
+            phase_number = 1
+            is_last_phase = False
 
-        phase_topic = topics_list[0] if topics_list else category
-        phase_key = current_phase
-        phase_number = 1
+            # Сохраняем контекст для фазового продолжения
+            CONSULTATION_CONTEXT[telegram_user_id] = {
+                "_phase_continuation": True,
+                "_phase_auto_detected": True,  # Фаза будет определена из ответа ИИ
+                "current_phase": None,
+                "next_phase": None,
+                "phases_delivered": [],
+                "total_phases": 3,
+                "topic": phase_topic,
+                "question_text": question_text,
+                "internal_user_id": internal_user_id,
+                "category": category,
+                "culture": culture,
+                "classification_cost": classification_cost,
+                "classification_tokens": classification_tokens,
+                "complexity_result": complexity_result,
+                "telegram_user_id": telegram_user_id,
+            }
+            print(f"[complexity_confirm] Simple question extended (phase_eligible): phase_mode=seasonal_phase, phase_key=None (LLM decides), topic={phase_topic}")
 
-        # Всегда предлагаем продолжение к следующей фазе (Тип B и Тип C)
-        phase_mode = "seasonal_phase"
-        is_last_phase = (next_phase is None)
+        elif is_simple_choice and not phase_eligible:
+            # === Простой вопрос + НЕ phase_eligible + расширенный → длинный ответ без фаз ===
+            phase_mode = None
+            phase_key = None
+            phase_topic = None
+            phase_number = 0
+            is_last_phase = False
 
-        # Сохраняем контекст для фазового продолжения
-        CONSULTATION_CONTEXT[telegram_user_id] = {
-            "_phase_continuation": True,
-            "current_phase": current_phase,
-            "next_phase": next_phase,
-            "phases_delivered": [current_phase],
-            "total_phases": total_phases,
-            "topic": phase_topic,
-            "question_text": question_text,
-            "internal_user_id": internal_user_id,
-            "category": category,
-            "culture": culture,
-            "classification_cost": classification_cost,
-            "classification_tokens": classification_tokens,
-            "complexity_result": complexity_result,
-            "telegram_user_id": telegram_user_id,
-        }
-        print(f"[complexity_confirm] Phase plan: phase_mode=seasonal_phase, current={current_phase}, next={next_phase}, total_phases={total_phases}")
+            # Переопределяем tier для extended_non_phase
+            complexity_result = {
+                **complexity_result,
+                "tier": "extended_non_phase",
+            }
+            print(f"[complexity_confirm] Simple question extended (non-phase): extended_non_phase mode")
+
+        else:
+            # === Original long_answer (явный запрос на план/схему) ===
+            current_phase = metadata.get("current_phase")  # None для Тип B, "весна-цветение" для Тип C
+            next_phase = get_next_phase(current_phase) if current_phase else None
+            topics_list = metadata.get("topics", [])
+            total_phases = metadata.get("total_phases", 1)
+
+            phase_topic = topics_list[0] if topics_list else category
+            phase_key = current_phase  # None для Тип B (ИИ сам), "весна-цветение" для Тип C
+            phase_number = 1
+            phase_mode = "seasonal_phase"
+            is_last_phase = (next_phase is None) if current_phase else False
+
+            # Сохраняем контекст для фазового продолжения
+            CONSULTATION_CONTEXT[telegram_user_id] = {
+                "_phase_continuation": True,
+                "_phase_auto_detected": current_phase is None,  # True если ИИ сам выбирает
+                "current_phase": current_phase,
+                "next_phase": next_phase,
+                "phases_delivered": [current_phase] if current_phase else [],
+                "total_phases": total_phases,
+                "topic": phase_topic,
+                "question_text": question_text,
+                "internal_user_id": internal_user_id,
+                "category": category,
+                "culture": culture,
+                "classification_cost": classification_cost,
+                "classification_tokens": classification_tokens,
+                "complexity_result": complexity_result,
+                "telegram_user_id": telegram_user_id,
+            }
+            print(f"[complexity_confirm] Long answer: phase_mode=seasonal_phase, current={current_phase}, total_phases={total_phases}")
+
     else:
-        # short — краткий ответ за 1 токен
+        # short — стандартный ответ за 1 токен
         cost = COST_NEW_TOPIC  # 1
+        phase_mode = None
+        phase_key = None
+        phase_topic = None
+        is_last_phase = False
+        phase_number = 0
         # Переопределяем tier на short_answer для логирования
         if complexity_result:
             complexity_result = {
@@ -1957,12 +2068,12 @@ async def handle_complexity_confirm(callback: CallbackQuery) -> None:
                 "tier": "short_answer",
                 "metadata": {
                     **complexity_result.get("metadata", {}),
-                    "user_downgraded": True,  # Пользователь выбрал краткий ответ
+                    "user_downgraded": True,  # Пользователь выбрал стандартный ответ
                 },
             }
 
     # Списываем токены
-    reason = "Развёрнутый план" if action == "long" else "Краткий ответ"
+    reason = "Расширенный ответ" if action == "long" else "Стандартный ответ"
     await deduct_tokens(
         internal_user_id,
         cost,
@@ -1970,7 +2081,7 @@ async def handle_complexity_confirm(callback: CallbackQuery) -> None:
         f"Консультация ({reason}): {category}"
     )
 
-    # Очищаем pending контекст (если не Тип C)
+    # Очищаем pending контекст (если не фазовое продолжение)
     if not (action == "long" and phase_mode == "seasonal_phase"):
         CONSULTATION_CONTEXT.pop(telegram_user_id, None)
     CONSULTATION_STATE.pop(telegram_user_id, None)

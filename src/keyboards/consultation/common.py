@@ -79,7 +79,7 @@ def get_example_questions_keyboard() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
-def get_followup_keyboard(category: str = "", phase_eligible: bool = False, phase_button_label: str = "", phase_cost: int = 2) -> InlineKeyboardMarkup:
+def get_followup_keyboard(category: str = "") -> InlineKeyboardMarkup:
     """Инлайн-клавиатура после получения ответа — выбор типа следующего вопроса."""
     buttons = [
         [
@@ -96,19 +96,40 @@ def get_followup_keyboard(category: str = "", phase_eligible: bool = False, phas
         ],
     ]
 
-    if phase_eligible:
-        detail_text = (
-            f"{phase_button_label} ({phase_cost} вопроса)"
-            if phase_button_label
-            else f"📋 Подробнее по фазам роста ({phase_cost} вопроса)"
-        )
-        buttons.append([
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+# ==== Клавиатура выбора формата для ВСЕХ простых вопросов ====
+
+def get_simple_question_choice_keyboard(
+    standard_cost: int = 1,
+    extended_cost: int = 2,
+) -> InlineKeyboardMarkup:
+    """
+    Универсальная клавиатура выбора формата ответа для ALL short_answer вопросов.
+
+    Показывается ПЕРЕД ответом. Пользователь выбирает стандартный или расширенный.
+
+    Args:
+        standard_cost: Стоимость стандартного ответа в токенах
+        extended_cost: Стоимость расширенного ответа в токенах
+    """
+    from src.pricing import pluralize_questions
+
+    buttons = [
+        [
             InlineKeyboardButton(
-                text=detail_text,
+                text=f"Стандартный ответ ({pluralize_questions(standard_cost)})",
+                callback_data="complexity_confirm:short",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"⭐ Расширенный ответ ({pluralize_questions(extended_cost)}) — рекомендуемый",
                 callback_data="complexity_confirm:long",
             ),
-        ])
-
+        ],
+    ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
@@ -122,7 +143,7 @@ def get_complexity_confirm_keyboard(
     """
     Клавиатура подтверждения стоимости для long_answer.
 
-    Кнопки: План на фазу / Отмена.
+    Кнопки: Ответ по фазам роста / Отмена.
 
     Args:
         tier: Уровень сложности (long_answer, long_answer_insufficient)
@@ -131,12 +152,12 @@ def get_complexity_confirm_keyboard(
     """
     buttons = []
 
-    # Кнопка "План на фазу" — для long_answer
+    # Кнопка "Ответ по фазам роста" — для long_answer
     if tier in ("long_answer",):
         plan_text = (
             f"{phase_button_label} ({cost} вопроса)"
             if phase_button_label
-            else f"План на фазу ({cost} вопроса)"
+            else f"Ответ по фазам роста ({cost} вопроса)"
         )
         buttons.append([
             InlineKeyboardButton(
@@ -153,42 +174,6 @@ def get_complexity_confirm_keyboard(
         ),
     ])
 
-    return InlineKeyboardMarkup(inline_keyboard=buttons)
-
-
-# ==== Клавиатура выбора формата для phase_eligible вопросов ====
-
-def get_phase_eligible_keyboard(
-    phase_button_label: str = "",
-    phase_cost: int = 2,
-) -> InlineKeyboardMarkup:
-    """
-    Клавиатура выбора формата ответа для short_answer с phase_eligible=True.
-
-    3 кнопки: Краткий ответ / Подробно по фазам / Готовое решение.
-    """
-    from src.pricing import COST_NEW_TOPIC
-
-    detail_text = (
-        f"{phase_button_label} ({phase_cost} вопроса)"
-        if phase_button_label
-        else f"Подробный ответ по фазам ({phase_cost} вопроса)"
-    )
-
-    buttons = [
-        [
-            InlineKeyboardButton(
-                text=f"Краткий ответ ({COST_NEW_TOPIC} вопрос)",
-                callback_data="complexity_confirm:short",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text=detail_text,
-                callback_data="complexity_confirm:long",
-            ),
-        ],
-    ]
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

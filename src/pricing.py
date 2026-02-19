@@ -16,6 +16,9 @@ COST_NEW_TOPIC = 1
 # Стоимость одной фазы (Тип B / Тип C)
 PHASE_COST = 2
 
+# Стоимость расширенного ответа (для простых вопросов — alias для PHASE_COST)
+EXTENDED_ANSWER_COST = 2
+
 # Бесплатные токены для новых пользователей (fallback, если не задано в admin_settings)
 TRIAL_QUESTIONS = 3
 

@@ -122,12 +122,12 @@ async def process_nutrition_consultation(
             "complexity_classification_tokens": complexity_result.get("tokens", 0),
         }
 
-    # Phase mode kwargs
+    # Phase mode kwargs (phase_key может быть None — ИИ сам выберет фазу)
     _phase_kwargs = {}
-    if phase_mode and phase_key:
+    if phase_mode and phase_topic:
         _phase_kwargs = {
             "phase_mode": phase_mode,
-            "phase_key": phase_key,
+            "phase_key": phase_key,  # None = ИИ сам выбирает
             "phase_topic": phase_topic,
             "is_last_phase": is_last_phase,
             "phase_number": phase_number,
@@ -235,12 +235,23 @@ async def process_nutrition_consultation(
     else:
         # Выбираем клавиатуру: фазовая (любой phase_mode) или обычная
         from src.pricing import get_next_phase, get_phase_display_name
-        if phase_mode in ("seasonal_phase", "single_phase") and phase_key:
+        from src.handlers.consultation.entry import detect_phase_from_response
+
+        if phase_mode in ("seasonal_phase", "single_phase"):
+            # Определяем фазу: если phase_key задан — используем, иначе определяем из ответа
+            effective_phase_key = phase_key
+            if not effective_phase_key and answer_text:
+                effective_phase_key = detect_phase_from_response(answer_text)
+                print(f"[process_nutrition] Auto-detected phase from response: {effective_phase_key}")
+
             from src.keyboards.consultation.common import get_next_phase_keyboard
-            next_phase = get_next_phase(phase_key)
-            if next_phase:
-                next_display = get_phase_display_name(next_phase)
-                kb = get_next_phase_keyboard(next_display)
+            if effective_phase_key:
+                next_phase = get_next_phase(effective_phase_key)
+                if next_phase:
+                    next_display = get_phase_display_name(next_phase)
+                    kb = get_next_phase_keyboard(next_display)
+                else:
+                    kb = get_followup_keyboard(category)
             else:
                 kb = get_followup_keyboard(category)
             next_state = "waiting_phase_continue"
@@ -257,33 +268,39 @@ async def process_nutrition_consultation(
         CONSULTATION_STATE[telegram_user_id] = next_state
         print(f"[process_nutrition] state -> {next_state}, phase_mode={phase_mode}, use_rag={use_rag}")
 
-        # Сохраняем контекст для фазового продолжения (если ещё нет)
-        if phase_mode in ("seasonal_phase", "single_phase") and phase_key:
-            if not CONSULTATION_CONTEXT.get(telegram_user_id, {}).get("_phase_continuation"):
-                next_phase = get_next_phase(phase_key)
-                CONSULTATION_CONTEXT[telegram_user_id] = {
-                    **CONSULTATION_CONTEXT.get(telegram_user_id, {}),
-                    "_phase_continuation": True,
-                    "current_phase": phase_key,
-                    "next_phase": next_phase,
-                    "phases_delivered": [phase_key],
-                    "topic": category,
-                    "question_text": root_question,
-                    "internal_user_id": user_id,
-                    "category": category,
-                    "culture": culture,
-                    "classification_cost": classification_cost_usd,
-                    "classification_tokens": classification_tokens,
-                    "complexity_result": complexity_result,
-                    "telegram_user_id": telegram_user_id,
-                }
-            else:
-                # Обновляем текущую фазу и delivered для последующих фаз
-                ctx = CONSULTATION_CONTEXT[telegram_user_id]
-                ctx["current_phase"] = phase_key
-                ctx["next_phase"] = get_next_phase(phase_key)
-                if phase_key not in ctx.get("phases_delivered", []):
-                    ctx.setdefault("phases_delivered", []).append(phase_key)
+        # Сохраняем контекст для фазового продолжения
+        if phase_mode in ("seasonal_phase", "single_phase"):
+            effective_phase_key = phase_key
+            if not effective_phase_key and answer_text:
+                effective_phase_key = detect_phase_from_response(answer_text)
+
+            if effective_phase_key:
+                existing_ctx = CONSULTATION_CONTEXT.get(telegram_user_id, {})
+                if not existing_ctx.get("_phase_continuation"):
+                    next_phase = get_next_phase(effective_phase_key)
+                    CONSULTATION_CONTEXT[telegram_user_id] = {
+                        **existing_ctx,
+                        "_phase_continuation": True,
+                        "current_phase": effective_phase_key,
+                        "next_phase": next_phase,
+                        "phases_delivered": [effective_phase_key],
+                        "topic": category,
+                        "question_text": root_question,
+                        "internal_user_id": user_id,
+                        "category": category,
+                        "culture": culture,
+                        "classification_cost": classification_cost_usd,
+                        "classification_tokens": classification_tokens,
+                        "complexity_result": complexity_result,
+                        "telegram_user_id": telegram_user_id,
+                    }
+                else:
+                    # Обновляем текущую фазу и delivered для последующих фаз
+                    ctx = CONSULTATION_CONTEXT[telegram_user_id]
+                    ctx["current_phase"] = effective_phase_key
+                    ctx["next_phase"] = get_next_phase(effective_phase_key)
+                    if effective_phase_key not in ctx.get("phases_delivered", []):
+                        ctx.setdefault("phases_delivered", []).append(effective_phase_key)
 
     # Логируем ответ бота
     await log_message(

@@ -430,15 +430,32 @@ async def ask_consultation_llm(
     )
 
     # Инъекция фазовых инструкций (Тип B/C)
-    if phase_mode and phase_key and phase_topic:
-        from src.prompts.consultation_prompts import build_phase_instruction
-        phase_instruction = build_phase_instruction(
-            phase_key=phase_key,
-            phase_topic=phase_topic,
-            is_last_phase=is_last_phase,
-        )
-        system_prompt += phase_instruction
-        print(f"[ask_consultation_llm] Phase instruction injected: mode={phase_mode}, phase={phase_key}, topic={phase_topic}, last={is_last_phase}")
+    if phase_mode and phase_topic:
+        if phase_key:
+            # Конкретная фаза задана (Тип C первая фаза, или пользователь выбрал фазу)
+            from src.prompts.consultation_prompts import build_phase_instruction
+            phase_instruction = build_phase_instruction(
+                phase_key=phase_key,
+                phase_topic=phase_topic,
+                is_last_phase=is_last_phase,
+            )
+            system_prompt += phase_instruction
+            print(f"[ask_consultation_llm] Phase instruction injected: mode={phase_mode}, phase={phase_key}, topic={phase_topic}, last={is_last_phase}")
+        else:
+            # ИИ сам выбирает наиболее подходящую фазу (Тип B / расширенный phase_eligible)
+            from src.prompts.consultation_prompts import build_phase_instruction_auto
+            phase_instruction = build_phase_instruction_auto(
+                phase_topic=phase_topic,
+            )
+            system_prompt += phase_instruction
+            print(f"[ask_consultation_llm] Phase auto-instruction injected: mode={phase_mode}, topic={phase_topic} (LLM decides phase)")
+
+    # Инъекция инструкции для расширенного ответа БЕЗ фаз
+    elif complexity_tier == "extended_non_phase":
+        from src.prompts.consultation_prompts import build_extended_answer_instruction
+        extended_instruction = build_extended_answer_instruction()
+        system_prompt += extended_instruction
+        print(f"[ask_consultation_llm] Extended non-phase instruction injected")
 
     # Инъекция инструкции для краткого ответа (Тип A / downgrade)
     elif complexity_tier == "short_answer" and complexity_metadata:

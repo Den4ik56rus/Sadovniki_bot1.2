@@ -384,11 +384,12 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
         _phase_number = context.get("phase_number", 0)
 
         # Собираем phase kwargs для LLM
+        # NB: _phase_key может быть None (ИИ сам выбирает фазу) — это нормально
         _phase_kwargs = {}
-        if _phase_mode and _phase_key and _phase_topic:
+        if _phase_mode and _phase_topic:
             _phase_kwargs = {
                 "phase_mode": _phase_mode,
-                "phase_key": _phase_key,
+                "phase_key": _phase_key,  # None = ИИ сам выберет фазу
                 "phase_topic": _phase_topic,
                 "is_last_phase": _is_last_phase,
                 "phase_number": _phase_number,

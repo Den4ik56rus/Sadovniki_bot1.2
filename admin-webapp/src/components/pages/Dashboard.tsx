@@ -1,6 +1,7 @@
 // Dashboard Page - Рабочий стол с основной статистикой
 import { useEffect } from 'react'
 import { useStatsStore, useCrmStore, useCurrencyStore } from '@/store'
+import { ServerMetricsPanel } from './ServerMetrics'
 import styles from './Dashboard.module.css'
 
 export function Dashboard() {
@@ -92,6 +93,9 @@ export function Dashboard() {
             <span className={styles.cardLabel}>Токенов использовано</span>
           </div>
         </div>
+
+        {/* Мониторинг сервера */}
+        <ServerMetricsPanel />
 
         {/* Воронка */}
         <div className={`${styles.card} ${styles.full}`}>

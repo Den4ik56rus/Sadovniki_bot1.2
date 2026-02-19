@@ -1011,3 +1011,73 @@ export interface GuideStats {
   total_tokens: number
   by_culture: Array<{ culture_key: string; count: number; total_cost: number }>
 }
+
+// =============================================================================
+// Server Metrics (Мониторинг сервера)
+// =============================================================================
+
+export interface ServerMetrics {
+  timestamp: string
+  cpu: {
+    percent: number
+    cores: number
+    load_1m: number
+    load_5m: number
+    load_15m: number
+  }
+  memory: {
+    total_mb: number
+    used_mb: number
+    available_mb: number
+    buffers_mb: number
+    cached_mb: number
+    free_mb: number
+    used_percent: number
+    swap_total_mb: number
+    swap_used_mb: number
+    swap_percent: number
+  }
+  disk: {
+    total_gb: number
+    used_gb: number
+    available_gb: number
+    used_percent: number
+  }
+  disk_io: {
+    read_mb: number
+    write_mb: number
+  }
+  network: {
+    rx_total_mb: number
+    tx_total_mb: number
+    rx_rate_kbps: number
+    tx_rate_kbps: number
+  }
+  uptime: {
+    seconds: number
+    formatted: string
+  }
+  docker: Array<{
+    name: string
+    cpu: string
+    mem_usage: string
+    mem_percent: string
+    net_io: string
+    pids: string
+  }>
+}
+
+export interface MetricsHistoryPoint {
+  time: string
+  cpu: number
+  memory: number
+  disk: number
+  net_rx: number
+  net_tx: number
+  load: number
+}
+
+export interface ServerMetricsHistory {
+  history: MetricsHistoryPoint[]
+  hours: number
+}

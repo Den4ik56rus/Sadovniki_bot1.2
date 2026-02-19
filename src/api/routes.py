@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics
 
 
 def setup_routes(app: web.Application) -> None:
@@ -235,6 +235,10 @@ def setup_routes(app: web.Application) -> None:
     avatars_dir = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data", "avatars")
     os.makedirs(avatars_dir, exist_ok=True)
     app.router.add_static('/api/admin/avatars', avatars_dir, show_index=False)
+
+    # Server Metrics API (мониторинг сервера)
+    app.router.add_get("/api/admin/server-metrics", server_metrics.get_server_metrics)
+    app.router.add_get("/api/admin/server-metrics/history", server_metrics.get_server_metrics_history)
 
     # Health check endpoint
     app.router.add_get("/api/health", health_check)

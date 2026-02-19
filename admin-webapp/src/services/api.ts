@@ -85,6 +85,9 @@ import type {
   GuideOrder,
   GuideOrdersResponse,
   GuideStats,
+  // Server Metrics
+  ServerMetrics,
+  ServerMetricsHistory,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -1146,5 +1149,18 @@ export const api = {
 
   async getGuideDetail(id: number): Promise<GuideOrder> {
     return fetchApi<GuideOrder>(`/guides/${id}`)
+  },
+
+  // =========================================================================
+  // Server Metrics (Мониторинг сервера)
+  // =========================================================================
+
+  async getServerMetrics(): Promise<ServerMetrics> {
+    return fetchApi<ServerMetrics>('/server-metrics')
+  },
+
+  async getServerMetricsHistory(hours?: number): Promise<ServerMetricsHistory> {
+    const query = hours ? `?hours=${hours}` : ''
+    return fetchApi<ServerMetricsHistory>(`/server-metrics/history${query}`)
   },
 }

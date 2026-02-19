@@ -65,7 +65,7 @@ CONSULTATION_ENTRY_TEXT = (
     "Ниже список вопросов для примера - обратите внимание, как их лучше "
     "формулировать. Что бы мы были на одной волне!\n\n"
     "<b>Для продолжения работы</b> выберите вопрос из списка👇 или "
-    "<b>задайте свой</b>😇."
+    "<b>просто напишите свой вопрос в чат</b>😇"
 )
 
 
@@ -74,8 +74,6 @@ def get_example_questions_keyboard() -> InlineKeyboardMarkup:
     buttons = []
     for key, text in EXAMPLE_QUESTIONS.items():
         buttons.append([InlineKeyboardButton(text=text, callback_data=f"example_q:{key}")])
-    # Кнопка "Свой вопрос" внизу
-    buttons.append([InlineKeyboardButton(text="✅ Или напишите свой вопрос👇", callback_data="custom_question")])
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 

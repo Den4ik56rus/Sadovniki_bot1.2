@@ -211,8 +211,17 @@ def get_references() -> dict:
     from src.prompts.category_prompts._fertilizers_reference import (
         get_fertilizers_reference,
         get_pesticides_reference,
-        get_varieties_reference,
     )
+    from src.prompts.category_prompts._varieties_reference import (
+        get_varieties_reference,
+        get_varieties_instruction,
+    )
+
+    # Для миграции в БД — собираем справочник по всем культурам
+    all_cultures = ['клубника', 'малина', 'ежевика', 'голубика', 'жимолость', 'смородина', 'крыжовник']
+    varieties_parts = [get_varieties_reference(c) for c in all_cultures]
+    varieties_content = '\n\n'.join(p for p in varieties_parts if p)
+    varieties_content += '\n\n' + get_varieties_instruction()
 
     return {
         "fertilizers": {
@@ -230,7 +239,7 @@ def get_references() -> dict:
         "varieties": {
             "name": "Справочник сортов",
             "description": "Рекомендуемые сорта ягодных культур по группам",
-            "content": get_varieties_reference(),
+            "content": varieties_content,
             "use_minimal_base": False,
         },
     }

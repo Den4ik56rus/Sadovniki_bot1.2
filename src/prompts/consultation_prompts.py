@@ -41,7 +41,7 @@ from src.prompts.category_prompts import (
     get_fertilizers_reference,
     get_pesticides_reference,
 )
-from src.prompts.category_prompts._fertilizers_reference import (
+from src.prompts.category_prompts._varieties_reference import (
     get_varieties_reference,
 )
 
@@ -389,7 +389,7 @@ async def get_prompt_document_section(culture: str, consultation_category: str) 
     return ""
 
 
-async def _load_reference_section(consultation_category: str) -> str:
+async def _load_reference_section(consultation_category: str, culture: str = "") -> str:
     """
     Загружает справочник (удобрения/СЗР/сорта) для вставки как отдельную секцию.
 
@@ -398,11 +398,11 @@ async def _load_reference_section(consultation_category: str) -> str:
     (в Python-версии справочник уже встроен через f-string).
     """
     CATEGORY_REFERENCES = {
-        "питание растений": ("fertilizers", get_fertilizers_reference),
-        "защита растений": ("pesticides", get_pesticides_reference),
-        "болезни и вредители": ("pesticides", get_pesticides_reference),
-        "подбор сортов": ("varieties", get_varieties_reference),
-        "подбор сорта": ("varieties", get_varieties_reference),
+        "питание растений": ("fertilizers", lambda: get_fertilizers_reference()),
+        "защита растений": ("pesticides", lambda: get_pesticides_reference()),
+        "болезни и вредители": ("pesticides", lambda: get_pesticides_reference()),
+        "подбор сортов": ("varieties", lambda: get_varieties_reference(culture)),
+        "подбор сорта": ("varieties", lambda: get_varieties_reference(culture)),
     }
 
     normalized = consultation_category.lower().strip()
@@ -670,7 +670,7 @@ async def build_consultation_system_prompt(
     # Загружаем ТОЛЬКО когда категорийный промпт из БД (в Python-версии справочник уже встроен)
     reference_section = ""
     if consultation_category and db_result is not None and category_prompt:
-        reference_section = await _load_reference_section(consultation_category)
+        reference_section = await _load_reference_section(consultation_category, culture)
 
     # 6. Словарь терминологии
     terminology_section = await build_terminology_section()
@@ -1150,10 +1150,10 @@ async def build_prompt_preview(
     # --- 6. Справочники (удобрения, СЗР, сорта) — ДОПОЛНЯЮТ промт-документ ---
     # Маппинг категория → (slug в БД, python fallback, метка)
     CATEGORY_REFERENCES = {
-        "питание растений": [("fertilizers", get_fertilizers_reference, "Справочник удобрений")],
-        "защита растений": [("pesticides", get_pesticides_reference, "Справочник СЗР")],
-        "подбор сортов": [("varieties", get_varieties_reference, "Справочник сортов")],
-        "подбор сорта": [("varieties", get_varieties_reference, "Справочник сортов")],
+        "питание растений": [("fertilizers", lambda: get_fertilizers_reference(), "Справочник удобрений")],
+        "защита растений": [("pesticides", lambda: get_pesticides_reference(), "Справочник СЗР")],
+        "подбор сортов": [("varieties", lambda: get_varieties_reference(culture), "Справочник сортов")],
+        "подбор сорта": [("varieties", lambda: get_varieties_reference(culture), "Справочник сортов")],
     }
 
     ref_list = CATEGORY_REFERENCES.get(consultation_category.lower().strip(), [])

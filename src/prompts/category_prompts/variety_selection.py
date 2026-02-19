@@ -5,7 +5,7 @@
 """
 
 from typing import Tuple
-from ._fertilizers_reference import get_varieties_reference
+from ._varieties_reference import get_varieties_reference, get_varieties_instruction
 
 
 def get_variety_selection_category_prompt(
@@ -26,7 +26,8 @@ def get_variety_selection_category_prompt(
             - str: Строка с инструкциями для LLM по категории "подбор сортов"
             - bool: use_minimal_base (False = использовать полный базовый промпт)
     """
-    varieties_ref = get_varieties_reference()
+    varieties_ref = get_varieties_reference(culture)
+    varieties_instruction = get_varieties_instruction()
 
     prompt = f"""
 🟦 **УНИВЕРСАЛЬНЫЙ ТЕХНИЧЕСКИЙ ШАБЛОН ДЛЯ ИИ
@@ -138,6 +139,8 @@ def get_variety_selection_category_prompt(
 🟦 писать простым, понятным языком
 
 {varieties_ref}
+
+{varieties_instruction}
 """.strip()
 
     return (prompt, True)  # True = использовать минимальный базовый промпт (без формата ответа)

@@ -1,7 +1,8 @@
 // Topic View - Shows conversation dialog with technical details
-import { useState, useEffect, useRef, useMemo } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import type { TopicLogsResponse, Message, ConsultationLog, RagSnippet, LlmParams } from '@/types'
 import { api } from '@/services/api'
+import { useSSE } from '@/hooks/useSSE'
 import { useCurrencyStore } from '@/store'
 import { CollapsibleSection } from '@/components/common/CollapsibleSection'
 import { format } from 'date-fns'
@@ -31,20 +32,72 @@ export function TopicView({ topicId, onBack }: TopicViewProps) {
   const [data, setData] = useState<TopicLogsResponse | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const timelineRef = useRef<HTMLDivElement>(null)
+  const debounceRef = useRef<NodeJS.Timeout | null>(null)
+
+  const fetchTopic = useCallback(async () => {
+    try {
+      const response = await api.getTopicLogs(topicId)
+      setData(response)
+    } catch (e) {
+      console.error('Failed to fetch topic:', e)
+    } finally {
+      setIsLoading(false)
+    }
+  }, [topicId])
 
   useEffect(() => {
-    const fetchTopic = async () => {
-      try {
-        const response = await api.getTopicLogs(topicId)
-        setData(response)
-      } catch (e) {
-        console.error('Failed to fetch topic:', e)
-      } finally {
-        setIsLoading(false)
-      }
-    }
     fetchTopic()
-  }, [topicId])
+  }, [fetchTopic])
+
+  // SSE: subscribe to topic events for real-time updates
+  const handleTopicSSE = useCallback((event: MessageEvent) => {
+    try {
+      if (event.type === 'heartbeat') return
+
+      const eventData = JSON.parse(event.data)
+
+      if (event.type === 'new_message') {
+        // Append new message directly
+        setData(prev => {
+          if (!prev) return prev
+          const exists = prev.messages.some(m => m.id === eventData.id)
+          if (exists) return prev
+          return {
+            ...prev,
+            messages: [...prev.messages, eventData as Message],
+          }
+        })
+        // Auto-scroll
+        requestAnimationFrame(() => {
+          if (timelineRef.current) {
+            timelineRef.current.scrollTop = timelineRef.current.scrollHeight
+          }
+        })
+      } else if (event.type === 'new_log') {
+        // New consultation log — debounced full refetch (logs have complex structure)
+        if (debounceRef.current) clearTimeout(debounceRef.current)
+        debounceRef.current = setTimeout(() => {
+          fetchTopic()
+        }, 800)
+      }
+    } catch (e) {
+      console.error('[SSE TopicView] Failed to parse event:', e)
+    }
+  }, [fetchTopic])
+
+  useSSE({
+    endpoint: api.sse.topicLogs(topicId),
+    onMessage: handleTopicSSE,
+    enabled: !isLoading,
+    eventTypes: ['new_message', 'new_log', 'heartbeat'],
+  })
+
+  // Cleanup debounce on unmount
+  useEffect(() => {
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current)
+    }
+  }, [])
 
   // Scroll to bottom after messages load
   useEffect(() => {

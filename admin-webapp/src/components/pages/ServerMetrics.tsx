@@ -18,21 +18,35 @@ function Sparkline({
 }) {
   if (data.length < 2) return null
 
-  const max = Math.max(...data, 1)
-  const min = Math.min(...data, 0)
-  const range = max - min || 1
+  // Прореживаем данные до ~60 точек
+  const maxPoints = 60
+  let sampled = data
+  if (data.length > maxPoints) {
+    const step = data.length / maxPoints
+    sampled = Array.from({ length: maxPoints }, (_, i) => data[Math.round(i * step)])
+  }
 
-  // Оставляем отступ сверху для линии, снизу — мягкий fade
-  const paddingTop = 4
-  const chartHeight = height - paddingTop
+  // Автомасштаб: показываем вариации данных, линия всегда в средней зоне
+  const dataMin = Math.min(...sampled)
+  const dataMax = Math.max(...sampled)
+  const dataRange = dataMax - dataMin
+  // Добавляем 30% запас сверху и снизу, минимум 10% от среднего чтобы плоские линии не были у края
+  const avg = (dataMin + dataMax) / 2
+  const margin = Math.max(dataRange * 0.3, avg * 0.1, 1)
+  const scaleMin = Math.max(0, dataMin - margin)
+  const scaleMax = dataMax + margin
+  const scaleRange = scaleMax - scaleMin || 1
 
-  const points = data.map((val, i) => {
-    const x = (i / (data.length - 1)) * width
-    const y = paddingTop + chartHeight - ((val - min) / range) * chartHeight
+  const padding = 2
+  const usableHeight = height - padding * 2
+
+  const points = sampled.map((val, i) => {
+    const x = (i / (sampled.length - 1)) * width
+    const y = padding + usableHeight * (1 - (val - scaleMin) / scaleRange)
     return `${x},${y}`
   })
 
-  // Area path: линия графика → вниз за пределы видимости (без горизонтальной линии внизу)
+  // Area path: линия → вниз за пределы SVG (overflow:hidden обрежет)
   const firstPoint = points[0]
   const lastPoint = points[points.length - 1]
   const pathD = `M${firstPoint} ${points.slice(1).map(p => `L${p}`).join(' ')} L${lastPoint.split(',')[0]},${height + 2} L0,${height + 2} Z`
@@ -43,8 +57,7 @@ function Sparkline({
     <svg width={width} height={height} className={styles.sparkline} style={{ overflow: 'hidden' }}>
       <defs>
         <linearGradient id={gradId} x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor={color} stopOpacity="0.25" />
-          <stop offset="70%" stopColor={color} stopOpacity="0.06" />
+          <stop offset="0%" stopColor={color} stopOpacity="0.15" />
           <stop offset="100%" stopColor={color} stopOpacity="0" />
         </linearGradient>
       </defs>

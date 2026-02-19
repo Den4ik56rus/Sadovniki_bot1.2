@@ -1047,10 +1047,10 @@ async def run_consultation_pipeline(
         topic_case = complexity_result.get("topic_in_correct_case", "")
         if topic_case:
             choice_text = (
-                f"Тема {topic_case}….. достаточно емкая.\n\n"
-                "Я могу дать стандартный ответ - в него не войдут некоторые мелочи, "
+                f"Тема {topic_case} достаточно емкая.\n\n"
+                "<b>Я могу дать стандартный ответ</b> - в него не войдут некоторые мелочи, "
                 "но все будет понятно👍\n\n"
-                "А так же расширенный ответ - если Вы хотите разобрать эту тему детально✅\n\n"
+                "<b>А так же расширенный ответ - если Вы хотите разобрать эту тему детально</b>✅\n\n"
                 f"Сейчас на балансе: {pluralize_questions(balance)}"
             )
         else:
@@ -1058,7 +1058,7 @@ async def run_consultation_pipeline(
         if not has_enough_extended:
             choice_text += f"\n\n⚠️ Для расширенного ответа требуется {pluralize_questions(PHASE_COST)}."
 
-        await message.answer(choice_text, reply_markup=kb)
+        await message.answer(choice_text, reply_markup=kb, parse_mode="HTML")
         await _log_bot_msg(choice_text, user_id=internal_user_id, session_id=f"tg:{telegram_user_id}", telegram_user_id=telegram_user_id, meta=serialize_keyboard(kb))
 
         print(f"[unified_entry] Showing simple question choice keyboard (phase_eligible={complexity_result.get('phase_eligible', False)})")

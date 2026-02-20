@@ -235,11 +235,14 @@ async def unmark_message_processing(message_id: int) -> None:
 
 async def find_unanswered_user_messages(since_minutes: int = 30) -> List[dict]:
     """
-    Находит вопросы пользователей, которые начали обрабатываться но бот упал до ответа.
+    Находит вопросы пользователей, на которые бот НЕ успел ответить до рестарта.
 
-    Критерий: direction='user' с meta->>'processing' = 'true' за последние since_minutes минут.
-    Флаг 'processing' ставится в начале LLM-вызова и снимается после отправки ответа.
-    Если флаг остался — значит бот упал в процессе.
+    Критерий: direction='user' с meta->>'processing' = 'true' за последние since_minutes минут,
+    И после которых НЕТ ни одного ответа бота (direction='bot') для того же пользователя.
+
+    Флаг 'processing' ставится в начале обработки вопроса и снимается после отправки финального ответа.
+    Наличие любого ответа бота после вопроса (уточнение, ошибка, подтверждение) означает,
+    что бот уже среагировал и повторный ответ не нужен.
 
     Возвращает один результат на пользователя (самый последний незавершённый вопрос).
     """
@@ -262,6 +265,12 @@ async def find_unanswered_user_messages(since_minutes: int = 30) -> List[dict]:
             WHERE m.direction = 'user'
               AND (m.meta->>'processing')::boolean = true
               AND m.created_at >= NOW() - make_interval(mins => $1)
+              AND NOT EXISTS (
+                  SELECT 1 FROM messages bot_msg
+                  WHERE bot_msg.user_id = m.user_id
+                    AND bot_msg.direction = 'bot'
+                    AND bot_msg.id > m.id
+              )
             ORDER BY m.user_id, m.created_at DESC
             """,
             since_minutes,

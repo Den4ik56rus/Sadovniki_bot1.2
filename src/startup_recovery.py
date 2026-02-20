@@ -16,7 +16,7 @@ import logging
 
 from aiogram import Bot
 
-from src.services.db.messages_repo import find_unanswered_user_messages, log_message
+from src.services.db.messages_repo import find_unanswered_user_messages, log_message, unmark_message_processing
 from src.services.db.user_state_repo import get_all_persisted_states, clear_user_state
 from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT
 
@@ -84,6 +84,7 @@ async def _reprocess_unanswered_questions(bot: Bot) -> None:
                 internal_user_id=internal_user_id,
                 question_text=question_text,
                 topic_id=topic_id,
+                question_msg_id=record.get("message_id"),
             )
             logger.info(f"[recovery] Ответ отправлен пользователю {tg_id}")
         except Exception as e:
@@ -107,6 +108,7 @@ async def _answer_missed_question(
     internal_user_id: int,
     question_text: str,
     topic_id: int | None,
+    question_msg_id: int | None = None,
 ) -> None:
     """
     Генерирует и отправляет ответ на пропущенный вопрос напрямую через bot.send_message.
@@ -188,6 +190,10 @@ async def _answer_missed_question(
         topic_id=topic_id,
         meta={"recovery": True},
     )
+
+    # Снимаем флаг processing — recovery-ответ успешно отправлен
+    if question_msg_id:
+        await unmark_message_processing(question_msg_id)
 
 
 async def _restore_states_from_db() -> None:

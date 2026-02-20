@@ -222,7 +222,7 @@ async def find_unanswered_user_messages(since_minutes: int = 30) -> List[dict]:
             FROM messages m
             JOIN users u ON u.id = m.user_id
             WHERE m.direction = 'user'
-              AND m.created_at >= NOW() - ($1 || ' minutes')::INTERVAL
+              AND m.created_at >= NOW() - make_interval(mins => $1)
               AND NOT EXISTS (
                   SELECT 1 FROM messages bot_msg
                   WHERE bot_msg.user_id = m.user_id

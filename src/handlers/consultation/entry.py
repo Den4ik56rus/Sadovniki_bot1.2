@@ -29,7 +29,7 @@ from src.services.db.topics_repo import (
     get_or_create_open_topic,
     get_topic_culture,
 )
-from src.services.db.messages_repo import log_message
+from src.services.db.messages_repo import log_message, mark_message_processing, unmark_message_processing
 from src.services.db.moderation_repo import moderation_add
 from src.services.db.tokens_repo import has_sufficient_tokens, deduct_tokens, add_tokens, get_token_balance
 
@@ -445,14 +445,8 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
                 print(f"[_process_culture_and_respond] Auto-detected phase from response: {effective_phase_key}")
 
             if effective_phase_key:
+                all_phases = ("весна-цветение", "цветение-плодоношение", "плодоношение-зима")
                 next_phase = get_next_phase(effective_phase_key)
-                if next_phase:
-                    next_phase_display = get_phase_display_name(next_phase)
-                    response_keyboard = get_next_phase_keyboard(next_phase_display)
-                else:
-                    # Последняя фаза — клавиатура без кнопки "Следующая фаза"
-                    response_keyboard = get_followup_keyboard(category)
-                next_state = "waiting_phase_continue"
 
                 # Обновляем контекст для фазового продолжения
                 existing_ctx = CONSULTATION_CONTEXT.get(telegram_user_id, {})
@@ -465,6 +459,9 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
                     existing_ctx["next_phase"] = next_phase
                     existing_ctx["phases_delivered"] = phases_delivered
                     CONSULTATION_CONTEXT[telegram_user_id] = existing_ctx
+                    # Есть ли ещё непройденные фазы?
+                    delivered_set = set(phases_delivered)
+                    has_more_phases = any(p not in delivered_set for p in all_phases)
                 else:
                     CONSULTATION_CONTEXT[telegram_user_id] = {
                         **existing_ctx,
@@ -482,6 +479,16 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
                         "complexity_result": cr,
                         "telegram_user_id": telegram_user_id,
                     }
+                    # Первая фаза — линейная логика
+                    has_more_phases = next_phase is not None
+
+                if has_more_phases:
+                    next_phase_display = get_phase_display_name(next_phase) if next_phase else ""
+                    response_keyboard = get_next_phase_keyboard(next_phase_display)
+                else:
+                    # Все фазы пройдены — клавиатура без кнопки "Следующая фаза"
+                    response_keyboard = get_followup_keyboard(category)
+                next_state = "waiting_phase_continue"
             else:
                 # Не удалось определить фазу — стандартная клавиатура
                 response_keyboard = get_followup_keyboard(category)

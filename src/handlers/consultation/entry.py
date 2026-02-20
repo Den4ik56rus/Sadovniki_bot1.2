@@ -2549,9 +2549,9 @@ async def handle_followup_new_topic_callback(callback: CallbackQuery) -> None:
     # Логируем нажатие кнопки пользователем (ДО закрытия топиков)
     await _log_user_callback("[Кнопка] Задать вопрос по новой теме", callback=callback)
 
-    # Очищаем pending-сообщение (если пользователь написал текст до нажатия кнопки)
+    # Забираем pending-сообщение (если пользователь написал текст до нажатия кнопки)
     from src.handlers.common import PENDING_USER_MESSAGES
-    PENDING_USER_MESSAGES.pop(telegram_user_id, None)
+    pending = PENDING_USER_MESSAGES.pop(telegram_user_id, None)
 
     # Получаем user_id
     user_id = await get_or_create_user(
@@ -2569,13 +2569,21 @@ async def handle_followup_new_topic_callback(callback: CallbackQuery) -> None:
     await clear_consultation_state(telegram_user_id)
     await set_consultation_state(telegram_user_id, "waiting_consultation_question")
 
-    # Запрос нового вопроса с инлайн-кнопками примеров
-    if callback.message:
-        kb = get_example_questions_keyboard()
-        await callback.message.answer(CONSULTATION_ENTRY_TEXT, reply_markup=kb)
-        await _log_bot_msg(CONSULTATION_ENTRY_TEXT, telegram_user_id=telegram_user_id, meta=serialize_keyboard(kb))
-
-    await callback.answer("✅ Начинаем новую тему")
+    if pending and pending.text:
+        # Автоподгружаем написанный текст — запускаем пайплайн сразу
+        if callback.message:
+            notification = f"Принимаю ваш вопрос:\n«{pending.text}»"
+            await callback.message.answer(notification)
+            await _log_bot_msg(notification, telegram_user_id=telegram_user_id)
+        await callback.answer("✅ Начинаем новую тему")
+        await run_consultation_pipeline(message=pending)
+    else:
+        # Обычный флоу — запрос нового вопроса с инлайн-кнопками примеров
+        if callback.message:
+            kb = get_example_questions_keyboard()
+            await callback.message.answer(CONSULTATION_ENTRY_TEXT, reply_markup=kb)
+            await _log_bot_msg(CONSULTATION_ENTRY_TEXT, telegram_user_id=telegram_user_id, meta=serialize_keyboard(kb))
+        await callback.answer("✅ Начинаем новую тему")
 
 
 # ==== ОБРАБОТЧИК 3.2: Текст уточняющего вопроса после нажатия кнопки ====

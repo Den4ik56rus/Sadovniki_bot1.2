@@ -404,6 +404,16 @@ async def buy_tokens_no_subscription(callback: CallbackQuery):
     )
 
 
+@router.callback_query(F.data == "main_menu")
+async def back_to_main_menu(callback: CallbackQuery):
+    """Вернуться в главное меню — удалить инлайн-сообщение."""
+    await callback.answer()
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+
+
 @router.callback_query(F.data == "cancel_auto_renew")
 async def cancel_auto_renew_handler(callback: CallbackQuery):
     """Отменить автопродление подписки."""

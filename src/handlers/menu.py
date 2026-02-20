@@ -762,7 +762,7 @@ async def render_and_send_profile(
     if ref_discount > 0 or token_discount > 0:
         discount_lines = "\n\n🎁 <b>Ваши скидки</b>\n"
         if ref_discount > 0:
-            expires_label = f"\n  Действует до: {_fmt_date(ref_discount_expires)}" if ref_discount_expires else ""
+            expires_label = f"\n  Действует до: {_fmt_date(ref_discount_expires)}" if ref_discount_expires else "\n  Действует до: бессрочно"
             discount_lines += f"  Персональная скидка: <b>−{ref_discount}%</b>{expires_label}\n"
         if token_discount > 0:
             discount_lines += f"  Доп. скидка на токены по подписке: <b>−{token_discount}%</b>"

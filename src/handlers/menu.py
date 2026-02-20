@@ -707,9 +707,9 @@ async def handle_profile(message: Message) -> None:
     # Потрачено докупленных = purchased_in_period - pur_remaining (но не меньше 0)
     pur_used = max(0, purchased_in_period - pur_remaining)
 
-    def _bar(used: int, total: int, length: int = 13) -> str:
+    def _bar(used: int, total: int, length: int = 10) -> str:
         filled = int((used / total) * length) if total > 0 else 0
-        return "🟩" * filled + "⬜" * (length - filled)
+        return "▓" * filled + "░" * (length - filled)
 
     if subscription and plan:
         sub_bar = _bar(sub_used, sub_granted)

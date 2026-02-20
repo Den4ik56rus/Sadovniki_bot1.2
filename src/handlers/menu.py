@@ -647,10 +647,10 @@ async def handle_profile(message: Message) -> None:
         expires_at = subscription["expires_at"]
         auto_renew = subscription.get("auto_renew", False)
         auto_renew_str = "✅ активно" if auto_renew else "❌ не активно"
-        sub_line = f"Тариф:\n<b>{plan_name}</b>  ✅\nПодписка до: {_fmt_date(expires_at)}\nАвтопродление: {auto_renew_str}"
+        sub_line = f"📋 <b>Тариф:</b>\n<b>{plan_name}</b>  ✅\nПодписка до: {_fmt_date(expires_at)}\nАвтопродление: {auto_renew_str}"
     else:
         plan_name = "Пробный"
-        sub_line = "Тариф:\n<b>Пробный</b>  |  Без подписки"
+        sub_line = "📋 <b>Тариф:</b>\n<b>Пробный</b>  |  Без подписки"
 
     # ── Лимит токенов ────────────────────────────────────
     # Подписочные: лимит = tokens_granted, перенос по max_carryover

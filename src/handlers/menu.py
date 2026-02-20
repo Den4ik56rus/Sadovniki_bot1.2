@@ -627,7 +627,9 @@ async def handle_profile(message: Message) -> None:
         plan = await get_plan_by_id(subscription["subscription_plan_id"])
 
     split = await get_split_balance(internal_user_id)
-    ref_discount = await get_user_active_discount(internal_user_id) or 0
+    ref_discount_data = await get_user_active_discount(internal_user_id)
+    ref_discount = ref_discount_data["discount_percent"] if ref_discount_data else 0
+    ref_discount_expires = ref_discount_data["discount_expires_at"] if ref_discount_data else None
 
     # Русские названия месяцев для форматирования дат
     _RU_MONTHS = {
@@ -743,22 +745,15 @@ async def handle_profile(message: Message) -> None:
 
     # ── Скидки ───────────────────────────────────────────
     token_discount = plan.get("token_discount_percent", 0) if plan else 0
-    total_token_discount = min(100, token_discount + ref_discount)
 
     discount_lines = ""
     if ref_discount > 0 or token_discount > 0:
         discount_lines = "\n\n🎁 <b>Ваши скидки</b>\n"
         if ref_discount > 0:
-            discount_lines += f"  Скидка на тарифы (реф):       −{ref_discount}%\n"
-        if token_discount > 0 or ref_discount > 0:
-            discount_lines += f"  Скидка на доп. токены:\n"
-            parts = []
-            if token_discount > 0:
-                parts.append(f"тариф {token_discount}%")
-            if ref_discount > 0:
-                parts.append(f"реф {ref_discount}%")
-            formula = " + ".join(parts)
-            discount_lines += f"    {formula} = <b>−{total_token_discount}%</b>"
+            expires_label = f"\n  Действует до: {_fmt_date(ref_discount_expires)}" if ref_discount_expires else ""
+            discount_lines += f"  Скидка на тарифы: <b>−{ref_discount}%</b>{expires_label}\n"
+        if token_discount > 0:
+            discount_lines += f"  Скидка на доп. токены по тарифу: <b>−{token_discount}%</b>"
 
     # ── Итоговый текст ───────────────────────────────────
     profile_text = (

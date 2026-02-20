@@ -101,15 +101,17 @@ async def track_user_invite_link(invite_link_id: int, user_id: int) -> bool:
             return False
 
 
-async def get_user_active_discount(user_id: int) -> Optional[int]:
+async def get_user_active_discount(user_id: int) -> Optional[Dict[str, Any]]:
     """
-    Возвращает активный процент скидки для пользователя, или None если нет.
+    Возвращает активную скидку пользователя: {discount_percent, discount_expires_at}.
+    discount_expires_at = None означает бессрочную скидку.
+    Возвращает None если скидки нет.
     """
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT il.discount_percent
+            SELECT il.discount_percent, ilu.discount_expires_at
             FROM invite_link_users ilu
             JOIN invite_links il ON il.id = ilu.invite_link_id
             WHERE ilu.user_id = $1
@@ -120,7 +122,7 @@ async def get_user_active_discount(user_id: int) -> Optional[int]:
             user_id,
         )
     if row:
-        return row['discount_percent']
+        return {"discount_percent": row["discount_percent"], "discount_expires_at": row["discount_expires_at"]}
     return None
 
 

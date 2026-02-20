@@ -1,5 +1,4 @@
 // App Layout with Sidebar and Header - Clean Professional Style
-import { useState } from 'react'
 import { Sidebar } from './Sidebar'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
@@ -22,9 +21,8 @@ const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
 }
 
 export function AppLayout({ children }: AppLayoutProps) {
-  const { currentView } = useUIStore()
+  const { currentView, globalSearchQuery, setGlobalSearchQuery } = useUIStore()
   const { isSettingsMode, toggleSettingsMode, funnels, currentFunnelId } = useFunnelStore()
-  const [searchQuery, setSearchQuery] = useState('')
 
   // Check if current view is a funnel view
   const isFunnelView = currentView === 'crm' || currentView === 'buyers' || currentView.startsWith('funnel:')
@@ -68,8 +66,8 @@ export function AppLayout({ children }: AppLayoutProps) {
                 type="text"
                 className={styles.searchInput}
                 placeholder="Поиск клиентов, сделок..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={globalSearchQuery}
+                onChange={(e) => setGlobalSearchQuery(e.target.value)}
               />
               <kbd className={styles.searchHotkey}>⌘K</kbd>
             </div>

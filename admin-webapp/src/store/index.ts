@@ -11,10 +11,12 @@ interface UIState {
   selectedUserId: number | null
   selectedTopicId: number | null
   isLiveFeedPaused: boolean
+  globalSearchQuery: string
   setView: (view: View) => void
   selectUser: (userId: number | null) => void
   selectTopic: (topicId: number | null) => void
   toggleLiveFeed: () => void
+  setGlobalSearchQuery: (query: string) => void
 }
 
 export const useUIStore = create<UIState>()(
@@ -24,10 +26,12 @@ export const useUIStore = create<UIState>()(
       selectedUserId: null,
       selectedTopicId: null,
       isLiveFeedPaused: false,
-      setView: (view) => set({ currentView: view }),
+      globalSearchQuery: '',
+      setView: (view) => set({ currentView: view, globalSearchQuery: '' }),
       selectUser: (userId) => set({ selectedUserId: userId, selectedTopicId: null }),
       selectTopic: (topicId) => set({ selectedTopicId: topicId }),
       toggleLiveFeed: () => set((state) => ({ isLiveFeedPaused: !state.isLiveFeedPaused })),
+      setGlobalSearchQuery: (query) => set({ globalSearchQuery: query }),
     }),
     {
       name: 'admin-ui-state',

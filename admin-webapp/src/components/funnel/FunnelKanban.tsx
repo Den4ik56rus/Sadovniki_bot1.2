@@ -100,7 +100,7 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
 
   const { usdRate, fetchRate } = useCurrencyStore()
 
-  const { currentView } = useUIStore()
+  const { currentView, globalSearchQuery } = useUIStore()
 
   const [activeClient, setActiveClient] = useState<FunnelClient | null>(null)
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null)
@@ -110,10 +110,6 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
     const match = matchRoute()
     return match.clientId ?? null
   })
-  const [searchQuery, setSearchQueryRaw] = useState(() => {
-    const match = matchRoute()
-    return match.searchQuery || ''
-  })
 
   // Wrappers that sync state to URL
   const setSelectedClientId = useCallback((clientId: number | null) => {
@@ -121,13 +117,8 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
     if (clientId) {
       routerNavigate({ view: currentView, funnelId, clientId })
     } else {
-      routerNavigate({ view: currentView, funnelId, searchQuery: searchQuery || undefined }, { replace: true })
+      routerNavigate({ view: currentView, funnelId }, { replace: true })
     }
-  }, [currentView, funnelId, searchQuery])
-
-  const setSearchQuery = useCallback((query: string) => {
-    setSearchQueryRaw(query)
-    routerNavigate({ view: currentView, funnelId, searchQuery: query || undefined }, { replace: true })
   }, [currentView, funnelId])
 
   // Self-echo suppression: отслеживаем собственные действия чтобы не дублировать SSE
@@ -324,8 +315,8 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
 
   // Filter clients by search query
   const filterClients = (clientList: FunnelClient[]) => {
-    if (!searchQuery.trim()) return clientList
-    const query = searchQuery.toLowerCase()
+    if (!globalSearchQuery.trim()) return clientList
+    const query = globalSearchQuery.toLowerCase()
     return clientList.filter(
       (c) =>
         c.username?.toLowerCase().includes(query) ||
@@ -353,30 +344,6 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
 
   return (
     <div className={styles.container}>
-      {/* Header */}
-      <div className={styles.header}>
-        <div className={styles.headerLeft}>
-          <div className={styles.searchBox}>
-            <span className={styles.searchIcon}>🔍</span>
-            <input
-              type="text"
-              className={styles.searchInput}
-              placeholder="Поиск клиентов..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
-
-        <div className={styles.headerRight}>
-          <div className={styles.statsInfo}>
-            <span className={styles.statItem}>
-              {totalClients} клиентов: {totalValue.toFixed(0)} ₽
-            </span>
-          </div>
-        </div>
-      </div>
-
       {/* Kanban Board */}
       <DndContext
         sensors={sensors}

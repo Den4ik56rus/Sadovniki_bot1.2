@@ -756,9 +756,23 @@ async def handle_profile(message: Message) -> None:
         discount_lines = "\n\n🎁 <b>Ваши скидки</b>\n"
         if ref_discount > 0:
             expires_label = f"\n  Действует до: {_fmt_date(ref_discount_expires)}" if ref_discount_expires else ""
-            discount_lines += f"  Скидка на тарифы: <b>−{ref_discount}%</b>{expires_label}\n"
+            discount_lines += f"  Персональная скидка: <b>−{ref_discount}%</b>{expires_label}\n"
         if token_discount > 0:
-            discount_lines += f"  Скидка на доп. токены по тарифу: <b>−{token_discount}%</b>"
+            discount_lines += f"  Доп. скидка на токены по подписке: <b>−{token_discount}%</b>"
+
+    # ── Реферальная статистика ────────────────────────────
+    from src.services.db.referral_repo import get_referral_stats
+    ref_stats = await get_referral_stats(internal_user_id)
+    ref_total = ref_stats["total_referrals"]
+    ref_tokens = ref_stats["total_bonus_tokens"]
+
+    referral_lines = ""
+    if ref_total > 0:
+        referral_lines = (
+            f"\n\n👥 <b>Рефералы</b>\n"
+            f"  Приглашено друзей: <b>{ref_total}</b>\n"
+            f"  Начислено токенов в подарок: <b>{ref_tokens}</b>"
+        )
 
     # ── Итоговый текст ───────────────────────────────────
     profile_text = (
@@ -766,6 +780,7 @@ async def handle_profile(message: Message) -> None:
         f"{sub_line}\n\n"
         f"{limit_block}"
         f"{discount_lines}"
+        f"{referral_lines}"
     )
 
     # Добавляем inline кнопки

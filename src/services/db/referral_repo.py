@@ -157,15 +157,28 @@ async def grant_referral_bonuses(referrer_id: int, referee_id: int) -> tuple[int
     return (granted_referrer, granted_referee)
 
 
-async def get_referral_stats(user_id: int) -> Dict[str, int]:
+async def get_referral_stats(user_id: int) -> Dict[str, Any]:
     """Статистика рефералов пользователя для профиля."""
     pool = get_pool()
     async with pool.acquire() as conn:
-        count = await conn.fetchval(
-            "SELECT COUNT(*) FROM referrals WHERE referrer_id = $1",
+        row = await conn.fetchrow(
+            """
+            SELECT
+                COUNT(*) AS total_referrals,
+                COALESCE(SUM(tt.amount), 0) AS total_bonus_tokens
+            FROM referrals r
+            LEFT JOIN token_transactions tt
+                ON tt.user_id = $1
+                AND tt.operation_type = 'referral_bonus'
+                AND tt.amount > 0
+            WHERE r.referrer_id = $1
+            """,
             user_id,
         )
-    return {"total_referrals": count or 0}
+    return {
+        "total_referrals": row["total_referrals"] if row else 0,
+        "total_bonus_tokens": int(row["total_bonus_tokens"]) if row else 0,
+    }
 
 
 async def get_referrer_info(user_id: int) -> Optional[Dict[str, Any]]:

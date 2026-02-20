@@ -201,6 +201,45 @@ async def _log_user_callback(
         logger.warning(f"Failed to log user callback: {e}")
 
 
+async def _send_insufficient_tokens_error(
+    *,
+    target: Message | CallbackQuery,
+    user_id: int,
+    cost: int,
+    telegram_user_id: int,
+    session_id: str | None = None,
+    topic_id: int | None = None,
+    is_callback: bool = False,
+) -> None:
+    """
+    Отправляет стандартную ошибку 'недостаточно токенов' пользователю.
+    Используется когда deduct_tokens() возвращает False.
+    """
+    balance = await get_token_balance(user_id)
+    insuf_text = (
+        f"Не удалось списать токены — баланс изменился.\n\n"
+        f"Стоимость: {pluralize_questions(cost)}\n"
+        f"Ваш баланс: {pluralize_questions(balance)}\n\n"
+        f"Для пополнения перейдите в «Мой профиль» → «Пополнить баланс»."
+    )
+    if is_callback:
+        cb = target
+        await cb.answer("Недостаточно токенов")
+        if cb.message:
+            await cb.message.answer(insuf_text)
+            await _log_bot_msg(insuf_text, telegram_user_id=telegram_user_id)
+    else:
+        msg = target
+        await msg.answer(insuf_text)
+        await _log_bot_msg(
+            insuf_text,
+            user_id=user_id,
+            session_id=session_id,
+            telegram_user_id=telegram_user_id,
+            topic_id=topic_id,
+        )
+
+
 # ==== HELPER-ФУНКЦИИ ДЛЯ РАБОТЫ С КОНТЕКСТОМ УТОЧНЕНИЙ ====
 
 def _init_consultation_context(
@@ -1081,12 +1120,22 @@ async def run_consultation_pipeline(
         return
 
     # Fallback: классификатор не сработал — старое поведение (1 токен, ответить сразу)
-    await deduct_tokens(
+    deduction_ok = await deduct_tokens(
         internal_user_id,
         cost,
         "new_topic",
         f"Консультация: {category}"
     )
+    if not deduction_ok:
+        await _send_insufficient_tokens_error(
+            target=message,
+            user_id=internal_user_id,
+            cost=cost,
+            telegram_user_id=telegram_user_id,
+            session_id=f"tg:{telegram_user_id}",
+        )
+        await clear_consultation_state(telegram_user_id)
+        return
 
     # Сохраняем question_msg_id для привязки к топику после его создания
     ctx = CONSULTATION_CONTEXT.get(telegram_user_id, {})
@@ -1780,20 +1829,19 @@ async def process_followup_question_logic(message: Message) -> None:
 
         # phase_eligible: сразу отвечаем кратко, предложим фазы после ответа
 
-        # short_answer → списываем 1 токен сразу
+        # short_answer → списываем 1 токен сразу (атомарная проверка + списание)
         followup_cost = COST_NEW_TOPIC  # 1
-        if not await has_sufficient_tokens(user_id, followup_cost):
-            balance = await get_token_balance(user_id)
-            fu_insuf_short = (
-                f"У вас недостаточно токенов.\n\n"
-                f"Стоимость: {pluralize_questions(followup_cost)}\n"
-                f"Ваш баланс: {pluralize_questions(balance)}\n\n"
-                f"Для пополнения перейдите в «Мой профиль» → «Пополнить баланс»."
+        deduction_ok = await deduct_tokens(user_id, followup_cost, "follow_up", f"Уточняющий вопрос: {detected_category}")
+        if not deduction_ok:
+            await _send_insufficient_tokens_error(
+                target=message,
+                user_id=user_id,
+                cost=followup_cost,
+                telegram_user_id=telegram_user_id,
+                session_id=session_id,
+                topic_id=topic_id,
             )
-            await message.answer(fu_insuf_short)
-            await _log_bot_msg(fu_insuf_short, user_id=user_id, session_id=session_id, topic_id=topic_id)
             return
-        await deduct_tokens(user_id, followup_cost, "follow_up", f"Уточняющий вопрос: {detected_category}")
         print(f"[followup] Charged {followup_cost} questions for follow-up (short_answer)")
 
     # ==== ГИБРИДНЫЙ ПОТОК: 3 варианта в зависимости от культуры ====
@@ -2063,16 +2111,6 @@ async def handle_complexity_confirm(callback: CallbackQuery) -> None:
     # Определяем стоимость по выбору пользователя
     if action == "long":
         cost = PHASE_COST  # 2
-        # Проверяем баланс на 2 токена
-        if not await has_sufficient_tokens(internal_user_id, cost):
-            balance = await get_token_balance(internal_user_id)
-            await callback.answer("Недостаточно токенов")
-            if callback.message:
-                insuf_plan_cb_text = f"Недостаточно токенов для расширенного ответа.\nВаш баланс: {pluralize_questions(balance)}."
-                await callback.message.answer(insuf_plan_cb_text)
-                await _log_bot_msg(insuf_plan_cb_text, telegram_user_id=telegram_user_id)
-            return
-
         if is_simple_choice and phase_eligible:
             # === Простой вопрос + phase_eligible + расширенный → ответ по фазам (ИИ выбирает) ===
             topics_list = metadata.get("topics", [])
@@ -2169,14 +2207,24 @@ async def handle_complexity_confirm(callback: CallbackQuery) -> None:
                 },
             }
 
-    # Списываем токены
+    # Списываем токены (атомарная проверка + списание)
     reason = "Расширенный ответ" if action == "long" else "Стандартный ответ"
-    await deduct_tokens(
+    deduction_ok = await deduct_tokens(
         internal_user_id,
         cost,
         "new_topic",
         f"Консультация ({reason}): {category}"
     )
+    if not deduction_ok:
+        await _send_insufficient_tokens_error(
+            target=callback,
+            user_id=internal_user_id,
+            cost=cost,
+            telegram_user_id=telegram_user_id,
+            is_callback=True,
+        )
+        await clear_consultation_state(telegram_user_id)
+        return
 
     # Очищаем pending контекст (если не фазовое продолжение)
     if not (action == "long" and phase_mode == "seasonal_phase"):
@@ -2323,28 +2371,22 @@ async def handle_phase_select(callback: CallbackQuery) -> None:
     complexity_result = ctx["complexity_result"]
     phases_delivered = ctx.get("phases_delivered", [])
 
-    # Проверяем баланс
-    if not await has_sufficient_tokens(internal_user_id, PHASE_COST):
-        balance = await get_token_balance(internal_user_id)
-        await callback.answer("Недостаточно токенов")
-        if callback.message:
-            phase_insuf_text = (
-                f"Недостаточно токенов для этой фазы.\n\n"
-                f"Стоимость: {pluralize_questions(PHASE_COST)}\n"
-                f"Ваш баланс: {pluralize_questions(balance)}\n\n"
-                f"Для пополнения перейдите в «Мой профиль» → «Пополнить баланс»."
-            )
-            await callback.message.answer(phase_insuf_text)
-            await _log_bot_msg(phase_insuf_text, telegram_user_id=telegram_user_id)
-        return
-
-    # Списываем за фазу
-    await deduct_tokens(
+    # Списываем за фазу (атомарная проверка + списание)
+    deduction_ok = await deduct_tokens(
         internal_user_id,
         PHASE_COST,
         "new_topic",
         f"Фаза {get_phase_display_name(selected_phase)}: {category}"
     )
+    if not deduction_ok:
+        await _send_insufficient_tokens_error(
+            target=callback,
+            user_id=internal_user_id,
+            cost=PHASE_COST,
+            telegram_user_id=telegram_user_id,
+            is_callback=True,
+        )
+        return
 
     await callback.answer(f"Списано {pluralize_questions(PHASE_COST)}")
 

@@ -12,7 +12,7 @@ Before making ANY changes:
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
 **Current Project State (2026-02-19):**
-- Version: 1.2.7
+- Version: 1.2.8
 - Phase: Complexity flow + user experience features
 - Latest changes: Enforce answer length limits (standard=1 msg, extended=2 msgs), single-phase answers, new choice template with topic_in_correct_case
 - CRITICAL: DB schemas 48-51 NOT YET APPLIED — must apply before running bot

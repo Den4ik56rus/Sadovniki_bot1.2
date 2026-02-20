@@ -615,14 +615,67 @@ async def handle_profile(message: Message) -> None:
             internal_user_id,
         )
 
+    # Получаем активную подписку
+    from src.services.db.user_subscription_repo import get_active_subscription
+    from src.services.db.subscription_plan_repo import get_by_id as get_plan_by_id
+    subscription = await get_active_subscription(internal_user_id)
+
+    plan = None
+    if subscription:
+        plan = await get_plan_by_id(subscription["subscription_plan_id"])
+
+    # Блок подписки
+    if subscription and plan:
+        plan_name = plan.get("name", "—")
+        expires_at = subscription["expires_at"]
+        expires_str = expires_at.strftime("%-d %B %Y") if expires_at else "—"
+        token_discount = plan.get("token_discount_percent", 0)
+
+        sub_block = (
+            f"┌─────────────────────────┐\n"
+            f"│  Тариф: <b>{plan_name}</b>  ✅\n"
+            f"│  Активен до {expires_str}\n"
+            f"└─────────────────────────┘"
+        )
+
+        discount_lines = ""
+        if token_discount and token_discount > 0:
+            discount_lines = (
+                f"\n\n💸 <b>Ваши привилегии</b>\n"
+                f"  ✦ Скидка на доп. токены  →  <b>−{token_discount}%</b>\n"
+                f"  ✦ Приоритетный ответ     →  ВКЛ\n"
+                f"  ✦ История запросов       →  90 дней"
+            )
+        else:
+            discount_lines = (
+                f"\n\n💸 <b>Ваши привилегии</b>\n"
+                f"  ✦ Приоритетный ответ     →  ВКЛ\n"
+                f"  ✦ История запросов       →  90 дней"
+            )
+    else:
+        sub_block = (
+            f"┌─────────────────────────┐\n"
+            f"│  Тариф: <b>Базовый</b>  (без подписки)\n"
+            f"└─────────────────────────┘"
+        )
+        discount_lines = ""
+
+    # Прогресс-бар токенов
+    tokens_total = plan["tokens_included"] if plan else 100
+    tokens_used = max(0, tokens_total - balance) if plan else 0
+    bar_filled = int((tokens_used / tokens_total) * 15) if tokens_total > 0 else 0
+    bar_empty = 15 - bar_filled
+    bar = "█" * bar_filled + "░" * bar_empty
+
     # Формируем текст профиля
     profile_text = (
-        f"<b>👤 Ваш профиль</b>\n\n"
-        f"🔑 Баланс токенов: <b>{balance}</b>\n"
-        f"📊 Консультаций: <b>{topics_count}</b>\n\n"
-        f"<b>Стоимость операций:</b>\n"
-        f"• Подробный разбор задачи под конкретную культуру (1 фаза роста): 2 токена\n"
-        f"• Остальные вопросы: 1 токен"
+        f"🌿 <b>Ваш профиль</b>\n\n"
+        f"{sub_block}\n\n"
+        f"📊 <b>Баланс токенов</b>\n"
+        f"  [{bar}]  {balance} осталось\n"
+        f"  Использовано: {tokens_used} / {tokens_total}"
+        f"{discount_lines}\n\n"
+        f"📝 Консультаций: <b>{topics_count}</b>"
     )
 
     # Добавляем inline кнопки

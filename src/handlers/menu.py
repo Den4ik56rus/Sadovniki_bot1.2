@@ -766,7 +766,7 @@ async def handle_profile(message: Message) -> None:
     # Добавляем inline кнопки
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
-            text="💰 Пополнить баланс",
+            text="⚙️ Управлять подпиской",
             callback_data="show_payment_menu"
         )],
         [InlineKeyboardButton(

@@ -33,7 +33,8 @@ async def _apply_invite_discount(user_id: int, original_price: Decimal) -> tuple
     Возвращает (final_price, discount_percent или None).
     """
     from src.services.db.invite_link_repo import get_user_active_discount
-    discount_percent = await get_user_active_discount(user_id)
+    _inv = await get_user_active_discount(user_id)
+    discount_percent = _inv["discount_percent"] if _inv else None
     if discount_percent and discount_percent > 0:
         discount_amount = original_price * Decimal(discount_percent) / Decimal(100)
         final_price = original_price - discount_amount

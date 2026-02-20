@@ -215,7 +215,8 @@ async def show_payment_menu(message: Message):
 
         # Проверить скидку по инвайт-ссылке
         from src.services.db.invite_link_repo import get_user_active_discount
-        invite_discount = await get_user_active_discount(internal_user_id) or 0
+        _inv = await get_user_active_discount(internal_user_id)
+        invite_discount = _inv["discount_percent"] if _inv else 0
 
         # Проверить подписку и скидку от неё
         has_subscription, token_discount = await _get_subscription_info(internal_user_id)
@@ -281,7 +282,8 @@ async def show_payment_menu_callback(callback: CallbackQuery):
 
         # Проверить скидку по инвайт-ссылке
         from src.services.db.invite_link_repo import get_user_active_discount
-        invite_discount = await get_user_active_discount(user_id) or 0
+        _inv = await get_user_active_discount(user_id)
+        invite_discount = _inv["discount_percent"] if _inv else 0
 
         # Проверить подписку и скидку от неё
         has_subscription, token_discount = await _get_subscription_info(user_id)

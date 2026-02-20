@@ -80,6 +80,7 @@ async def get_or_create_user(
                 """
                 UPDATE users
                 SET token_balance = token_balance + $1,
+                    purchased_token_balance = COALESCE(purchased_token_balance, 0) + $1,
                     trial_questions_granted = true
                 WHERE id = $2
                 """,

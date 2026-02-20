@@ -695,17 +695,28 @@ async def render_and_send_profile(
                 internal_user_id, period_start,
             ) or 0
         else:
+            # Trial-пользователь: считаем все начисленные бесплатные токены
+            total_granted_row = await conn.fetchval(
+                """
+                SELECT COALESCE(SUM(amount), 0)
+                FROM token_transactions
+                WHERE user_id = $1
+                  AND operation_type IN ('trial_grant', 'referral_bonus', 'invite_bonus')
+                  AND amount > 0
+                """,
+                internal_user_id,
+            )
+            sub_granted = total_granted_row or 0
             first_grant = await conn.fetchrow(
                 """
-                SELECT created_at, amount FROM token_transactions
+                SELECT created_at FROM token_transactions
                 WHERE user_id = $1
-                  AND operation_type IN ('trial_grant', 'referral_bonus')
+                  AND operation_type IN ('trial_grant', 'referral_bonus', 'invite_bonus')
                   AND amount > 0
                 ORDER BY created_at ASC LIMIT 1
                 """,
                 internal_user_id,
             )
-            sub_granted = first_grant["amount"] if first_grant else 0
             period_start = first_grant["created_at"] if first_grant else None
             purchased_in_period = 0
 
@@ -723,8 +734,13 @@ async def render_and_send_profile(
 
     sub_remaining = split["subscription_tokens"]
     pur_remaining = split["purchased_tokens"]
-    sub_used = max(0, sub_granted - sub_remaining)
-    pur_used = max(0, purchased_in_period - pur_remaining)
+    if subscription:
+        sub_used = max(0, sub_granted - sub_remaining)
+        pur_used = max(0, purchased_in_period - pur_remaining)
+    else:
+        # Trial: использовано = реально потрачено (из транзакций)
+        sub_used = int(total_spent)
+        pur_used = 0
 
     def _bar(used: int, total: int, length: int = 10) -> str:
         if total <= 0:

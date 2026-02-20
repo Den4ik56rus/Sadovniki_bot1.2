@@ -3,7 +3,7 @@
 # Импортируем Router и F (фильтры) из aiogram
 from aiogram import Router, F                  # Router — для группировки хендлеров, F — для фильтрации апдейтов
 # Импортируем фильтр для команды /start
-from aiogram.filters import CommandStart       # CommandStart — срабатывает на /start
+from aiogram.filters import CommandStart, Command       # CommandStart — срабатывает на /start
 # Импортируем типы сообщений и callback-запросов
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo  # Message — входящее сообщение, CallbackQuery — нажатие инлайн-кнопки
 
@@ -1023,3 +1023,14 @@ async def handle_share_referral(callback: CallbackQuery) -> None:
     await _log_bot_msg(share_text, user_id=internal_user_id, session_id=f"tg:{user.id}")
 
     await callback.answer("Перешлите это сообщение друзьям!")
+
+
+@router.message(Command("support"))
+async def cmd_support(message: Message) -> None:
+    """Команда /support — контакт поддержки."""
+    text = (
+        "💬 <b>Поддержка</b>\n\n"
+        "Если у вас возникли вопросы или проблемы — напишите нам:\n"
+        "👉 @sadovniki_support"
+    )
+    await message.answer(text, parse_mode="HTML")

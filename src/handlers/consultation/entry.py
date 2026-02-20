@@ -931,11 +931,8 @@ async def run_consultation_pipeline(
         await clear_consultation_state(telegram_user_id)
         return
 
-    # Фазовые механизмы (выбор формата, план по фазам) — только для этих категорий
-    _PHASE_CATEGORIES = {"питание растений", "защита растений"}
-
-    # === ПЕРЕХВАТ: long_answer / turnkey_solution → подтверждение стоимости (только питание и защита) ===
-    if tier in ("long_answer", "turnkey_solution") and complexity_result and category in _PHASE_CATEGORIES:
+    # === ПЕРЕХВАТ: long_answer / turnkey_solution → подтверждение стоимости ===
+    if tier in ("long_answer", "turnkey_solution") and complexity_result:
         balance = await get_token_balance(internal_user_id)
         metadata = complexity_result.get("metadata", {})
         is_multi_topic = metadata.get("multi_topic", False)
@@ -1027,8 +1024,8 @@ async def run_consultation_pipeline(
         print(f"[unified_entry] Showing complexity confirmation for tier={tier}")
         return
 
-    # === short_answer: показываем выбор формата ПЕРЕД ответом (только питание и защита) ===
-    if complexity_result and category in _PHASE_CATEGORIES:
+    # === short_answer: показываем выбор формата ПЕРЕД ответом ===
+    if complexity_result:
         balance = await get_token_balance(internal_user_id)
 
         # Сохраняем контекст для callback-обработчика

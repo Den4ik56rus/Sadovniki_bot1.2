@@ -141,12 +141,36 @@ async def cmd_start(message: Message) -> None:
         )
         inv_link = await get_invite_link_by_code(invite_link_code)
         if inv_link:
-            was_new = await track_user_invite_link(inv_link['id'], user_id)
+            was_new, is_limit_reached = await track_user_invite_link(inv_link['id'], user_id)
             from src.services.db.client_funnel_repo import set_initial_source
             await set_initial_source(user_id, f"Кампания: {inv_link['name']}")
 
-            # Начислить бонусные токены (только при первой привязке)
-            if was_new and inv_link.get('bonus_tokens', 0) > 0:
+            if is_limit_reached:
+                # Лимит участников акции исчерпан — начисляем стандартный пробный доступ
+                from src.services.db.tokens_repo import get_token_balance
+                current_balance = await get_token_balance(user_id)
+                if current_balance == 0:
+                    from src.services.db.tokens_repo import add_tokens
+                    fallback_tokens = 5
+                    await add_tokens(
+                        user_id=user_id,
+                        amount=fallback_tokens,
+                        operation_type='trial_grant',
+                        description='Тестовый доступ',
+                    )
+                    limit_msg = (
+                        f"К сожалению, вы не успели попасть в число участников акции 😔\n\n"
+                        f"Но не расстраивайтесь — вам начислено <b>{fallback_tokens} токенов</b> "
+                        f"бесплатно, чтобы вы могли протестировать бота!"
+                    )
+                else:
+                    limit_msg = (
+                        "К сожалению, вы не успели попасть в число участников акции 😔\n\n"
+                        "Но не расстраивайтесь — вы можете воспользоваться ботом в обычном режиме!"
+                    )
+                await message.answer(limit_msg, parse_mode="HTML")
+            elif was_new and inv_link.get('bonus_tokens', 0) > 0:
+                # Начислить бонусные токены (только при первой привязке)
                 from src.services.db.tokens_repo import add_tokens
                 await add_tokens(
                     user_id=user_id,

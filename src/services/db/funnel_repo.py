@@ -492,12 +492,14 @@ async def get_next_stage_key(funnel_id: str) -> str:
 # КЛИЕНТЫ В ВОРОНКЕ
 # ═══════════════════════════════════════════════════════════════════════════════
 
-async def get_clients_in_funnel(funnel_id: str) -> Dict[str, List[Dict[str, Any]]]:
+async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = None) -> Dict[str, List[Dict[str, Any]]]:
     """
     Получить клиентов в воронке, сгруппированных по этапам.
 
     Для CRM-воронки автоматически включает пользователей без записи
     в client_funnel_position (новые пользователи, не попавшие в воронку).
+
+    invite_link_id: если задан — показывать только клиентов из этой кампании.
 
     Возвращает словарь: {'new': [...], 'tried': [...], ...}
     """
@@ -531,41 +533,78 @@ async def get_clients_in_funnel(funnel_id: str) -> Dict[str, List[Dict[str, Any]
                 bot_tg_id or 0
             )
 
-        # Получаем клиентов с метриками
-        rows = await conn.fetch(
-            """
-            SELECT
-                u.id,
-                u.telegram_user_id,
-                u.username,
-                u.first_name,
-                u.last_name,
-                u.avatar_path,
-                u.created_at as user_created_at,
-                cfp.stage_key as status,
-                cfp.manual_override,
-                cfp.entered_at,
-                cfp.updated_at as status_updated_at,
-                COALESCE(stats.total_consultations, 0) as total_consultations,
-                COALESCE(stats.total_tokens, 0) as total_tokens,
-                COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
-                stats.last_consultation_at
-            FROM client_funnel_position cfp
-            JOIN users u ON u.id = cfp.user_id
-            LEFT JOIN LATERAL (
+        # Базовый запрос — с опциональным фильтром по инвайт-ссылке
+        if invite_link_id:
+            rows = await conn.fetch(
+                """
                 SELECT
-                    COUNT(*)::int as total_consultations,
-                    COALESCE(SUM(total_tokens), 0)::int as total_tokens,
-                    COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
-                    MAX(created_at) as last_consultation_at
-                FROM consultation_logs cl
-                WHERE cl.user_id = u.id
-            ) stats ON true
-            WHERE cfp.funnel_id = $1
-            ORDER BY stats.last_consultation_at DESC NULLS LAST, cfp.entered_at DESC
-            """,
-            funnel_id
-        )
+                    u.id,
+                    u.telegram_user_id,
+                    u.username,
+                    u.first_name,
+                    u.last_name,
+                    u.avatar_path,
+                    u.created_at as user_created_at,
+                    cfp.stage_key as status,
+                    cfp.manual_override,
+                    cfp.entered_at,
+                    cfp.updated_at as status_updated_at,
+                    COALESCE(stats.total_consultations, 0) as total_consultations,
+                    COALESCE(stats.total_tokens, 0) as total_tokens,
+                    COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
+                    stats.last_consultation_at
+                FROM client_funnel_position cfp
+                JOIN users u ON u.id = cfp.user_id
+                JOIN invite_link_users ilu ON ilu.user_id = u.id AND ilu.invite_link_id = $2
+                LEFT JOIN LATERAL (
+                    SELECT
+                        COUNT(*)::int as total_consultations,
+                        COALESCE(SUM(total_tokens), 0)::int as total_tokens,
+                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
+                        MAX(created_at) as last_consultation_at
+                    FROM consultation_logs cl
+                    WHERE cl.user_id = u.id
+                ) stats ON true
+                WHERE cfp.funnel_id = $1
+                ORDER BY stats.last_consultation_at DESC NULLS LAST, cfp.entered_at DESC
+                """,
+                funnel_id, invite_link_id
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT
+                    u.id,
+                    u.telegram_user_id,
+                    u.username,
+                    u.first_name,
+                    u.last_name,
+                    u.avatar_path,
+                    u.created_at as user_created_at,
+                    cfp.stage_key as status,
+                    cfp.manual_override,
+                    cfp.entered_at,
+                    cfp.updated_at as status_updated_at,
+                    COALESCE(stats.total_consultations, 0) as total_consultations,
+                    COALESCE(stats.total_tokens, 0) as total_tokens,
+                    COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
+                    stats.last_consultation_at
+                FROM client_funnel_position cfp
+                JOIN users u ON u.id = cfp.user_id
+                LEFT JOIN LATERAL (
+                    SELECT
+                        COUNT(*)::int as total_consultations,
+                        COALESCE(SUM(total_tokens), 0)::int as total_tokens,
+                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
+                        MAX(created_at) as last_consultation_at
+                    FROM consultation_logs cl
+                    WHERE cl.user_id = u.id
+                ) stats ON true
+                WHERE cfp.funnel_id = $1
+                ORDER BY stats.last_consultation_at DESC NULLS LAST, cfp.entered_at DESC
+                """,
+                funnel_id
+            )
 
         # Группируем по этапам
         grouped = {stage['stage_key']: [] for stage in stages}

@@ -17,6 +17,7 @@ interface FunnelStore {
   error: string | null
   isSettingsMode: boolean
   sseConnected: boolean
+  selectedInviteLinkId: number | null
 
   // Funnel actions
   fetchFunnels: () => Promise<void>
@@ -47,6 +48,9 @@ interface FunnelStore {
   // Settings mode
   toggleSettingsMode: () => void
 
+  // Invite link filter
+  setInviteLinkFilter: (id: number | null) => void
+
   // Reset
   reset: () => void
 }
@@ -65,6 +69,7 @@ export const useFunnelStore = create<FunnelStore>()(
       error: null,
       isSettingsMode: false,
       sseConnected: false,
+      selectedInviteLinkId: null,
 
       // Funnel actions
       fetchFunnels: async () => {
@@ -238,7 +243,10 @@ export const useFunnelStore = create<FunnelStore>()(
       fetchClients: async (funnelId: string) => {
         set({ isLoadingClients: true })
         try {
-          const response = await api.getFunnelClients(funnelId)
+          const { selectedInviteLinkId } = get()
+          const response = await api.getFunnelClients(funnelId, {
+            invite_link_id: selectedInviteLinkId ?? undefined,
+          })
           set({
             clients: response.clients,
             stats: response.stats,
@@ -418,6 +426,13 @@ export const useFunnelStore = create<FunnelStore>()(
       // Settings mode
       toggleSettingsMode: () => set((state) => ({ isSettingsMode: !state.isSettingsMode })),
 
+      // Invite link filter
+      setInviteLinkFilter: (id: number | null) => {
+        set({ selectedInviteLinkId: id })
+        const funnelId = get().currentFunnelId
+        if (funnelId) get().fetchClients(funnelId)
+      },
+
       // Reset
       reset: () => set({
         funnels: [],
@@ -430,6 +445,7 @@ export const useFunnelStore = create<FunnelStore>()(
         error: null,
         isSettingsMode: false,
         sseConnected: false,
+        selectedInviteLinkId: null,
       }),
     }),
     {

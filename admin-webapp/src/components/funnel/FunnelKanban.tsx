@@ -87,6 +87,8 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
     isLoadingClients,
     error,
     isSettingsMode,
+    selectedInviteLinkId,
+    setInviteLinkFilter,
     fetchStages,
     fetchClients,
     moveClient,
@@ -101,6 +103,18 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
   const { usdRate, fetchRate } = useCurrencyStore()
 
   const { currentView, globalSearchQuery } = useUIStore()
+
+  // Invite link filter — загружаем список ссылок для дропдауна
+  const [inviteLinks, setInviteLinks] = useState<Array<{ id: number; name: string }>>([])
+  const inviteLinksLoaded = useRef(false)
+  useEffect(() => {
+    if (!inviteLinksLoaded.current) {
+      inviteLinksLoaded.current = true
+      api.getInviteLinks().then((res) => {
+        setInviteLinks(res.links.map((l) => ({ id: l.id, name: l.name })))
+      }).catch(() => {})
+    }
+  }, [])
 
   const [activeClient, setActiveClient] = useState<FunnelClient | null>(null)
   const [activeColumnId, setActiveColumnId] = useState<string | null>(null)
@@ -338,6 +352,28 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
 
   return (
     <div className={styles.container}>
+      {/* Фильтр по реферальным ссылкам */}
+      {inviteLinks.length > 0 && (
+        <div className={styles.filterBar}>
+          <label className={styles.filterLabel}>Кампания:</label>
+          <select
+            className={styles.filterSelect}
+            value={selectedInviteLinkId ?? ''}
+            onChange={(e) => setInviteLinkFilter(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">Все клиенты</option>
+            {inviteLinks.map((link) => (
+              <option key={link.id} value={link.id}>{link.name}</option>
+            ))}
+          </select>
+          {selectedInviteLinkId !== null && (
+            <button className={styles.filterClear} onClick={() => setInviteLinkFilter(null)}>
+              ✕ Сбросить
+            </button>
+          )}
+        </div>
+      )}
+
       {/* Kanban Board */}
       <DndContext
         sensors={sensors}

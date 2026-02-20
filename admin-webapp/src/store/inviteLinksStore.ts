@@ -9,6 +9,7 @@ interface InviteLinkData {
   bonus_tokens: number
   discount_percent: number
   discount_duration_days: number
+  max_users: number
 }
 
 interface InviteLinksStore {

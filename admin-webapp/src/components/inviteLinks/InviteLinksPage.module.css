@@ -432,12 +432,28 @@
   font-weight: 600;
 }
 
-/* Bonus / Discount / Days cells */
+/* Bonus / Discount / Days / Limit cells */
 .bonusCell,
 .discountCell,
-.daysCell {
+.daysCell,
+.limitCell {
   text-align: center;
   white-space: nowrap;
+}
+
+.limitOk {
+  font-weight: 600;
+  color: var(--accent-primary);
+}
+
+.limitWarning {
+  font-weight: 600;
+  color: #E67E22;
+}
+
+.limitReached {
+  font-weight: 600;
+  color: #C75B5B;
 }
 
 .bonusValue {

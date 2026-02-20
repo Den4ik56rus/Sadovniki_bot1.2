@@ -90,6 +90,7 @@ async def create_invite_link(request: web.Request) -> web.Response:
         bonus_tokens = int(data.get('bonus_tokens', 0))
         discount_percent = int(data.get('discount_percent', 0))
         discount_duration_days = int(data.get('discount_duration_days', 0))
+        max_users = int(data.get('max_users', 0))
 
         # Валидация
         if not (0 <= discount_percent <= 100):
@@ -98,12 +99,15 @@ async def create_invite_link(request: web.Request) -> web.Response:
             raise web.HTTPBadRequest(text='bonus_tokens must be >= 0')
         if discount_duration_days < 0:
             raise web.HTTPBadRequest(text='discount_duration_days must be >= 0')
+        if max_users < 0:
+            raise web.HTTPBadRequest(text='max_users must be >= 0')
 
         link = await invite_link_repo.create_invite_link(
             name,
             bonus_tokens=bonus_tokens,
             discount_percent=discount_percent,
             discount_duration_days=discount_duration_days,
+            max_users=max_users,
         )
         result = _serialize_dict(link)
         result['deep_link'] = _build_deep_link(result['code'])
@@ -136,6 +140,7 @@ async def update_invite_link(request: web.Request) -> web.Response:
         bonus_tokens = int(data.get('bonus_tokens', 0))
         discount_percent = int(data.get('discount_percent', 0))
         discount_duration_days = int(data.get('discount_duration_days', 0))
+        max_users = int(data.get('max_users', 0))
 
         # Валидация
         if not (0 <= discount_percent <= 100):
@@ -144,12 +149,15 @@ async def update_invite_link(request: web.Request) -> web.Response:
             raise web.HTTPBadRequest(text='bonus_tokens must be >= 0')
         if discount_duration_days < 0:
             raise web.HTTPBadRequest(text='discount_duration_days must be >= 0')
+        if max_users < 0:
+            raise web.HTTPBadRequest(text='max_users must be >= 0')
 
         link = await invite_link_repo.update_invite_link(
             link_id, name,
             bonus_tokens=bonus_tokens,
             discount_percent=discount_percent,
             discount_duration_days=discount_duration_days,
+            max_users=max_users,
         )
         if not link:
             raise web.HTTPNotFound(text='Invite link not found')

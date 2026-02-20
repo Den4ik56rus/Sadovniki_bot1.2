@@ -299,7 +299,10 @@ async def get_funnel_clients(request: web.Request) -> web.Response:
     funnel_id = request.match_info.get("id")
 
     try:
-        clients = await funnel_repo.get_clients_in_funnel(funnel_id)
+        invite_link_id_str = request.query.get("invite_link_id")
+        invite_link_id = int(invite_link_id_str) if invite_link_id_str else None
+
+        clients = await funnel_repo.get_clients_in_funnel(funnel_id, invite_link_id=invite_link_id)
         stats = await funnel_repo.get_funnel_stats(funnel_id)
 
         return web.json_response({

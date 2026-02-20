@@ -39,6 +39,7 @@ export function InviteLinksPage() {
   const [newBonusTokens, setNewBonusTokens] = useState(0)
   const [newDiscountPercent, setNewDiscountPercent] = useState(0)
   const [newDiscountDays, setNewDiscountDays] = useState(0)
+  const [newMaxUsers, setNewMaxUsers] = useState(0)
   const [creating, setCreating] = useState(false)
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -46,6 +47,7 @@ export function InviteLinksPage() {
   const [editingBonusTokens, setEditingBonusTokens] = useState(0)
   const [editingDiscountPercent, setEditingDiscountPercent] = useState(0)
   const [editingDiscountDays, setEditingDiscountDays] = useState(0)
+  const [editingMaxUsers, setEditingMaxUsers] = useState(0)
 
   // Date range label
   const dateRangeLabel = `${format(startOfMonth(currentDate), 'd MMM yyyy', { locale: ru })} – ${format(endOfMonth(currentDate), 'd MMM yyyy', { locale: ru })}`
@@ -121,6 +123,7 @@ export function InviteLinksPage() {
       bonus_tokens: newBonusTokens,
       discount_percent: newDiscountPercent,
       discount_duration_days: newDiscountDays,
+      max_users: newMaxUsers,
     })
     setCreating(false)
     if (ok) {
@@ -128,6 +131,7 @@ export function InviteLinksPage() {
       setNewBonusTokens(0)
       setNewDiscountPercent(0)
       setNewDiscountDays(0)
+      setNewMaxUsers(0)
       setShowCreateForm(false)
     }
   }
@@ -155,6 +159,7 @@ export function InviteLinksPage() {
     setEditingBonusTokens(link.bonus_tokens || 0)
     setEditingDiscountPercent(link.discount_percent || 0)
     setEditingDiscountDays(link.discount_duration_days || 0)
+    setEditingMaxUsers(link.max_users || 0)
   }
 
   const handleSaveEdit = async () => {
@@ -164,6 +169,7 @@ export function InviteLinksPage() {
       bonus_tokens: editingBonusTokens,
       discount_percent: editingDiscountPercent,
       discount_duration_days: editingDiscountDays,
+      max_users: editingMaxUsers,
     })
     setEditingId(null)
     setEditingName('')
@@ -283,6 +289,16 @@ export function InviteLinksPage() {
                   onChange={(e) => setNewDiscountDays(Number(e.target.value) || 0)}
                 />
               </div>
+              <div className={styles.fieldGroup}>
+                <label className={styles.fieldLabel}>Лимит (0 = ∞)</label>
+                <input
+                  className={styles.numberInput}
+                  type="number"
+                  min="0"
+                  value={newMaxUsers}
+                  onChange={(e) => setNewMaxUsers(Number(e.target.value) || 0)}
+                />
+              </div>
             </div>
           </div>
           <div className={styles.createActions}>
@@ -295,7 +311,7 @@ export function InviteLinksPage() {
             </button>
             <button
               className={styles.createCancel}
-              onClick={() => { setShowCreateForm(false); setNewLinkName(''); setNewBonusTokens(0); setNewDiscountPercent(0); setNewDiscountDays(0) }}
+              onClick={() => { setShowCreateForm(false); setNewLinkName(''); setNewBonusTokens(0); setNewDiscountPercent(0); setNewDiscountDays(0); setNewMaxUsers(0) }}
             >
               Отмена
             </button>
@@ -343,6 +359,7 @@ export function InviteLinksPage() {
               <th>Бонус</th>
               <th>Скидка</th>
               <th>Дней</th>
+              <th>Лимит</th>
               <th>Пользователи</th>
               <th>Выручка</th>
               <th>Создана</th>
@@ -445,6 +462,21 @@ export function InviteLinksPage() {
                       value={editingDiscountDays} onChange={(e) => setEditingDiscountDays(Number(e.target.value) || 0)} />
                   ) : (
                     link.discount_duration_days > 0 ? `${link.discount_duration_days} дн.` : '—'
+                  )}
+                </td>
+
+                {/* Лимит пользователей */}
+                <td className={styles.limitCell}>
+                  {editingId === link.id ? (
+                    <input type="number" min="0" className={styles.numberInputSmall}
+                      value={editingMaxUsers} onChange={(e) => setEditingMaxUsers(Number(e.target.value) || 0)} />
+                  ) : (
+                    link.max_users > 0 ? (
+                      <span className={link.users_count >= link.max_users ? styles.limitReached : link.users_count >= link.max_users * 0.8 ? styles.limitWarning : styles.limitOk}>
+                        {link.users_count}/{link.max_users}
+                        {link.users_count >= link.max_users && ' 🔒'}
+                      </span>
+                    ) : '∞'
                   )}
                 </td>
 

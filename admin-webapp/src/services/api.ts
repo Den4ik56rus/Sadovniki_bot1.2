@@ -672,8 +672,11 @@ export const api = {
   },
 
   // Funnel Clients
-  async getFunnelClients(funnelId: string): Promise<FunnelClientsResponse> {
-    return fetchApi<FunnelClientsResponse>(`/funnels/${funnelId}/clients`)
+  async getFunnelClients(funnelId: string, params?: { invite_link_id?: number }): Promise<FunnelClientsResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.invite_link_id) searchParams.set('invite_link_id', String(params.invite_link_id))
+    const query = searchParams.toString()
+    return fetchApi<FunnelClientsResponse>(`/funnels/${funnelId}/clients${query ? `?${query}` : ''}`)
   },
 
   async getFunnelStats(funnelId: string): Promise<{ stats: Record<string, number> }> {
@@ -1142,14 +1145,14 @@ export const api = {
     return fetchApi<InviteLinksResponse>(`/invite-links${query ? `?${query}` : ''}`)
   },
 
-  async createInviteLink(data: { name: string; bonus_tokens?: number; discount_percent?: number; discount_duration_days?: number }): Promise<InviteLink> {
+  async createInviteLink(data: { name: string; bonus_tokens?: number; discount_percent?: number; discount_duration_days?: number; max_users?: number }): Promise<InviteLink> {
     return fetchApi<InviteLink>('/invite-links', {
       method: 'POST',
       body: JSON.stringify(data),
     })
   },
 
-  async updateInviteLink(id: number, data: { name: string; bonus_tokens?: number; discount_percent?: number; discount_duration_days?: number }): Promise<InviteLink> {
+  async updateInviteLink(id: number, data: { name: string; bonus_tokens?: number; discount_percent?: number; discount_duration_days?: number; max_users?: number }): Promise<InviteLink> {
     return fetchApi<InviteLink>(`/invite-links/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

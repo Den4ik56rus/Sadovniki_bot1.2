@@ -34,6 +34,7 @@ async def create_invite_link(
     bonus_tokens: int = 0,
     discount_percent: int = 0,
     discount_duration_days: int = 0,
+    max_users: int = 0,
 ) -> Dict[str, Any]:
     """Создать новую инвайт-ссылку. Код генерируется автоматически."""
     pool = get_pool()
@@ -43,11 +44,11 @@ async def create_invite_link(
             try:
                 row = await conn.fetchrow(
                     """
-                    INSERT INTO invite_links (name, code, bonus_tokens, discount_percent, discount_duration_days)
-                    VALUES ($1, $2, $3, $4, $5)
-                    RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, created_at
+                    INSERT INTO invite_links (name, code, bonus_tokens, discount_percent, discount_duration_days, max_users)
+                    VALUES ($1, $2, $3, $4, $5, $6)
+                    RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, created_at
                     """,
-                    name, code, bonus_tokens, discount_percent, discount_duration_days,
+                    name, code, bonus_tokens, discount_percent, discount_duration_days, max_users,
                 )
                 return dict(row)
             except Exception:
@@ -61,7 +62,7 @@ async def get_invite_link_by_code(code: str) -> Optional[Dict[str, Any]]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, name, code, bonus_tokens, discount_percent, discount_duration_days, created_at
+            SELECT id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, created_at
             FROM invite_links WHERE code = $1
             """,
             code.upper(),
@@ -71,34 +72,62 @@ async def get_invite_link_by_code(code: str) -> Optional[Dict[str, Any]]:
     return dict(row)
 
 
-async def track_user_invite_link(invite_link_id: int, user_id: int) -> bool:
+async def track_user_invite_link(invite_link_id: int, user_id: int) -> tuple[bool, bool]:
     """
     Записать привязку пользователя к инвайт-ссылке.
     Вычисляет discount_expires_at на основе настроек ссылки.
+    Проверяет лимит пользователей: если max_users > 0 и лимит исчерпан — не записывает.
     ON CONFLICT DO NOTHING — если пользователь уже привязан, ничего не делаем.
-    Возвращает True если записано, False если уже существовало.
+
+    Возвращает (was_new, is_limit_reached):
+        was_new = True если запись добавлена впервые
+        is_limit_reached = True если лимит исчерпан (пользователь не добавлен)
     """
     pool = get_pool()
     async with pool.acquire() as conn:
         try:
-            result = await conn.execute(
-                """
-                INSERT INTO invite_link_users (invite_link_id, user_id, discount_expires_at)
-                SELECT $1, $2,
-                    CASE WHEN il.discount_duration_days > 0 AND il.discount_percent > 0
-                         THEN NOW() + (il.discount_duration_days || ' days')::INTERVAL
-                         ELSE NULL
-                    END
-                FROM invite_links il
-                WHERE il.id = $1
-                ON CONFLICT (user_id) DO NOTHING
-                """,
-                invite_link_id, user_id,
-            )
-            return result == "INSERT 0 1"
+            async with conn.transaction():
+                # Получаем настройки ссылки и текущий счётчик
+                row = await conn.fetchrow(
+                    """
+                    SELECT il.max_users,
+                           COUNT(ilu.id) AS current_count
+                    FROM invite_links il
+                    LEFT JOIN invite_link_users ilu ON ilu.invite_link_id = il.id
+                    WHERE il.id = $1
+                    GROUP BY il.max_users
+                    """,
+                    invite_link_id,
+                )
+                if not row:
+                    return False, False
+
+                max_users = row['max_users']
+                current_count = row['current_count']
+
+                # Проверяем лимит (max_users=0 означает без лимита)
+                if max_users > 0 and current_count >= max_users:
+                    return False, True
+
+                result = await conn.execute(
+                    """
+                    INSERT INTO invite_link_users (invite_link_id, user_id, discount_expires_at)
+                    SELECT $1, $2,
+                        CASE WHEN il.discount_duration_days > 0 AND il.discount_percent > 0
+                             THEN NOW() + (il.discount_duration_days || ' days')::INTERVAL
+                             ELSE NULL
+                        END
+                    FROM invite_links il
+                    WHERE il.id = $1
+                    ON CONFLICT (user_id) DO NOTHING
+                    """,
+                    invite_link_id, user_id,
+                )
+                was_new = result == "INSERT 0 1"
+                return was_new, False
         except Exception as e:
             logger.error(f"Ошибка привязки пользователя к инвайт-ссылке: {e}")
-            return False
+            return False, False
 
 
 async def get_user_active_discount(user_id: int) -> Optional[Dict[str, Any]]:
@@ -158,7 +187,7 @@ async def get_invite_links_with_stats(
         query = f"""
             SELECT
                 il.id, il.name, il.code,
-                il.bonus_tokens, il.discount_percent, il.discount_duration_days,
+                il.bonus_tokens, il.discount_percent, il.discount_duration_days, il.max_users,
                 il.created_at,
                 COUNT(DISTINCT ilu.user_id) AS users_count,
                 COALESCE(SUM(p.amount_rub) FILTER (WHERE p.paid = true), 0) AS total_revenue_rub
@@ -220,6 +249,7 @@ async def update_invite_link(
     bonus_tokens: int = 0,
     discount_percent: int = 0,
     discount_duration_days: int = 0,
+    max_users: int = 0,
 ) -> Optional[Dict[str, Any]]:
     """Обновить инвайт-ссылку. Возвращает обновлённую строку или None."""
     pool = get_pool()
@@ -227,11 +257,11 @@ async def update_invite_link(
         row = await conn.fetchrow(
             """
             UPDATE invite_links
-            SET name = $1, bonus_tokens = $2, discount_percent = $3, discount_duration_days = $4
-            WHERE id = $5
-            RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, created_at
+            SET name = $1, bonus_tokens = $2, discount_percent = $3, discount_duration_days = $4, max_users = $5
+            WHERE id = $6
+            RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, created_at
             """,
-            name, bonus_tokens, discount_percent, discount_duration_days, link_id,
+            name, bonus_tokens, discount_percent, discount_duration_days, max_users, link_id,
         )
     if not row:
         return None

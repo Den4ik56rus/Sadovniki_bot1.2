@@ -645,10 +645,10 @@ async def handle_profile(message: Message) -> None:
     if subscription and plan:
         plan_name = plan.get("name", "—")
         expires_at = subscription["expires_at"]
-        sub_line = f"Тариф: <b>{plan_name}</b>  ✅\nПодписка до: {_fmt_date(expires_at)}"
+        sub_line = f"Тариф:\n<b>{plan_name}</b>  ✅\nПодписка до: {_fmt_date(expires_at)}"
     else:
         plan_name = "Пробный"
-        sub_line = "Тариф: <b>Пробный</b>  |  Без подписки"
+        sub_line = "Тариф:\n<b>Пробный</b>  |  Без подписки"
 
     # ── Лимит токенов ────────────────────────────────────
     # Подписочные: лимит = tokens_granted, перенос по max_carryover

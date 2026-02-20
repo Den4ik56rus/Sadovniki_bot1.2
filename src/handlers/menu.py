@@ -712,18 +712,16 @@ async def handle_profile(message: Message) -> None:
         return "█" * filled + "░" * (length - filled)
 
     if subscription and plan:
-        # Шкала подписочных токенов
         sub_bar = _bar(sub_used, sub_granted)
         limit_block = (
-            f"🪙 <b>Подписочные токены</b>\n"
+            f"🪙 <b>Лимит токенов</b>\n"
             f"  [{sub_bar}]\n"
             f"  Использовано: {sub_used} из {sub_granted}"
         )
-        # Перенос подписочных на следующий месяц
         max_carryover = plan.get("max_carryover", 0)
         if max_carryover and max_carryover > 0:
             carryover_val = min(sub_remaining, max_carryover)
-            limit_block += f"\n  ↩️ Перенос: <b>{carryover_val}</b> (макс. {max_carryover})"
+            limit_block += f"\n  ↩️ Перенос на след. месяц: <b>{carryover_val}</b> (макс. {max_carryover})"
 
         # Шкала докупленных токенов (если есть)
         if purchased_in_period > 0:

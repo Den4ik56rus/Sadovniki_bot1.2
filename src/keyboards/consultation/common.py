@@ -154,9 +154,9 @@ def get_complexity_confirm_keyboard(
     # Кнопка "Ответ по фазам роста" — для long_answer
     if tier in ("long_answer",):
         plan_text = (
-            f"{phase_button_label} ({cost} вопроса)"
+            f"{phase_button_label} ({cost} токена)"
             if phase_button_label
-            else f"Ответ по фазам роста ({cost} вопроса)"
+            else f"Ответ по фазам роста ({cost} токена)"
         )
         buttons.append([
             InlineKeyboardButton(

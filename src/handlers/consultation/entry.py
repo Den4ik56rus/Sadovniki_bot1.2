@@ -1002,8 +1002,7 @@ async def run_consultation_pipeline(
         else:
             choose_format_text = (
                 f"{personal_text}\n\n"
-                f"{phase_label or 'План на ближайшую фазу'} — {pluralize_questions(PHASE_COST)}\n\n"
-                f"Ваш баланс: {pluralize_questions(balance)}."
+                f"{phase_label or 'План на ближайшую фазу'} — {pluralize_questions(PHASE_COST)}"
             )
             kb = get_complexity_confirm_keyboard(
                 "long_answer", PHASE_COST, phase_button_label=phase_label,
@@ -1751,8 +1750,7 @@ async def process_followup_question_logic(message: Message) -> None:
             else:
                 fu_choose_text = (
                     f"{personal_text}\n\n"
-                    f"{phase_label or 'План на ближайшую фазу'} — {pluralize_questions(PHASE_COST)}\n\n"
-                    f"Ваш баланс: {pluralize_questions(balance)}."
+                    f"{phase_label or 'План на ближайшую фазу'} — {pluralize_questions(PHASE_COST)}"
                 )
                 kb = get_complexity_confirm_keyboard(
                     "long_answer", PHASE_COST, phase_button_label=phase_label,
@@ -2425,8 +2423,7 @@ async def handle_topic_select(callback: CallbackQuery) -> None:
         if callback.message:
             ts_choose_text = (
                 f"{personal_text}\n\n"
-                f"{phase_label or 'План на ближайшую фазу'} — {pluralize_questions(PHASE_COST)}\n\n"
-                f"Ваш баланс: {pluralize_questions(balance)}."
+                f"{phase_label or 'План на ближайшую фазу'} — {pluralize_questions(PHASE_COST)}"
             )
             kb = get_complexity_confirm_keyboard(
                 "long_answer", PHASE_COST, phase_button_label=phase_label,

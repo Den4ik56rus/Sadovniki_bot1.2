@@ -1028,9 +1028,12 @@ async def handle_share_referral(callback: CallbackQuery) -> None:
 @router.message(Command("support"))
 async def cmd_support(message: Message) -> None:
     """Команда /support — контакт поддержки."""
+    user = message.from_user
+    user_id = user.id if user else "неизвестен"
     text = (
-        "💬 <b>Поддержка</b>\n\n"
-        "Если у вас возникли вопросы или проблемы — напишите нам:\n"
-        "👉 @sadovniki_support"
+        f"💬 <b>Обращение в поддержку</b>\n\n"
+        f"Ваш ID: <code>{user_id}</code>\n\n"
+        f"Перешлите это сообщение в поддержку:\n"
+        f"👉 <a href=\"https://t.me/orenqueen56\">@orenqueen56</a>"
     )
     await message.answer(text, parse_mode="HTML")

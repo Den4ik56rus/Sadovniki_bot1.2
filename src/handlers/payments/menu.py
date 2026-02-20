@@ -37,13 +37,58 @@ def get_payment_menu_keyboard(
     has_subscription: bool = False,
     token_discount_percent: int = 0,
     invite_discount_percent: int = 0,
+    auto_renew: bool = False,
 ) -> InlineKeyboardMarkup:
     buttons = []
 
-    # Тарифные планы
+    # Кнопка оформить/продлить подписку
+    if has_subscription:
+        buttons.append([InlineKeyboardButton(
+            text="🔄 Продлить подписку",
+            callback_data="payment_menu_header_subscription"
+        )])
+    else:
+        buttons.append([InlineKeyboardButton(
+            text="📋 Оформить подписку",
+            callback_data="payment_menu_header_subscription"
+        )])
+
+    # Отменить автопродление — только если включено
+    if has_subscription and auto_renew:
+        buttons.append([InlineKeyboardButton(
+            text="❌ Отменить автопродление",
+            callback_data="cancel_auto_renew"
+        )])
+
+    # Доп. токены
+    if token_packages:
+        buttons.append([InlineKeyboardButton(
+            text="➕ Дополнительные токены:",
+            callback_data="payment_menu_header_tokens"
+        )])
+        if has_subscription:
+            best_discount = max(token_discount_percent, invite_discount_percent)
+            for package in token_packages:
+                price = int(package['price_rub'])
+                if best_discount > 0:
+                    discounted = int(price * (100 - best_discount) / 100)
+                    text = f"{package['name']}  {price}₽ → {discounted}₽"
+                else:
+                    text = f"{package['name']}  {price}₽"
+                buttons.append([InlineKeyboardButton(
+                    text=text,
+                    callback_data=f"buy_tokens_{package['id']}"
+                )])
+        else:
+            buttons.append([InlineKeyboardButton(
+                text="Купить доп. токены",
+                callback_data="buy_tokens_no_subscription"
+            )])
+
+    # Тарифные планы (раскрытые)
     if subscription_plans:
         buttons.append([InlineKeyboardButton(
-            text="📅 Тарифные планы:",
+            text="─────────────────",
             callback_data="payment_menu_header_subscription"
         )])
         for plan in subscription_plans:
@@ -56,25 +101,6 @@ def get_payment_menu_keyboard(
             buttons.append([InlineKeyboardButton(
                 text=text,
                 callback_data=f"buy_subscription_{plan['id']}"
-            )])
-
-    # Доп. токены
-    if token_packages and has_subscription:
-        buttons.append([InlineKeyboardButton(
-            text="➕ Дополнительные токены:",
-            callback_data="payment_menu_header_tokens"
-        )])
-        best_discount = max(token_discount_percent, invite_discount_percent)
-        for package in token_packages:
-            price = int(package['price_rub'])
-            if best_discount > 0:
-                discounted = int(price * (100 - best_discount) / 100)
-                text = f"{package['name']}  {price}₽ → {discounted}₽"
-            else:
-                text = f"{package['name']}  {price}₽"
-            buttons.append([InlineKeyboardButton(
-                text=text,
-                callback_data=f"buy_tokens_{package['id']}"
             )])
 
     buttons.append([InlineKeyboardButton(
@@ -224,11 +250,13 @@ async def show_payment_menu(message: Message):
             invite_discount_percent=invite_discount,
             active_subscription=active_sub,
         )
+        auto_renew = active_sub.get("auto_renew", False) if active_sub else False
         keyboard = get_payment_menu_keyboard(
             subscription_plans, token_packages,
             has_subscription=has_subscription,
             token_discount_percent=token_discount,
             invite_discount_percent=invite_discount,
+            auto_renew=auto_renew,
         )
 
         await message.answer(menu_text, reply_markup=keyboard, parse_mode="HTML")
@@ -292,11 +320,13 @@ async def show_payment_menu_callback(callback: CallbackQuery):
             invite_discount_percent=invite_discount,
             active_subscription=active_sub,
         )
+        auto_renew = active_sub.get("auto_renew", False) if active_sub else False
         keyboard = get_payment_menu_keyboard(
             subscription_plans, token_packages,
             has_subscription=has_subscription,
             token_discount_percent=token_discount,
             invite_discount_percent=invite_discount,
+            auto_renew=auto_renew,
         )
 
         await callback.message.edit_text(
@@ -319,3 +349,45 @@ async def show_payment_menu_callback(callback: CallbackQuery):
 async def payment_menu_headers(callback: CallbackQuery):
     """Обработка кликов по заголовкам (они не активны, просто заглушка)."""
     await callback.answer()
+
+
+@router.callback_query(F.data == "buy_tokens_no_subscription")
+async def buy_tokens_no_subscription(callback: CallbackQuery):
+    """Попытка купить доп. токены без подписки."""
+    await callback.answer(
+        "Доп. токены доступны только при активной подписке. Сначала оформите подписку.",
+        show_alert=True,
+    )
+
+
+@router.callback_query(F.data == "cancel_auto_renew")
+async def cancel_auto_renew_handler(callback: CallbackQuery):
+    """Отменить автопродление подписки."""
+    await callback.answer()
+
+    from src.services.db.users_repo import get_or_create_user
+    user_id = await get_or_create_user(
+        telegram_user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+    )
+
+    from src.services.db.user_subscription_repo import get_active_subscription
+    from src.services.db.pool import get_pool
+    subscription = await get_active_subscription(user_id)
+
+    if not subscription:
+        await callback.answer("Активная подписка не найдена.", show_alert=True)
+        return
+
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE user_subscriptions SET auto_renew = false WHERE id = $1",
+            subscription["id"],
+        )
+
+    await callback.answer("✅ Автопродление отключено.", show_alert=True)
+    # Перезагружаем меню
+    await show_payment_menu_callback(callback)

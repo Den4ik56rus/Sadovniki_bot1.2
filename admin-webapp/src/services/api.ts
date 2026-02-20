@@ -89,6 +89,13 @@ import type {
   ServerMetrics,
   ServerMetricsHistory,
   OpenAIBalance,
+  // Moderation
+  ModerationStatus,
+  ModerationItem,
+  ModerationQueueResponse,
+  ModerationStats,
+  KBEntry,
+  KBListResponse,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -827,6 +834,105 @@ export const api = {
     return fetchApi(`/expenses/categories/${id}`, {
       method: 'DELETE',
     })
+  },
+
+  // ============================================================================
+  // Moderation API (Модерация вопросов/ответов + База знаний)
+  // ============================================================================
+
+  async getModerationQueue(params?: {
+    status?: ModerationStatus | 'all'
+    limit?: number
+    offset?: number
+    sort?: 'oldest' | 'newest'
+  }): Promise<ModerationQueueResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.status) searchParams.set('status', params.status)
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    if (params?.sort) searchParams.set('sort', params.sort)
+    const query = searchParams.toString()
+    return fetchApi<ModerationQueueResponse>(`/moderation/queue${query ? `?${query}` : ''}`)
+  },
+
+  async getModerationItem(id: number): Promise<ModerationItem> {
+    return fetchApi<ModerationItem>(`/moderation/queue/${id}`)
+  },
+
+  async setModerationCategory(id: number, category: string): Promise<{ success: boolean }> {
+    return fetchApi(`/moderation/queue/${id}/category`, {
+      method: 'PATCH',
+      body: JSON.stringify({ category }),
+    })
+  },
+
+  async updateModerationAnswer(id: number, answer: string): Promise<{ success: boolean }> {
+    return fetchApi(`/moderation/queue/${id}/answer`, {
+      method: 'PATCH',
+      body: JSON.stringify({ answer }),
+    })
+  },
+
+  async editModerationAnswerAI(id: number, instructions: string): Promise<{ improved_answer: string }> {
+    return fetchApi(`/moderation/queue/${id}/edit-ai`, {
+      method: 'POST',
+      body: JSON.stringify({ instructions }),
+    })
+  },
+
+  async approveModerationItem(id: number): Promise<{ success: boolean; kb_id: number; category: string; subcategory: string }> {
+    return fetchApi(`/moderation/queue/${id}/approve`, {
+      method: 'POST',
+    })
+  },
+
+  async rejectModerationItem(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/moderation/queue/${id}/reject`, {
+      method: 'POST',
+    })
+  },
+
+  async getModerationStats(): Promise<ModerationStats> {
+    return fetchApi<ModerationStats>('/moderation/stats')
+  },
+
+  // KB Browser
+  async getKBEntries(params?: {
+    search?: string
+    category?: string
+    subcategory?: string
+    is_active?: boolean
+    limit?: number
+    offset?: number
+  }): Promise<KBListResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.search) searchParams.set('search', params.search)
+    if (params?.category) searchParams.set('category', params.category)
+    if (params?.subcategory) searchParams.set('subcategory', params.subcategory)
+    if (params?.is_active !== undefined) searchParams.set('is_active', String(params.is_active))
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return fetchApi<KBListResponse>(`/moderation/kb${query ? `?${query}` : ''}`)
+  },
+
+  async getKBEntry(id: number): Promise<KBEntry> {
+    return fetchApi<KBEntry>(`/moderation/kb/${id}`)
+  },
+
+  async updateKBEntry(id: number, data: Partial<KBEntry>): Promise<{ success: boolean; entry: KBEntry }> {
+    return fetchApi(`/moderation/kb/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async getKBCategories(): Promise<{ categories: string[] }> {
+    return fetchApi('/moderation/kb/categories')
+  },
+
+  async getKBSubcategories(): Promise<{ subcategories: string[] }> {
+    return fetchApi('/moderation/kb/subcategories')
   },
 
   // SSE endpoints (Server-Sent Events для real-time обновлений)

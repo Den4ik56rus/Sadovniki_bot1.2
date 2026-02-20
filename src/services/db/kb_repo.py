@@ -259,3 +259,134 @@ async def kb_search_all(
         rows = [r for r in rows if r["distance"] <= distance_threshold]
 
     return rows
+
+
+async def kb_get_list(
+    *,
+    search: Optional[str] = None,
+    category: Optional[str] = None,
+    subcategory: Optional[str] = None,
+    is_active: Optional[bool] = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> tuple:
+    """
+    Список записей knowledge_base для браузера KB.
+    Возвращает (items, total_count).
+    """
+    pool = get_pool()
+
+    conditions = []
+    params: list = []
+    idx = 1
+
+    if search:
+        conditions.append(f"(question ILIKE ${idx} OR answer ILIKE ${idx})")
+        params.append(f"%{search}%")
+        idx += 1
+    if category:
+        conditions.append(f"category = ${idx}")
+        params.append(category)
+        idx += 1
+    if subcategory:
+        conditions.append(f"subcategory = ${idx}")
+        params.append(subcategory)
+        idx += 1
+    if is_active is not None:
+        conditions.append(f"is_active = ${idx}")
+        params.append(is_active)
+        idx += 1
+
+    where = ("WHERE " + " AND ".join(conditions)) if conditions else ""
+
+    async with pool.acquire() as conn:
+        count_row = await conn.fetchrow(
+            f"SELECT COUNT(*) AS cnt FROM knowledge_base {where}",
+            *params,
+        )
+        total = int(count_row["cnt"]) if count_row else 0
+
+        items_sql = f"""
+            SELECT id, category, subcategory, question, answer,
+                   source_type, is_active, created_at
+            FROM knowledge_base
+            {where}
+            ORDER BY created_at DESC
+            LIMIT ${idx} OFFSET ${idx + 1}
+        """
+        params.extend([limit, offset])
+        rows = await conn.fetch(items_sql, *params)
+
+    return rows, total
+
+
+async def kb_get_by_id(kb_id: int):
+    """Получить одну запись KB по id."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        return await conn.fetchrow(
+            """
+            SELECT id, category, subcategory, question, answer,
+                   source_type, is_active, created_at
+            FROM knowledge_base
+            WHERE id = $1
+            """,
+            kb_id,
+        )
+
+
+async def kb_update(
+    kb_id: int,
+    *,
+    question: Optional[str] = None,
+    answer: Optional[str] = None,
+    category: Optional[str] = None,
+    subcategory: Optional[str] = None,
+    is_active: Optional[bool] = None,
+) -> Optional[dict]:
+    """Обновить поля KB-записи. Возвращает обновлённую запись."""
+    pool = get_pool()
+
+    sets = []
+    params: list = []
+    idx = 1
+
+    if question is not None:
+        sets.append(f"question = ${idx}")
+        params.append(question)
+        idx += 1
+    if answer is not None:
+        sets.append(f"answer = ${idx}")
+        params.append(answer)
+        idx += 1
+    if category is not None:
+        sets.append(f"category = ${idx}")
+        params.append(category)
+        idx += 1
+    if subcategory is not None:
+        sets.append(f"subcategory = ${idx}")
+        params.append(subcategory)
+        idx += 1
+    if is_active is not None:
+        sets.append(f"is_active = ${idx}")
+        params.append(is_active)
+        idx += 1
+
+    if not sets:
+        return await kb_get_by_id(kb_id)
+
+    params.append(kb_id)
+    set_clause = ", ".join(sets)
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            f"""
+            UPDATE knowledge_base
+            SET {set_clause}
+            WHERE id = ${idx}
+            RETURNING id, category, subcategory, question, answer,
+                      source_type, is_active, created_at
+            """,
+            *params,
+        )
+    return row

@@ -16,6 +16,7 @@ import { PaymentsList } from '@/components/payments/PaymentsList'
 import { SettingsPage } from '@/components/settings'
 import { InviteLinksPage } from '@/components/inviteLinks'
 import { GuidesPage } from '@/components/guides'
+import { ModerationPage } from '@/components/moderation'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
@@ -85,6 +86,9 @@ function App() {
 
       {/* Готовые решения — PDF-гайды */}
       {currentView === 'guides' && <GuidesPage />}
+
+      {/* Модерация — очередь вопросов/ответов + база знаний */}
+      {currentView === 'moderation' && <ModerationPage />}
 
       {/* Настройки — модели, temperature, RAG */}
       {currentView === 'settings' && <SettingsPage />}

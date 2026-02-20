@@ -1,0 +1,244 @@
+.browser {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Filters */
+.filters {
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--border-primary, #e2e2e2);
+  flex-shrink: 0;
+}
+
+.searchRow {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.searchInput {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--border-primary, #ddd);
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+
+.searchInput:focus {
+  border-color: var(--accent-primary, #4A7C59);
+}
+
+.searchBtn {
+  padding: 8px 20px;
+  border: none;
+  background: var(--accent-primary, #4A7C59);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.filterRow {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+.select {
+  padding: 6px 10px;
+  border: 1px solid var(--border-primary, #ddd);
+  border-radius: 6px;
+  font-size: 13px;
+  background: white;
+  outline: none;
+  min-width: 160px;
+}
+
+.totalCount {
+  font-size: 13px;
+  color: var(--text-tertiary, #999);
+  margin-left: auto;
+}
+
+/* Table */
+.tableWrap {
+  flex: 1;
+  overflow: auto;
+  padding: 0 24px;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.table th {
+  text-align: left;
+  padding: 10px 8px;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary, #999);
+  border-bottom: 2px solid var(--border-primary, #e2e2e2);
+  white-space: nowrap;
+}
+
+.table td {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-primary, #f0f0f0);
+  vertical-align: top;
+}
+
+.table tbody tr:hover {
+  background: var(--bg-secondary, #fafafa);
+}
+
+.truncated {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inactive td {
+  opacity: 0.5;
+}
+
+.editRow {
+  background: #fffbf0;
+}
+
+/* Cell inputs */
+.cellInput {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--border-primary, #ddd);
+  border-radius: 4px;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.cellTextarea {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--border-primary, #ddd);
+  border-radius: 4px;
+  font-size: 13px;
+  resize: vertical;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.toggleLabel {
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.cellActions {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.saveBtn {
+  padding: 4px 10px;
+  border: none;
+  background: var(--accent-primary, #4A7C59);
+  color: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.saveBtn:disabled {
+  opacity: 0.5;
+}
+
+.cancelBtn {
+  padding: 4px 10px;
+  border: 1px solid var(--border-primary, #ddd);
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.editRowBtn {
+  padding: 4px 10px;
+  border: 1px solid var(--border-primary, #ddd);
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  white-space: nowrap;
+}
+
+.editRowBtn:hover {
+  background: var(--bg-secondary, #f5f5f5);
+}
+
+.statusToggle {
+  padding: 3px 8px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.active {
+  background: #d4edda;
+  color: #155724;
+}
+
+.inactiveBadge {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-tertiary, #999);
+  font-size: 14px;
+}
+
+/* Pagination */
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: 12px 24px;
+  border-top: 1px solid var(--border-primary, #e2e2e2);
+  flex-shrink: 0;
+}
+
+.pageBtn {
+  padding: 6px 16px;
+  border: 1px solid var(--border-primary, #ddd);
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.pageBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pageInfo {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}

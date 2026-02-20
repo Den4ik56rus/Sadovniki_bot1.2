@@ -219,3 +219,97 @@ async def moderation_update_answer(item_id: int, new_answer: str) -> None:
             item_id,
             new_answer,
         )
+
+
+async def moderation_get_list(
+    *,
+    status: str = "pending",
+    limit: int = 50,
+    offset: int = 0,
+    sort: str = "oldest",
+) -> tuple:
+    """
+    Список записей модерации с JOIN на users.
+    Возвращает (items, total_count).
+    """
+    pool = get_pool()
+    order = "ASC" if sort == "oldest" else "DESC"
+
+    async with pool.acquire() as conn:
+        where = ""
+        params: list = []
+        if status != "all":
+            where = "WHERE m.status = $1"
+            params.append(status)
+
+        # Total count
+        count_sql = f"SELECT COUNT(*) AS cnt FROM moderation_queue m {where}"
+        row = await conn.fetchrow(count_sql, *params)
+        total = int(row["cnt"]) if row else 0
+
+        # Items
+        idx = len(params) + 1
+        items_sql = f"""
+            SELECT
+                m.id, m.user_id, m.topic_id, m.category_guess,
+                m.question, m.answer, m.status, m.admin_id, m.kb_id,
+                m.created_at, m.updated_at,
+                u.username, u.first_name, u.telegram_user_id
+            FROM moderation_queue m
+            LEFT JOIN users u ON u.id = m.user_id
+            {where}
+            ORDER BY m.created_at {order}
+            LIMIT ${idx} OFFSET ${idx + 1}
+        """
+        params.extend([limit, offset])
+        rows = await conn.fetch(items_sql, *params)
+
+    return rows, total
+
+
+async def moderation_get_by_id_extended(item_id: int):
+    """
+    Запись модерации с инфо о пользователе (JOIN users).
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                m.id, m.user_id, m.topic_id, m.category_guess,
+                m.question, m.answer, m.status, m.admin_id, m.kb_id,
+                m.created_at, m.updated_at,
+                u.username, u.first_name, u.telegram_user_id
+            FROM moderation_queue m
+            LEFT JOIN users u ON u.id = m.user_id
+            WHERE m.id = $1
+            """,
+            item_id,
+        )
+        return row
+
+
+async def moderation_get_stats() -> dict:
+    """
+    Статистика очереди модерации.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'pending') AS pending_count,
+                COUNT(*) FILTER (WHERE status = 'approved' AND updated_at::date = CURRENT_DATE) AS approved_today,
+                COUNT(*) FILTER (WHERE status = 'approved') AS approved_total,
+                COUNT(*) FILTER (WHERE status = 'rejected') AS rejected_total,
+                MIN(created_at) FILTER (WHERE status = 'pending') AS oldest_date
+            FROM moderation_queue
+            """
+        )
+    return {
+        "pending_count": int(row["pending_count"]) if row["pending_count"] else 0,
+        "approved_today": int(row["approved_today"]) if row["approved_today"] else 0,
+        "approved_total": int(row["approved_total"]) if row["approved_total"] else 0,
+        "rejected_total": int(row["rejected_total"]) if row["rejected_total"] else 0,
+        "oldest_date": row["oldest_date"].isoformat() if row["oldest_date"] else None,
+    }

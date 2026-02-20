@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import type { View } from '@/types'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
+import { useModerationStore } from '@/store/moderationStore'
 import { navigate } from '@/router'
 import styles from './Sidebar.module.css'
 
@@ -86,6 +87,12 @@ const Icons = {
       <path d="M11 6V16M8 9H14C14.5523 9 15 9.44772 15 10C15 10.5523 14.5523 11 14 11H8M8 11H14C14.5523 11 15 11.4477 15 12C15 12.5523 14.5523 13 14 13H8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
     </svg>
   ),
+  moderation: (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M11 2L3 6V11C3 15.42 6.42 19.61 11 20.5C15.58 19.61 19 15.42 19 11V6L11 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+      <path d="M8 11L10 13L14 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+    </svg>
+  ),
   plus: (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M7 1V13M1 7H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -105,6 +112,7 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
   },
   { id: 'messages', icon: Icons.messages, label: 'Сообщения' },
   { id: 'tasks', icon: Icons.tasks, label: 'Задачи' },
+  { id: 'moderation', icon: Icons.moderation, label: 'Модерация' },
   {
     id: 'lists-group',
     icon: Icons.lists,
@@ -133,14 +141,24 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
 export function Sidebar() {
   const { currentView } = useUIStore()
   const { funnels, fetchFunnels } = useFunnelStore()
+  const { pendingCount, fetchStats } = useModerationStore()
 
-  // Fetch funnels on mount
+  // Fetch funnels and moderation stats on mount
   useEffect(() => {
     fetchFunnels()
-  }, [fetchFunnels])
+    fetchStats()
+  }, [fetchFunnels, fetchStats])
+
+  // Inject moderation badge
+  const menuItemsWithBadge: MenuItem[] = STATIC_MENU_ITEMS.map((item) => {
+    if (item.id === 'moderation' && pendingCount > 0) {
+      return { ...item, badge: pendingCount }
+    }
+    return item
+  })
 
   // Build menu items with dynamic funnels
-  const menuItems: MenuItem[] = STATIC_MENU_ITEMS.map((item) => {
+  const menuItems: MenuItem[] = menuItemsWithBadge.map((item) => {
     if (item.isDynamic && item.id === 'deals-group') {
       // Build submenu from funnels
       const submenu: SubmenuItem[] = funnels.map((funnel) => ({

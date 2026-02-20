@@ -1,0 +1,291 @@
+.detail {
+  padding: 24px;
+  max-width: 800px;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.headerLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.title {
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+  color: var(--text-primary, #333);
+}
+
+.statusBadge {
+  font-size: 12px;
+  font-weight: 500;
+  padding: 3px 10px;
+  border-radius: 12px;
+}
+
+.status_pending {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.status_approved {
+  background: #d4edda;
+  color: #155724;
+}
+
+.status_rejected {
+  background: #f8d7da;
+  color: #721c24;
+}
+
+.userInfo {
+  font-size: 13px;
+  color: var(--text-tertiary, #999);
+}
+
+/* Sections */
+.section {
+  margin-bottom: 20px;
+}
+
+.sectionHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.sectionLabel {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-tertiary, #999);
+}
+
+.editActions {
+  display: flex;
+  gap: 8px;
+}
+
+.editBtn {
+  padding: 3px 10px;
+  border: 1px solid var(--border-primary, #ddd);
+  background: white;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+  transition: all 0.15s;
+}
+
+.editBtn:hover {
+  background: var(--bg-secondary, #f5f5f5);
+  color: var(--accent-primary, #4A7C59);
+}
+
+.textBlock {
+  background: var(--bg-secondary, #f9f9f9);
+  border: 1px solid var(--border-primary, #eee);
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary, #333);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+/* Category */
+.categoryValue {
+  font-size: 14px;
+  color: var(--text-primary, #333);
+  padding: 6px 0;
+}
+
+.missing {
+  color: var(--text-tertiary, #bbb);
+  font-style: italic;
+}
+
+.categoryEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.categoryInput {
+  padding: 8px 12px;
+  border: 1px solid var(--border-primary, #ddd);
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+}
+
+.categoryInput:focus {
+  border-color: var(--accent-primary, #4A7C59);
+}
+
+.categoryHint {
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+}
+
+.categoryActions {
+  display: flex;
+  gap: 8px;
+}
+
+/* Edit area */
+.editArea,
+.aiEditArea {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.textarea {
+  width: 100%;
+  padding: 12px;
+  border: 1px solid var(--border-primary, #ddd);
+  border-radius: 6px;
+  font-size: 14px;
+  line-height: 1.5;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.textarea:focus {
+  border-color: var(--accent-primary, #4A7C59);
+}
+
+.editAreaActions {
+  display: flex;
+  gap: 8px;
+}
+
+/* AI */
+.aiInstructions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.aiLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+}
+
+.aiResultBlock {
+  background: #f0faf4;
+  border: 1px solid #c3e6cb;
+  border-radius: 8px;
+  padding: 14px 16px;
+  font-size: 14px;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+/* Buttons */
+.btnPrimary {
+  padding: 6px 16px;
+  border: none;
+  background: var(--accent-primary, #4A7C59);
+  color: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  transition: opacity 0.15s;
+}
+
+.btnPrimary:hover {
+  opacity: 0.9;
+}
+
+.btnPrimary:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnSecondary {
+  padding: 6px 16px;
+  border: 1px solid var(--border-primary, #ddd);
+  background: white;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+.btnSecondary:hover {
+  background: var(--bg-secondary, #f5f5f5);
+}
+
+/* Action bar */
+.actionBar {
+  display: flex;
+  gap: 12px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-primary, #eee);
+  margin-top: 8px;
+}
+
+.btnApprove {
+  padding: 10px 24px;
+  border: none;
+  background: var(--accent-primary, #4A7C59);
+  color: white;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+
+.btnApprove:hover {
+  opacity: 0.9;
+}
+
+.btnApprove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btnReject {
+  padding: 10px 24px;
+  border: 1px solid #dc3545;
+  background: white;
+  color: #dc3545;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  transition: all 0.15s;
+}
+
+.btnReject:hover {
+  background: #dc3545;
+  color: white;
+}
+
+.btnReject:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

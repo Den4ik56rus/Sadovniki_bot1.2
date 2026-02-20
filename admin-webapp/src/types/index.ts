@@ -227,7 +227,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -1109,4 +1109,57 @@ export interface OpenAIBalance {
   days: number
   error: string | null
   has_admin_key: boolean
+}
+
+// =============================================================================
+// Moderation Types (Модерация вопросов/ответов + База знаний)
+// =============================================================================
+
+export type ModerationStatus = 'pending' | 'approved' | 'rejected'
+
+export interface ModerationItem {
+  id: number
+  user_id: number
+  topic_id: number | null
+  question: string
+  answer: string
+  category_guess: string | null
+  status: ModerationStatus
+  admin_id: number | null
+  kb_id: number | null
+  created_at: string
+  updated_at: string | null
+  username: string | null
+  first_name: string | null
+  telegram_user_id: number | null
+}
+
+export interface ModerationQueueResponse {
+  items: ModerationItem[]
+  total: number
+  pending_count: number
+}
+
+export interface ModerationStats {
+  pending_count: number
+  approved_today: number
+  approved_total: number
+  rejected_total: number
+  oldest_date: string | null
+}
+
+export interface KBEntry {
+  id: number
+  category: string
+  subcategory: string | null
+  question: string | null
+  answer: string
+  source_type: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface KBListResponse {
+  items: KBEntry[]
+  total: number
 }

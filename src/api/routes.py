@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation
 
 
 def setup_routes(app: web.Application) -> None:
@@ -222,6 +222,21 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/api/admin/guides", guides.get_guides)
     app.router.add_get("/api/admin/guides/stats", guides.get_guide_stats)
     app.router.add_get(r"/api/admin/guides/{id:\d+}", guides.get_guide_detail)
+
+    # Moderation API (модерация вопросов/ответов + управление базой знаний)
+    app.router.add_get("/api/admin/moderation/queue", moderation.get_queue)
+    app.router.add_get("/api/admin/moderation/stats", moderation.get_moderation_stats)
+    app.router.add_get("/api/admin/moderation/kb", moderation.get_kb_entries)
+    app.router.add_get("/api/admin/moderation/kb/categories", moderation.get_kb_categories)
+    app.router.add_get("/api/admin/moderation/kb/subcategories", moderation.get_kb_subcategories)
+    app.router.add_get(r"/api/admin/moderation/queue/{id:\d+}", moderation.get_queue_item)
+    app.router.add_patch(r"/api/admin/moderation/queue/{id:\d+}/category", moderation.set_category)
+    app.router.add_patch(r"/api/admin/moderation/queue/{id:\d+}/answer", moderation.update_answer)
+    app.router.add_post(r"/api/admin/moderation/queue/{id:\d+}/edit-ai", moderation.edit_answer_ai)
+    app.router.add_post(r"/api/admin/moderation/queue/{id:\d+}/approve", moderation.approve_item)
+    app.router.add_post(r"/api/admin/moderation/queue/{id:\d+}/reject", moderation.reject_item)
+    app.router.add_get(r"/api/admin/moderation/kb/{id:\d+}", moderation.get_kb_entry)
+    app.router.add_patch(r"/api/admin/moderation/kb/{id:\d+}", moderation.update_kb_entry)
 
     # Invite Links API (инвайт-ссылки для отслеживания кампаний)
     app.router.add_get("/api/admin/invite-links", invite_links.get_invite_links)

@@ -1,0 +1,37 @@
+.splitPane {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.listPane {
+  width: 340px;
+  min-width: 300px;
+  border-right: 1px solid var(--border-primary, #e2e2e2);
+  overflow-y: auto;
+  flex-shrink: 0;
+}
+
+.detailPane {
+  flex: 1;
+  overflow-y: auto;
+}
+
+.emptyDetail {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  color: var(--text-tertiary, #999);
+  gap: 12px;
+}
+
+.emptyIcon {
+  opacity: 0.5;
+}
+
+.emptyDetail p {
+  font-size: 14px;
+  margin: 0;
+}

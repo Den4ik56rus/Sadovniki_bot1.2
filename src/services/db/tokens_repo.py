@@ -119,25 +119,31 @@ async def deduct_tokens(
                 """,
                 user_id,
             )
-            if not row or row["token_balance"] < amount:
+            if not row:
                 return False
 
-            sub_bal = row["sub_bal"]
-            pur_bal = row["pur_bal"]
+            sub_bal = max(row["sub_bal"], 0)  # защита от отрицательных
+            pur_bal = max(row["pur_bal"], 0)
+            real_balance = sub_bal + pur_bal
+
+            if real_balance < amount:
+                return False
 
             # Списываем сначала из подписочных, потом из купленных
             from_sub = min(sub_bal, amount)
             from_pur = amount - from_sub
 
+            # Пересчитываем token_balance из реальных данных (не инкремент)
+            new_total = real_balance - amount
             await conn.execute(
                 """
                 UPDATE users
-                SET token_balance = token_balance - $1,
-                    subscription_token_balance = COALESCE(subscription_token_balance, 0) - $2,
-                    purchased_token_balance = COALESCE(purchased_token_balance, 0) - $3
+                SET token_balance = $1,
+                    subscription_token_balance = $2,
+                    purchased_token_balance = $3
                 WHERE id = $4
                 """,
-                amount, from_sub, from_pur, user_id,
+                new_total, sub_bal - from_sub, pur_bal - from_pur, user_id,
             )
 
             await conn.execute(

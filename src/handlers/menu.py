@@ -629,26 +629,36 @@ async def handle_profile(message: Message) -> None:
     split = await get_split_balance(internal_user_id)
     ref_discount = await get_user_active_discount(internal_user_id) or 0
 
+    # Русские названия месяцев для форматирования дат
+    _RU_MONTHS = {
+        1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+        5: "мая", 6: "июня", 7: "июля", 8: "августа",
+        9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+    }
+
+    def _fmt_date(dt) -> str:
+        if not dt:
+            return "—"
+        return f"{dt.day} {_RU_MONTHS[dt.month]} {dt.year}"
+
     # ── Блок тарифа ──────────────────────────────────────
     if subscription and plan:
         plan_name = plan.get("name", "—")
         expires_at = subscription["expires_at"]
-        expires_str = expires_at.strftime("%-d %B %Y") if expires_at else "—"
-        sub_line = f"Тариф: <b>{plan_name}</b>  ✅\nПодписка до: {expires_str}"
+        sub_line = f"Тариф: <b>{plan_name}</b>  ✅\nПодписка до: {_fmt_date(expires_at)}"
     else:
         plan_name = "Пробный"
         sub_line = "Тариф: <b>Пробный</b>  |  Без подписки"
 
     # ── Лимит токенов ────────────────────────────────────
-    # Лимит = tokens_granted при активации подписки (или trial_grant при регистрации)
-    # Израсходовано = сумма отрицательных транзакций с момента started_at подписки
-    # Остаток = реальный баланс из БД (split["total"])
+    # Подписочные: лимит = tokens_granted, перенос по max_carryover
+    # Докупленные: переносятся все (не сгорают), тратятся последними
+    # Израсходовано считается по транзакциям с момента started_at
     pool = get_pool()
     async with pool.acquire() as conn:
         if subscription:
             period_start = subscription["started_at"]
-            tokens_granted = subscription.get("tokens_granted", 0)
-            # Докупленные токены за период (положительные транзакции buy_questions)
+            sub_granted = subscription.get("tokens_granted", 0)
             purchased_in_period = await conn.fetchval(
                 """
                 SELECT COALESCE(SUM(amount), 0)
@@ -659,67 +669,76 @@ async def handle_profile(message: Message) -> None:
                   AND created_at >= $2
                 """,
                 internal_user_id, period_start,
-            )
-            total_limit = tokens_granted + (purchased_in_period or 0)
+            ) or 0
         else:
-            # Без подписки — ищем момент первого начисления (trial_grant или referral_bonus)
             first_grant = await conn.fetchrow(
                 """
                 SELECT created_at, amount FROM token_transactions
                 WHERE user_id = $1
                   AND operation_type IN ('trial_grant', 'referral_bonus')
                   AND amount > 0
-                ORDER BY created_at ASC
-                LIMIT 1
+                ORDER BY created_at ASC LIMIT 1
                 """,
                 internal_user_id,
             )
-            tokens_granted = first_grant["amount"] if first_grant else 0
+            sub_granted = first_grant["amount"] if first_grant else 0
             period_start = first_grant["created_at"] if first_grant else None
-            total_limit = tokens_granted
+            purchased_in_period = 0
 
-        # Израсходовано = сумма отрицательных транзакций за период
+        # Всего потрачено за период
         if period_start:
-            used = await conn.fetchval(
+            total_spent = await conn.fetchval(
                 """
                 SELECT COALESCE(SUM(ABS(amount)), 0)
                 FROM token_transactions
-                WHERE user_id = $1
-                  AND amount < 0
-                  AND created_at >= $2
+                WHERE user_id = $1 AND amount < 0 AND created_at >= $2
                 """,
                 internal_user_id, period_start,
             ) or 0
         else:
-            used = 0
+            total_spent = 0
 
-    remaining = split["total"]
-    bar_filled = int((used / total_limit) * 15) if total_limit > 0 else 0
-    bar_empty = 15 - bar_filled
-    bar = "█" * bar_filled + "░" * bar_empty
+    # Текущие остатки из split_balance (реальный баланс)
+    sub_remaining = split["subscription_tokens"]   # остаток подписочных
+    pur_remaining = split["purchased_tokens"]       # остаток докупленных
+
+    # Потрачено подписочных = sub_granted - sub_remaining (но не меньше 0)
+    sub_used = max(0, sub_granted - sub_remaining)
+    # Потрачено докупленных = purchased_in_period - pur_remaining (но не меньше 0)
+    pur_used = max(0, purchased_in_period - pur_remaining)
+
+    def _bar(used: int, total: int, length: int = 13) -> str:
+        filled = int((used / total) * length) if total > 0 else 0
+        return "█" * filled + "░" * (length - filled)
 
     if subscription and plan:
-        purchased_in_period = purchased_in_period or 0
-        sub_granted = tokens_granted
-        limit_detail = ""
-        if purchased_in_period > 0:
-            limit_detail = f"\n  (подписка {sub_granted} + докуплено {purchased_in_period})"
+        # Шкала подписочных токенов
+        sub_bar = _bar(sub_used, sub_granted)
         limit_block = (
-            f"🪙 <b>Лимит токенов</b>\n"
-            f"  [{bar}]\n"
-            f"  Использовано: {used} из {total_limit}"
-            f"{limit_detail}"
+            f"🪙 <b>Подписочные токены</b>\n"
+            f"  [{sub_bar}]\n"
+            f"  Использовано: {sub_used} из {sub_granted}"
         )
-        # Перенос токенов на следующий месяц
+        # Перенос подписочных на следующий месяц
         max_carryover = plan.get("max_carryover", 0)
         if max_carryover and max_carryover > 0:
-            carryover_val = min(split["subscription_tokens"], max_carryover)
-            limit_block += f"\n  ↩️ Перенос на след. месяц: <b>{carryover_val}</b> (макс. {max_carryover})"
+            carryover_val = min(sub_remaining, max_carryover)
+            limit_block += f"\n  ↩️ Перенос: <b>{carryover_val}</b> (макс. {max_carryover})"
+
+        # Шкала докупленных токенов (если есть)
+        if purchased_in_period > 0:
+            pur_bar = _bar(pur_used, purchased_in_period)
+            limit_block += (
+                f"\n\n➕ <b>Докупленные токены</b>  <i>(переносятся)</i>\n"
+                f"  [{pur_bar}]\n"
+                f"  Использовано: {pur_used} из {purchased_in_period}"
+            )
     else:
+        sub_bar = _bar(sub_used, sub_granted if sub_granted else 1)
         limit_block = (
             f"🪙 <b>Лимит токенов</b>\n"
-            f"  [{bar}]\n"
-            f"  Использовано: {used} из {total_limit}"
+            f"  [{sub_bar}]\n"
+            f"  Использовано: {sub_used} из {sub_granted}"
         )
 
     # ── Скидки ───────────────────────────────────────────

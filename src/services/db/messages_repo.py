@@ -214,6 +214,9 @@ async def find_unanswered_user_messages(since_minutes: int = 30) -> List[dict]:
             """
             SELECT DISTINCT ON (m.user_id)
                 u.telegram_user_id,
+                u.username,
+                u.first_name,
+                u.last_name,
                 m.user_id,
                 m.id AS message_id,
                 m.text,

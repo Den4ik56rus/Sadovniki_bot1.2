@@ -113,7 +113,7 @@ async def get_user_active_discount(user_id: int) -> Optional[int]:
             FROM invite_link_users ilu
             JOIN invite_links il ON il.id = ilu.invite_link_id
             WHERE ilu.user_id = $1
-              AND ilu.discount_expires_at > NOW()
+              AND (ilu.discount_expires_at IS NULL OR ilu.discount_expires_at > NOW())
               AND il.discount_percent > 0
             LIMIT 1
             """,

@@ -144,6 +144,118 @@
   color: var(--text-muted);
 }
 
+/* Editable Sections */
+.editSection {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 1rem;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.editSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border-default);
+}
+
+.subStatusBadge {
+  font-size: 0.625rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.subStatusBadge.active {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.subStatusBadge.inactive {
+  background: #f3f4f6;
+  color: #6b7280;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.fieldRow {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.fieldLabel {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.input {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8125rem;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary);
+  box-sizing: border-box;
+  transition: border-color 0.15s;
+}
+
+.input:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.select {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  font-size: 0.8125rem;
+  border: 1px solid var(--border-default);
+  border-radius: 4px;
+  background: var(--bg-input, #fff);
+  color: var(--text-primary);
+  box-sizing: border-box;
+}
+
+.saveBtn {
+  align-self: flex-end;
+  padding: 0.375rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  background: var(--accent-primary, #4A7C59);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.saveBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.saveBtn:not(:disabled):hover {
+  opacity: 0.85;
+}
+
+.hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  margin: 0;
+}
+
 /* Loading & Empty States */
 .loading {
   text-align: center;

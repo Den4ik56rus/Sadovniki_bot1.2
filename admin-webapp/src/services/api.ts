@@ -287,6 +287,24 @@ export const api = {
     })
   },
 
+  async updateClientBilling(
+    id: number,
+    data: {
+      subscription_plan_id?: number | null
+      subscription_started_at?: string | null
+      subscription_expires_at?: string | null
+      personal_discount_percent?: number
+      personal_discount_valid_until?: string | null
+      subscription_token_balance?: number
+      purchased_token_balance?: number
+    }
+  ): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/clients/${id}/billing`, {
+      method: 'PATCH',
+      body: JSON.stringify(data),
+    })
+  },
+
   // CRM: Custom fields
   async getCustomFields(): Promise<CustomField[]> {
     return fetchApi<CustomField[]>('/crm/custom-fields')

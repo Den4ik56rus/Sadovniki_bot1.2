@@ -44,6 +44,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_patch("/api/admin/crm/clients/{id}/status", crm.update_crm_client_status)
     app.router.add_patch("/api/admin/crm/clients/{id}/priority", crm.update_client_priority)
     app.router.add_patch("/api/admin/crm/clients/{id}/source", crm.update_client_source)
+    app.router.add_patch("/api/admin/crm/clients/{id}/billing", crm.update_client_billing)
     app.router.add_get("/api/admin/crm/clients/{id}/topics", crm.get_crm_client_topics)
     app.router.add_get("/api/admin/crm/stats", crm.get_funnel_stats)
 

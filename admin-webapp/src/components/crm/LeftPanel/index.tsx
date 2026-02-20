@@ -207,8 +207,8 @@ export function LeftPanel({ client, allTags, funnelId, onUpdate, onTopicClick: _
       case 'billing':
         return (
           <BillingTab
-            clientId={client.id}
-            totalConsultations={client.total_consultations}
+            client={client}
+            onUpdate={onUpdate}
           />
         )
       default:

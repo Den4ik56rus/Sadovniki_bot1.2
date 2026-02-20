@@ -231,9 +231,55 @@ async def get_client_full(request: web.Request) -> web.Response:
                 "SELECT referral_code FROM users WHERE id = $1", user_id
             )
 
+            # Подписка, скидка и балансы токенов
+            billing_row = await conn.fetchrow(
+                """
+                SELECT
+                    us.id              AS sub_id,
+                    us.subscription_plan_id,
+                    sp.name            AS subscription_plan_name,
+                    us.started_at      AS subscription_started_at,
+                    us.expires_at      AS subscription_expires_at,
+                    us.status          AS subscription_status,
+                    u.personal_discount_percent,
+                    u.personal_discount_valid_until,
+                    COALESCE(u.subscription_token_balance, 0) AS subscription_token_balance,
+                    COALESCE(u.purchased_token_balance, 0)    AS purchased_token_balance
+                FROM users u
+                LEFT JOIN user_subscriptions us
+                    ON us.user_id = u.id AND us.is_active = true
+                LEFT JOIN subscription_plans sp ON sp.id = us.subscription_plan_id
+                WHERE u.id = $1
+                ORDER BY us.expires_at DESC NULLS LAST
+                LIMIT 1
+                """,
+                user_id
+            )
+
         result["referrer"] = _serialize_dict(referrer) if referrer else None
         result["referrals_count"] = ref_stats["total_referrals"]
         result["referral_code"] = ref_code
+
+        if billing_row:
+            result["sub_id"] = billing_row["sub_id"]
+            result["subscription_plan_id"] = billing_row["subscription_plan_id"]
+            result["subscription_plan_name"] = billing_row["subscription_plan_name"]
+            result["subscription_started_at"] = (
+                billing_row["subscription_started_at"].isoformat()
+                if billing_row["subscription_started_at"] else None
+            )
+            result["subscription_expires_at"] = (
+                billing_row["subscription_expires_at"].isoformat()
+                if billing_row["subscription_expires_at"] else None
+            )
+            result["subscription_status"] = billing_row["subscription_status"]
+            result["personal_discount_percent"] = billing_row["personal_discount_percent"] or 0
+            result["personal_discount_valid_until"] = (
+                billing_row["personal_discount_valid_until"].isoformat()
+                if billing_row["personal_discount_valid_until"] else None
+            )
+            result["subscription_token_balance"] = billing_row["subscription_token_balance"]
+            result["purchased_token_balance"] = billing_row["purchased_token_balance"]
 
         return web.json_response(result)
 
@@ -243,6 +289,186 @@ async def get_client_full(request: web.Request) -> web.Response:
         raise
     except Exception as e:
         logger.error(f"Error getting full client data: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
+
+
+async def update_client_billing(request: web.Request) -> web.Response:
+    """
+    PATCH /api/admin/crm/clients/{id}/billing
+    Обновить биллинговые данные клиента: тариф, скидку, балансы токенов.
+
+    Body (все поля опциональны):
+        {
+            "subscription_plan_id": 3,
+            "subscription_started_at": "2026-02-01T00:00:00",
+            "subscription_expires_at": "2026-03-01T00:00:00",
+            "personal_discount_percent": 15,
+            "personal_discount_valid_until": "2026-04-01T00:00:00",
+            "subscription_token_balance": 10,
+            "purchased_token_balance": 5
+        }
+    """
+    try:
+        user_id = int(request.match_info["id"])
+        body = await request.json()
+
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            # ---- 1. Проверяем что пользователь существует ----
+            exists = await conn.fetchval("SELECT id FROM users WHERE id = $1", user_id)
+            if not exists:
+                raise web.HTTPNotFound(text="Client not found")
+
+            # ---- 2. Подписка ----
+            plan_id = body.get("subscription_plan_id")
+            started_at_str = body.get("subscription_started_at")
+            expires_at_str = body.get("subscription_expires_at")
+
+            if plan_id is not None or started_at_str or expires_at_str:
+                started_at = None
+                expires_at = None
+                if started_at_str:
+                    started_at = datetime.fromisoformat(started_at_str.replace("Z", "+00:00"))
+                if expires_at_str:
+                    expires_at = datetime.fromisoformat(expires_at_str.replace("Z", "+00:00"))
+
+                # Ищем активную подписку
+                active_sub = await conn.fetchrow(
+                    "SELECT id FROM user_subscriptions WHERE user_id = $1 AND is_active = true ORDER BY expires_at DESC LIMIT 1",
+                    user_id
+                )
+
+                if active_sub:
+                    # Обновляем существующую
+                    if plan_id is not None:
+                        tokens_granted = await conn.fetchval(
+                            "SELECT tokens_included FROM subscription_plans WHERE id = $1", plan_id
+                        ) or 0
+                        await conn.execute(
+                            """
+                            UPDATE user_subscriptions
+                            SET subscription_plan_id = $1,
+                                tokens_granted = $2,
+                                updated_at = NOW()
+                            WHERE id = $3
+                            """,
+                            plan_id, tokens_granted, active_sub["id"]
+                        )
+                    if started_at:
+                        await conn.execute(
+                            "UPDATE user_subscriptions SET started_at = $1, updated_at = NOW() WHERE id = $2",
+                            started_at, active_sub["id"]
+                        )
+                    if expires_at:
+                        await conn.execute(
+                            "UPDATE user_subscriptions SET expires_at = $1, updated_at = NOW() WHERE id = $2",
+                            expires_at, active_sub["id"]
+                        )
+                else:
+                    # Создаём новую подписку, если указан план
+                    if plan_id is not None:
+                        from datetime import timedelta
+                        plan_row = await conn.fetchrow(
+                            "SELECT tokens_included, duration_days FROM subscription_plans WHERE id = $1",
+                            plan_id
+                        )
+                        tokens_granted = plan_row["tokens_included"] if plan_row else 0
+                        duration_days = plan_row["duration_days"] if plan_row else 30
+                        sub_started = started_at or datetime.utcnow()
+                        sub_expires = expires_at or (sub_started + timedelta(days=duration_days))
+
+                        # Деактивируем старые подписки
+                        await conn.execute(
+                            "UPDATE user_subscriptions SET is_active = false, status = 'canceled' WHERE user_id = $1",
+                            user_id
+                        )
+                        await conn.execute(
+                            """
+                            INSERT INTO user_subscriptions
+                                (user_id, subscription_plan_id, payment_id, started_at, expires_at,
+                                 status, is_active, tokens_granted)
+                            VALUES ($1, $2, 0, $3, $4, 'active', true, $5)
+                            """,
+                            user_id, plan_id, sub_started, sub_expires, tokens_granted
+                        )
+
+            # ---- 3. Персональная скидка ----
+            discount_percent = body.get("personal_discount_percent")
+            discount_valid_until_str = body.get("personal_discount_valid_until")
+
+            if discount_percent is not None or discount_valid_until_str is not None:
+                discount_valid_until = None
+                if discount_valid_until_str:
+                    discount_valid_until = datetime.fromisoformat(
+                        discount_valid_until_str.replace("Z", "+00:00")
+                    )
+                updates = []
+                params = []
+                idx = 1
+                if discount_percent is not None:
+                    updates.append(f"personal_discount_percent = ${idx}")
+                    params.append(max(0, min(100, int(discount_percent))))
+                    idx += 1
+                if discount_valid_until is not None or "personal_discount_valid_until" in body:
+                    updates.append(f"personal_discount_valid_until = ${idx}")
+                    params.append(discount_valid_until)
+                    idx += 1
+                if updates:
+                    params.append(user_id)
+                    await conn.execute(
+                        f"UPDATE users SET {', '.join(updates)} WHERE id = ${idx}",
+                        *params
+                    )
+
+            # ---- 4. Балансы токенов ----
+            sub_tokens = body.get("subscription_token_balance")
+            pur_tokens = body.get("purchased_token_balance")
+
+            if sub_tokens is not None or pur_tokens is not None:
+                token_updates = []
+                token_params = []
+                idx = 1
+                if sub_tokens is not None:
+                    token_updates.append(f"subscription_token_balance = ${idx}")
+                    token_params.append(max(0, int(sub_tokens)))
+                    idx += 1
+                if pur_tokens is not None:
+                    token_updates.append(f"purchased_token_balance = ${idx}")
+                    token_params.append(max(0, int(pur_tokens)))
+                    idx += 1
+                token_params.append(user_id)
+                await conn.execute(
+                    f"UPDATE users SET {', '.join(token_updates)} WHERE id = ${idx}",
+                    *token_params
+                )
+                # Логируем в token_transactions
+                if sub_tokens is not None:
+                    await conn.execute(
+                        """
+                        INSERT INTO token_transactions (user_id, amount, operation_type, description)
+                        VALUES ($1, $2, 'admin_credit', 'Ручная корректировка: подписочные токены')
+                        """,
+                        user_id, int(sub_tokens)
+                    )
+                if pur_tokens is not None:
+                    await conn.execute(
+                        """
+                        INSERT INTO token_transactions (user_id, amount, operation_type, description)
+                        VALUES ($1, $2, 'admin_credit', 'Ручная корректировка: купленные токены')
+                        """,
+                        user_id, int(pur_tokens)
+                    )
+
+        return web.json_response({"success": True})
+
+    except ValueError as e:
+        raise web.HTTPBadRequest(text=f"Invalid parameters: {e}")
+    except web.HTTPBadRequest:
+        raise
+    except web.HTTPNotFound:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating client billing: {e}")
         raise web.HTTPInternalServerError(text="Database error")
 
 

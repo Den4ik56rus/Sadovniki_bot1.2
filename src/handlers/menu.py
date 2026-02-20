@@ -615,67 +615,94 @@ async def handle_profile(message: Message) -> None:
             internal_user_id,
         )
 
-    # Получаем активную подписку
+    # Получаем активную подписку, план, скидки
     from src.services.db.user_subscription_repo import get_active_subscription
     from src.services.db.subscription_plan_repo import get_by_id as get_plan_by_id
-    subscription = await get_active_subscription(internal_user_id)
+    from src.services.db.invite_link_repo import get_user_active_discount
+    from src.services.db.tokens_repo import get_split_balance
 
+    subscription = await get_active_subscription(internal_user_id)
     plan = None
     if subscription:
         plan = await get_plan_by_id(subscription["subscription_plan_id"])
 
-    # Блок подписки
+    split = await get_split_balance(internal_user_id)
+    ref_discount = await get_user_active_discount(internal_user_id) or 0
+
+    # ── Блок тарифа ──────────────────────────────────────
     if subscription and plan:
         plan_name = plan.get("name", "—")
         expires_at = subscription["expires_at"]
         expires_str = expires_at.strftime("%-d %B %Y") if expires_at else "—"
-        token_discount = plan.get("token_discount_percent", 0)
-
-        sub_block = (
-            f"┌─────────────────────────┐\n"
-            f"│  Тариф: <b>{plan_name}</b>  ✅\n"
-            f"│  Активен до {expires_str}\n"
-            f"└─────────────────────────┘"
-        )
-
-        discount_lines = ""
-        if token_discount and token_discount > 0:
-            discount_lines = (
-                f"\n\n💸 <b>Ваши привилегии</b>\n"
-                f"  ✦ Скидка на доп. токены  →  <b>−{token_discount}%</b>\n"
-                f"  ✦ Приоритетный ответ     →  ВКЛ\n"
-                f"  ✦ История запросов       →  90 дней"
-            )
-        else:
-            discount_lines = (
-                f"\n\n💸 <b>Ваши привилегии</b>\n"
-                f"  ✦ Приоритетный ответ     →  ВКЛ\n"
-                f"  ✦ История запросов       →  90 дней"
-            )
+        sub_line = f"Тариф: <b>{plan_name}</b>  ✅\nПодписка до: {expires_str}"
     else:
-        sub_block = (
-            f"┌─────────────────────────┐\n"
-            f"│  Тариф: <b>Базовый</b>  (без подписки)\n"
-            f"└─────────────────────────┘"
+        plan_name = "Пробный"
+        sub_line = "Тариф: <b>Пробный</b>  |  Без подписки"
+
+    # ── Лимит токенов ────────────────────────────────────
+    # tokens_included = лимит по подписке
+    # purchased_tokens = докупленные в этом месяце (они хранятся отдельно)
+    # Используем split_balance: sub + pur = всё что есть
+    # "Лимит" = tokens_included (плана) + purchased_token_balance (докупленные)
+    # "Использовано" = лимит − остаток
+    if plan:
+        sub_limit = plan.get("tokens_included", 0)
+        purchased = split["purchased_tokens"]
+        total_limit = sub_limit + purchased
+        remaining = split["total"]
+        used = max(0, total_limit - remaining)
+        bar_filled = int((used / total_limit) * 15) if total_limit > 0 else 0
+        bar_empty = 15 - bar_filled
+        bar = "█" * bar_filled + "░" * bar_empty
+        limit_block = (
+            f"🪙 <b>Лимит токенов</b>\n"
+            f"  [{bar}]\n"
+            f"  Использовано: {used} из {total_limit}"
         )
-        discount_lines = ""
+        if purchased > 0:
+            limit_block += f"\n  (подписка {sub_limit} + докуплено {purchased})"
 
-    # Прогресс-бар токенов
-    tokens_total = plan["tokens_included"] if plan else 100
-    tokens_used = max(0, tokens_total - balance) if plan else 0
-    bar_filled = int((tokens_used / tokens_total) * 15) if tokens_total > 0 else 0
-    bar_empty = 15 - bar_filled
-    bar = "█" * bar_filled + "░" * bar_empty
+        # Перенос токенов на следующий месяц
+        max_carryover = plan.get("max_carryover", 0)
+        if max_carryover and max_carryover > 0:
+            carryover_val = min(split["subscription_tokens"], max_carryover)
+            limit_block += f"\n  ↩️ Перенос на след. месяц: <b>{carryover_val}</b> (макс. {max_carryover})"
+    else:
+        remaining = split["total"]
+        bar_filled = int((max(0, 10 - remaining) / 10) * 15)
+        bar_empty = 15 - bar_filled
+        bar = "█" * bar_filled + "░" * bar_empty
+        limit_block = (
+            f"🪙 <b>Лимит токенов</b>\n"
+            f"  [{bar}]\n"
+            f"  Использовано: {max(0, 10 - remaining)} из 10"
+        )
 
-    # Формируем текст профиля
+    # ── Скидки ───────────────────────────────────────────
+    token_discount = plan.get("token_discount_percent", 0) if plan else 0
+    total_token_discount = min(100, token_discount + ref_discount)
+
+    discount_lines = ""
+    if ref_discount > 0 or token_discount > 0:
+        discount_lines = "\n\n🎁 <b>Ваши скидки</b>\n"
+        if ref_discount > 0:
+            discount_lines += f"  Скидка на тарифы (реф):       −{ref_discount}%\n"
+        if token_discount > 0 or ref_discount > 0:
+            discount_lines += f"  Скидка на доп. токены:\n"
+            parts = []
+            if token_discount > 0:
+                parts.append(f"тариф {token_discount}%")
+            if ref_discount > 0:
+                parts.append(f"реф {ref_discount}%")
+            formula = " + ".join(parts)
+            discount_lines += f"    {formula} = <b>−{total_token_discount}%</b>"
+
+    # ── Итоговый текст ───────────────────────────────────
     profile_text = (
         f"🌿 <b>Ваш профиль</b>\n\n"
-        f"{sub_block}\n\n"
-        f"📊 <b>Баланс токенов</b>\n"
-        f"  [{bar}]  {balance} осталось\n"
-        f"  Использовано: {tokens_used} / {tokens_total}"
-        f"{discount_lines}\n\n"
-        f"📝 Консультаций: <b>{topics_count}</b>"
+        f"{sub_line}\n\n"
+        f"{limit_block}"
+        f"{discount_lines}"
     )
 
     # Добавляем inline кнопки

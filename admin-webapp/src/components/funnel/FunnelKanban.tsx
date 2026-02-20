@@ -219,12 +219,6 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
     fetchRate()
   }, [funnelId, fetchStages, fetchClients, fetchRate])
 
-  // Calculate totals
-  const totalClients = Object.values(stats).reduce((a, b) => (a ?? 0) + (b ?? 0), 0)
-  const totalValue = Object.values(clients)
-    .flat()
-    .reduce((sum, c) => sum + (c?.total_cost_usd ?? 0) * usdRate, 0)
-
   // Handle drag start
   const handleDragStart = (event: DragStartEvent) => {
     const { active } = event

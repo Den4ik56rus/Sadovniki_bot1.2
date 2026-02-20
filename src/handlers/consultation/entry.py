@@ -1056,10 +1056,10 @@ async def run_consultation_pipeline(
                 "<b>Я могу дать стандартный ответ</b> - в него не войдут некоторые мелочи, "
                 "но все будет понятно👍\n\n"
                 "<b>А так же расширенный ответ - если Вы хотите разобрать эту тему детально</b>✅\n\n"
-                f"Сейчас на балансе: {pluralize_questions(balance)}"
+                "Выберите в меню как мне ответить👇"
             )
         else:
-            choice_text = f"Выберите формат ответа:\n\nСейчас на балансе: {pluralize_questions(balance)}"
+            choice_text = "Выберите в меню как мне ответить👇"
         if not has_enough_extended:
             choice_text += f"\n\n⚠️ Для расширенного ответа требуется {pluralize_questions(PHASE_COST)}."
 

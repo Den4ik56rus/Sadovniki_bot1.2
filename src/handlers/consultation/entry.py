@@ -480,8 +480,9 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
                         "complexity_result": cr,
                         "telegram_user_id": telegram_user_id,
                     }
-                    # Первая фаза — линейная логика
-                    has_more_phases = next_phase is not None
+                    # Первая фаза — всегда показываем кнопку выбора фазы
+                    # (даже если это последняя фаза, у пользователя ещё есть 2 непройденные)
+                    has_more_phases = True
 
                 if has_more_phases:
                     next_phase_display = get_phase_display_name(next_phase) if next_phase else ""

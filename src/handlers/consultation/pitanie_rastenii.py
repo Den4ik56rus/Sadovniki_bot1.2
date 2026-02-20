@@ -248,12 +248,8 @@ async def process_nutrition_consultation(
 
             from src.keyboards.consultation.common import get_next_phase_keyboard
             if effective_phase_key:
-                next_phase = get_next_phase(effective_phase_key)
-                if next_phase:
-                    next_display = get_phase_display_name(next_phase)
-                    kb = get_next_phase_keyboard(next_display)
-                else:
-                    kb = get_followup_keyboard(category)
+                # Всегда показываем кнопку выбора фазы в фазовом режиме
+                kb = get_next_phase_keyboard()
             else:
                 kb = get_followup_keyboard(category)
             next_state = "waiting_phase_continue"

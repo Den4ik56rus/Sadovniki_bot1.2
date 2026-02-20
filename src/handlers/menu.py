@@ -645,7 +645,9 @@ async def handle_profile(message: Message) -> None:
     if subscription and plan:
         plan_name = plan.get("name", "—")
         expires_at = subscription["expires_at"]
-        sub_line = f"Тариф:\n<b>{plan_name}</b>  ✅\nПодписка до: {_fmt_date(expires_at)}"
+        auto_renew = subscription.get("auto_renew", False)
+        auto_renew_str = "✅ активно" if auto_renew else "❌ не активно"
+        sub_line = f"Тариф:\n<b>{plan_name}</b>  ✅\nПодписка до: {_fmt_date(expires_at)}\nАвтопродление: {auto_renew_str}"
     else:
         plan_name = "Пробный"
         sub_line = "Тариф:\n<b>Пробный</b>  |  Без подписки"

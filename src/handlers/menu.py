@@ -762,16 +762,22 @@ async def render_and_send_profile(
         f"{referral_lines}"
     )
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+    kb_buttons = [
         [InlineKeyboardButton(
             text="⚙️ Управлять подпиской",
             callback_data="show_payment_menu"
         )],
-        [InlineKeyboardButton(
-            text="📣 Реферальная программа",
-            callback_data="show_referral_program"
-        )],
-    ])
+    ]
+    if pending_sub:
+        kb_buttons.append([InlineKeyboardButton(
+            text="⚡️ Активировать сейчас",
+            callback_data=f"activate_pending_{pending_sub['id']}"
+        )])
+    kb_buttons.append([InlineKeyboardButton(
+        text="📣 Реферальная программа",
+        callback_data="show_referral_program"
+    )])
+    keyboard = InlineKeyboardMarkup(inline_keyboard=kb_buttons)
 
     await bot.send_message(chat_id, profile_text, parse_mode="HTML", reply_markup=keyboard)
 
@@ -785,6 +791,92 @@ async def handle_profile(message: Message) -> None:
     await render_and_send_profile(
         bot=message.bot,
         chat_id=message.chat.id,
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+
+@router.callback_query(F.data.startswith("activate_pending_"))
+async def activate_pending_handler(callback: CallbackQuery) -> None:
+    """Активировать отложенную подписку немедленно."""
+    await callback.answer()
+    user = callback.from_user
+    if user is None:
+        return
+
+    sub_id = int(callback.data.split("_")[-1])
+
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+    from src.services.db.pool import get_pool
+    from src.services.db.user_subscription_repo import get_by_id, get_active_subscription
+    from src.services.db.tokens_repo import reset_subscription_tokens_with_carryover
+    from src.services.db.subscription_plan_repo import get_by_id as get_plan_by_id
+
+    pending = await get_by_id(sub_id)
+    if not pending or pending["user_id"] != internal_user_id:
+        await callback.answer("Подписка не найдена.", show_alert=True)
+        return
+
+    plan = await get_plan_by_id(pending["subscription_plan_id"])
+    if not plan:
+        await callback.answer("Тариф не найден.", show_alert=True)
+        return
+
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        async with conn.transaction():
+            # Завершаем текущую активную подписку
+            current = await get_active_subscription(internal_user_id)
+            if current:
+                await conn.execute(
+                    "UPDATE user_subscriptions SET status = 'expired', is_active = false WHERE id = $1",
+                    current["id"],
+                )
+
+            # Переводим отложенную в активную с started_at = NOW()
+            from datetime import datetime
+            now = datetime.now()
+            await conn.execute(
+                """
+                UPDATE user_subscriptions
+                SET started_at = $1, tokens_granted_at = NOW()
+                WHERE id = $2
+                """,
+                now, sub_id,
+            )
+
+            # Обновляем дату окончания подписки у пользователя
+            await conn.execute(
+                "UPDATE users SET subscription_status = 'active', subscription_expires_at = $2 WHERE id = $1",
+                internal_user_id, pending["expires_at"],
+            )
+
+    # Начисляем токены
+    max_carryover = plan.get("max_carryover", 0)
+    await reset_subscription_tokens_with_carryover(
+        user_id=internal_user_id,
+        new_amount=plan["tokens_included"],
+        max_carryover=max_carryover,
+    )
+
+    await callback.answer("✅ Подписка активирована!", show_alert=True)
+
+    # Обновляем профиль
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    await render_and_send_profile(
+        bot=callback.bot,
+        chat_id=user.id,
         telegram_user_id=user.id,
         username=user.username,
         first_name=user.first_name,

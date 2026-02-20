@@ -602,7 +602,7 @@ async def render_and_send_profile(
 
     from src.services.db.tokens_repo import get_token_balance
     from src.services.db.pool import get_pool
-    from src.services.db.user_subscription_repo import get_active_subscription
+    from src.services.db.user_subscription_repo import get_active_subscription, get_pending_subscription
     from src.services.db.subscription_plan_repo import get_by_id as get_plan_by_id
     from src.services.db.invite_link_repo import get_user_active_discount
     from src.services.db.tokens_repo import get_split_balance
@@ -612,6 +612,12 @@ async def render_and_send_profile(
     plan = None
     if subscription:
         plan = await get_plan_by_id(subscription["subscription_plan_id"])
+
+    # Отложенная подписка (следующий период уже оплачен)
+    pending_sub = await get_pending_subscription(internal_user_id)
+    pending_plan = None
+    if pending_sub:
+        pending_plan = await get_plan_by_id(pending_sub["subscription_plan_id"])
 
     split = await get_split_balance(internal_user_id)
     ref_discount_data = await get_user_active_discount(internal_user_id)
@@ -635,6 +641,8 @@ async def render_and_send_profile(
         auto_renew = subscription.get("auto_renew", False)
         auto_renew_str = "✅ активно" if auto_renew else "❌ не активно"
         sub_line = f"📋 <b>Тариф:</b>\n<b>{plan_name}</b>  ✅\nПодписка до: {_fmt_date(expires_at)}\nАвтопродление: {auto_renew_str}"
+        if pending_sub and pending_plan:
+            sub_line += f"\n⏳ Следующий период: <b>{pending_plan.get('name', '—')}</b> c {_fmt_date(pending_sub['started_at'])}"
     else:
         sub_line = "📋 <b>Тариф:</b>\n<b>Пробный</b>  |  Без подписки"
 

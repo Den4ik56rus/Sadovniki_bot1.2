@@ -96,6 +96,7 @@ async def get_active_subscription(user_id: int) -> Optional[Dict[str, Any]]:
             WHERE user_id = $1
             AND status = 'active'
             AND is_active = true
+            AND started_at <= NOW()
             AND expires_at > NOW()
             ORDER BY expires_at DESC
             LIMIT 1
@@ -103,6 +104,70 @@ async def get_active_subscription(user_id: int) -> Optional[Dict[str, Any]]:
             user_id,
         )
         return dict(row) if row else None
+
+
+async def get_pending_subscription(user_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Получает отложенную подписку (оплачена, но ещё не началась).
+    started_at > NOW() означает что подписка начнётся в будущем.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT * FROM user_subscriptions
+            WHERE user_id = $1
+            AND status = 'active'
+            AND is_active = true
+            AND started_at > NOW()
+            ORDER BY started_at ASC
+            LIMIT 1
+            """,
+            user_id,
+        )
+        return dict(row) if row else None
+
+
+async def activate_pending_subscriptions() -> int:
+    """
+    Активирует отложенные подписки у которых наступил started_at.
+    Начисляет токены. Вызывается из фоновой задачи.
+    Returns: количество активированных.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT us.*, sp.tokens_included, sp.max_carryover, sp.name as plan_name
+            FROM user_subscriptions us
+            JOIN subscription_plans sp ON sp.id = us.subscription_plan_id
+            WHERE us.status = 'active'
+            AND us.is_active = true
+            AND us.started_at <= NOW()
+            AND us.started_at > (NOW() - INTERVAL '1 hour')
+            AND us.tokens_granted_at IS NULL
+            """,
+        )
+
+    count = 0
+    for row in rows:
+        try:
+            from src.services.db.tokens_repo import reset_subscription_tokens_with_carryover
+            await reset_subscription_tokens_with_carryover(
+                user_id=row["user_id"],
+                new_amount=row["tokens_included"],
+                max_carryover=row["max_carryover"] or 0,
+            )
+            # Помечаем что токены начислены
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    "UPDATE user_subscriptions SET tokens_granted_at = NOW() WHERE id = $1",
+                    row["id"],
+                )
+            count += 1
+        except Exception:
+            pass
+    return count
 
 
 async def get_by_id(subscription_id: int) -> Optional[Dict[str, Any]]:

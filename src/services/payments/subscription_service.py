@@ -43,8 +43,12 @@ async def activate_subscription(
     if not plan:
         raise ValueError(f"Subscription plan {plan_id} not found")
 
-    # Рассчитать срок действия
-    started_at = datetime.now()
+    # Если есть активная подписка — новая начинается после её окончания
+    existing = await user_subscription_repo.get_active_subscription(user_id)
+    if existing and existing["expires_at"] > datetime.now():
+        started_at = existing["expires_at"]
+    else:
+        started_at = datetime.now()
     expires_at = started_at + timedelta(days=plan["duration_days"])
 
     # Рассчитать дату следующего списания (за 3 дня до окончания)
@@ -79,17 +83,23 @@ async def activate_subscription(
                 expires_at,
             )
 
-            # Начислить токены с учётом переноса
-            max_carryover = plan.get("max_carryover", 0)
-            carryover_result = await reset_subscription_tokens_with_carryover(
-                user_id=user_id,
-                new_amount=plan["tokens_included"],
-                max_carryover=max_carryover,
-            )
+            # Начислить токены сразу только если подписка стартует сейчас
+            # Если started_at в будущем (продление при активной подписке) — токены начислятся позже
+            is_deferred = started_at > datetime.now()
+            if not is_deferred:
+                max_carryover = plan.get("max_carryover", 0)
+                carryover_result = await reset_subscription_tokens_with_carryover(
+                    user_id=user_id,
+                    new_amount=plan["tokens_included"],
+                    max_carryover=max_carryover,
+                )
+            else:
+                carryover_result = {"carryover": 0, "total_balance": 0}
 
             logger.info(
                 f"Subscription activated: user={user_id}, plan={plan['name']}, "
-                f"expires={expires_at}, tokens={plan['tokens_included']}, "
+                f"starts={started_at}, expires={expires_at}, "
+                f"deferred={is_deferred}, tokens={plan['tokens_included']}, "
                 f"carryover={carryover_result['carryover']}, "
                 f"new_balance={carryover_result['total_balance']}"
             )
@@ -329,20 +339,33 @@ async def _send_subscription_notification(
         # Получить глобальный экземпляр бота
         bot = get_bot()
 
+        started_at = subscription["started_at"]
         expires_at = subscription["expires_at"]
         expires_str = expires_at.strftime("%d.%m.%Y") if hasattr(expires_at, "strftime") else str(expires_at)
+        started_str = started_at.strftime("%d.%m.%Y") if hasattr(started_at, "strftime") else str(started_at)
 
+        is_deferred = started_at > datetime.now()
         carryover = carryover_result.get("carryover", 0) if carryover_result else 0
         carryover_line = f"\n🔄 Перенесено с прошлого периода: {carryover}" if carryover > 0 else ""
 
-        message_text = (
-            "🎉 <b>Подписка активирована!</b>\n\n"
-            f"📅 План: {plan['name']}\n"
-            f"⏱ Действует до: {expires_str}\n"
-            f"🎁 Начислено токенов: {plan['tokens_included']}"
-            f"{carryover_line}\n\n"
-            "Спасибо за вашу поддержку! 🌱"
-        )
+        if is_deferred:
+            message_text = (
+                "✅ <b>Подписка оплачена!</b>\n\n"
+                f"📅 План: {plan['name']}\n"
+                f"⏱ Начнётся: {started_str}\n"
+                f"⏱ Действует до: {expires_str}\n"
+                f"🎁 Токены будут начислены при старте подписки\n\n"
+                "Спасибо за вашу поддержку! 🌱"
+            )
+        else:
+            message_text = (
+                "🎉 <b>Подписка активирована!</b>\n\n"
+                f"📅 План: {plan['name']}\n"
+                f"⏱ Действует до: {expires_str}\n"
+                f"🎁 Начислено токенов: {plan['tokens_included']}"
+                f"{carryover_line}\n\n"
+                "Спасибо за вашу поддержку! 🌱"
+            )
 
         await bot.send_message(
             chat_id=telegram_user_id,

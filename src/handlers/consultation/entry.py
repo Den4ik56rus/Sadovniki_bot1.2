@@ -2569,14 +2569,21 @@ async def handle_followup_new_topic_callback(callback: CallbackQuery) -> None:
     await clear_consultation_state(telegram_user_id)
     await set_consultation_state(telegram_user_id, "waiting_consultation_question")
 
-    if pending and pending.text:
+    if pending and pending.text and pending.from_user:
         # Автоподгружаем написанный текст — запускаем пайплайн сразу
         if callback.message:
             notification = f"Принимаю ваш вопрос:\n«{pending.text}»"
             await callback.message.answer(notification)
             await _log_bot_msg(notification, telegram_user_id=telegram_user_id)
         await callback.answer("✅ Начинаем новую тему")
-        await run_consultation_pipeline(message=pending)
+        await run_consultation_pipeline(
+            message=pending,
+            telegram_user_id=pending.from_user.id,
+            username=pending.from_user.username,
+            first_name=pending.from_user.first_name,
+            last_name=pending.from_user.last_name,
+            question_text=pending.text.strip(),
+        )
     else:
         # Обычный флоу — запрос нового вопроса с инлайн-кнопками примеров
         if callback.message:

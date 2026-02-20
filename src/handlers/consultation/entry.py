@@ -297,6 +297,7 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
     session_id = context["session_id"]
     category = context["category"]
     root_question = context["root_question"]
+    question_msg_id = context.get("question_msg_id")
 
     # Извлекаем complexity_result из контекста (shadow mode)
     cr = context.get("complexity_result")
@@ -514,6 +515,9 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
             session_id=session_id,
             topic_id=topic_id,
         )
+        # Снимаем флаг processing — ответ успешно отправлен
+        if question_msg_id:
+            await unmark_message_processing(question_msg_id)
 
         # Добавляем в очередь модерации
         try:
@@ -864,6 +868,9 @@ async def run_consultation_pipeline(
         text=question_text,
         session_id=f"tg:{telegram_user_id}",
     )
+    # Флаг: вопрос начал обрабатываться. Снимается после отправки ответа.
+    # Используется recovery при рестарте бота.
+    await mark_message_processing(question_msg_id)
 
     # Быстрая проверка баланса (минимум 1 токен) — без LLM-вызова
     if not await has_sufficient_tokens(internal_user_id, 1):

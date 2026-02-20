@@ -198,15 +198,50 @@ async def get_recent_messages(topic_id: int, limit: int = 5) -> List[dict]:
         return [dict(row) for row in reversed(rows)]
 
 
+async def mark_message_processing(message_id: int) -> None:
+    """
+    Ставит флаг processing=true в meta сообщения.
+    Вызывается сразу после log_message(direction='user'), до начала LLM-вызова.
+    Используется для идентификации вопросов, которые начали обрабатываться но не завершились.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE messages
+            SET meta = COALESCE(meta, '{}'::jsonb) || '{"processing": true}'::jsonb
+            WHERE id = $1
+            """,
+            message_id,
+        )
+
+
+async def unmark_message_processing(message_id: int) -> None:
+    """
+    Снимает флаг processing из meta сообщения.
+    Вызывается после успешной отправки ответа бота.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE messages
+            SET meta = meta - 'processing'
+            WHERE id = $1
+            """,
+            message_id,
+        )
+
+
 async def find_unanswered_user_messages(since_minutes: int = 30) -> List[dict]:
     """
-    Находит пользователей, которые отправили вопрос но не получили ответа.
+    Находит вопросы пользователей, которые начали обрабатываться но бот упал до ответа.
 
-    Ищет direction='user' сообщения за последние since_minutes минут,
-    для которых нет последующего direction='bot' сообщения в том же topic_id.
+    Критерий: direction='user' с meta->>'processing' = 'true' за последние since_minutes минут.
+    Флаг 'processing' ставится в начале LLM-вызова и снимается после отправки ответа.
+    Если флаг остался — значит бот упал в процессе.
 
-    Возвращает один результат на пользователя (самый последний неотвеченный вопрос).
-    Используется при запуске бота для детектирования пропущенных ответов.
+    Возвращает один результат на пользователя (самый последний незавершённый вопрос).
     """
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -225,17 +260,8 @@ async def find_unanswered_user_messages(since_minutes: int = 30) -> List[dict]:
             FROM messages m
             JOIN users u ON u.id = m.user_id
             WHERE m.direction = 'user'
+              AND (m.meta->>'processing')::boolean = true
               AND m.created_at >= NOW() - make_interval(mins => $1)
-              AND NOT EXISTS (
-                  SELECT 1 FROM messages bot_msg
-                  WHERE bot_msg.user_id = m.user_id
-                    AND bot_msg.direction = 'bot'
-                    AND bot_msg.created_at > m.created_at
-                    AND (
-                        bot_msg.topic_id = m.topic_id
-                        OR (m.topic_id IS NULL AND bot_msg.topic_id IS NULL)
-                    )
-              )
             ORDER BY m.user_id, m.created_at DESC
             """,
             since_minutes,

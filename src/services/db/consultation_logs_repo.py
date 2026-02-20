@@ -259,17 +259,30 @@ async def get_users_with_stats(
     pool = get_pool()
 
     async with pool.acquire() as conn:
+        # Определяем тип поиска: по Telegram ID (число) или по имени
+        is_id_search = search.strip().isdigit() if search else False
+
         # Подсчёт общего количества
         if search:
-            count_row = await conn.fetchrow(
-                """
-                SELECT COUNT(DISTINCT u.id) AS cnt
-                FROM users u
-                LEFT JOIN consultation_logs cl ON cl.user_id = u.id
-                WHERE u.username ILIKE $1 OR u.first_name ILIKE $1
-                """,
-                f"%{search}%",
-            )
+            if is_id_search:
+                count_row = await conn.fetchrow(
+                    """
+                    SELECT COUNT(DISTINCT u.id) AS cnt
+                    FROM users u
+                    WHERE u.telegram_user_id = $1
+                    """,
+                    int(search.strip()),
+                )
+            else:
+                count_row = await conn.fetchrow(
+                    """
+                    SELECT COUNT(DISTINCT u.id) AS cnt
+                    FROM users u
+                    LEFT JOIN consultation_logs cl ON cl.user_id = u.id
+                    WHERE u.username ILIKE $1 OR u.first_name ILIKE $1
+                    """,
+                    f"%{search}%",
+                )
         else:
             count_row = await conn.fetchrow(
                 """
@@ -281,30 +294,56 @@ async def get_users_with_stats(
 
         # Получение пользователей со статистикой
         if search:
-            rows = await conn.fetch(
-                """
-                SELECT
-                    u.id,
-                    u.telegram_user_id,
-                    u.username,
-                    u.first_name,
-                    u.last_name,
-                    u.token_balance,
-                    COALESCE(COUNT(cl.id), 0) AS total_consultations,
-                    COALESCE(SUM(cl.total_tokens), 0) AS total_tokens,
-                    COALESCE(SUM(cl.cost_usd), 0) AS total_cost_usd,
-                    MAX(cl.created_at) AS last_consultation_at
-                FROM users u
-                LEFT JOIN consultation_logs cl ON cl.user_id = u.id
-                WHERE u.username ILIKE $1 OR u.first_name ILIKE $1
-                GROUP BY u.id
-                ORDER BY last_consultation_at DESC NULLS LAST
-                LIMIT $2 OFFSET $3
-                """,
-                f"%{search}%",
-                limit,
-                offset,
-            )
+            if is_id_search:
+                rows = await conn.fetch(
+                    """
+                    SELECT
+                        u.id,
+                        u.telegram_user_id,
+                        u.username,
+                        u.first_name,
+                        u.last_name,
+                        u.token_balance,
+                        COALESCE(COUNT(cl.id), 0) AS total_consultations,
+                        COALESCE(SUM(cl.total_tokens), 0) AS total_tokens,
+                        COALESCE(SUM(cl.cost_usd), 0) AS total_cost_usd,
+                        MAX(cl.created_at) AS last_consultation_at
+                    FROM users u
+                    LEFT JOIN consultation_logs cl ON cl.user_id = u.id
+                    WHERE u.telegram_user_id = $1
+                    GROUP BY u.id
+                    ORDER BY last_consultation_at DESC NULLS LAST
+                    LIMIT $2 OFFSET $3
+                    """,
+                    int(search.strip()),
+                    limit,
+                    offset,
+                )
+            else:
+                rows = await conn.fetch(
+                    """
+                    SELECT
+                        u.id,
+                        u.telegram_user_id,
+                        u.username,
+                        u.first_name,
+                        u.last_name,
+                        u.token_balance,
+                        COALESCE(COUNT(cl.id), 0) AS total_consultations,
+                        COALESCE(SUM(cl.total_tokens), 0) AS total_tokens,
+                        COALESCE(SUM(cl.cost_usd), 0) AS total_cost_usd,
+                        MAX(cl.created_at) AS last_consultation_at
+                    FROM users u
+                    LEFT JOIN consultation_logs cl ON cl.user_id = u.id
+                    WHERE u.username ILIKE $1 OR u.first_name ILIKE $1
+                    GROUP BY u.id
+                    ORDER BY last_consultation_at DESC NULLS LAST
+                    LIMIT $2 OFFSET $3
+                    """,
+                    f"%{search}%",
+                    limit,
+                    offset,
+                )
         else:
             rows = await conn.fetch(
                 """

@@ -32,7 +32,7 @@ export function UserList() {
         <h2>Пользователи</h2>
         <input
           type="text"
-          placeholder="Поиск по имени..."
+          placeholder="Поиск по имени или Telegram ID..."
           value={searchQuery}
           onChange={handleSearch}
           className={styles.search}

@@ -25,6 +25,10 @@ CONSULTATION_STATE: Dict[int, str] = {}   # Пример: {123456789: "waiting_n
 # сюда будем складывать сам рут-вопрос, полный вопрос, культуру, user_id, topic_id и т.п.
 CONSULTATION_CONTEXT: Dict[int, Dict[str, Any]] = {}  # Пример: {123456789: {"category": "nutrition", "root_question": "..."}}
 
+# Сохранённые сообщения пользователя, написанные вместо нажатия кнопки.
+# Используется для автоподгрузки текста после нажатия кнопки выбора типа вопроса.
+PENDING_USER_MESSAGES: Dict[int, Message] = {}  # Пример: {123456789: <Message object>}
+
 
 async def set_consultation_state(
     telegram_user_id: int,

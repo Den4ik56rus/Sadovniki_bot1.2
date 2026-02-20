@@ -1498,10 +1498,15 @@ async def handle_followup_question(message: Message) -> None:
     """
     БЛОКИРУЕТ прямой текстовый ввод в состоянии waiting_followup.
     Требует нажатия инлайн-кнопки "Уточняющий вопрос" или "Новая тема".
+    Сохраняет написанный текст для автоподгрузки после нажатия кнопки.
     """
     user = message.from_user
     if user is None:
         return
+
+    # Сохраняем сообщение — чтобы пользователю не пришлось писать заново
+    from src.handlers.common import PENDING_USER_MESSAGES
+    PENDING_USER_MESSAGES[user.id] = message
 
     followup_block_text = (
         "Пожалуйста, выберите один из вариантов:\n"
@@ -2514,12 +2519,25 @@ async def handle_followup_clarification_callback(callback: CallbackQuery) -> Non
     # Переводим в состояние ожидания уточняющего вопроса
     await set_consultation_state(telegram_user_id, "waiting_followup_text")
 
-    if callback.message:
-        clarif_prompt = "Напишите уточняющий вопрос:"
-        await callback.message.answer(clarif_prompt)
-        await _log_bot_msg(clarif_prompt, telegram_user_id=telegram_user_id)
+    # Проверяем: пользователь уже написал вопрос до нажатия кнопки?
+    from src.handlers.common import PENDING_USER_MESSAGES
+    pending = PENDING_USER_MESSAGES.pop(telegram_user_id, None)
 
-    await callback.answer()
+    if pending and pending.text:
+        # Автоподгружаем написанный текст — пользователю не нужно писать заново
+        if callback.message:
+            notification = f"Принимаю ваш вопрос:\n«{pending.text}»"
+            await callback.message.answer(notification)
+            await _log_bot_msg(notification, telegram_user_id=telegram_user_id)
+        await callback.answer()
+        await process_followup_question_logic(pending)
+    else:
+        # Обычный флоу — просим написать вопрос
+        if callback.message:
+            clarif_prompt = "Напишите уточняющий вопрос:"
+            await callback.message.answer(clarif_prompt)
+            await _log_bot_msg(clarif_prompt, telegram_user_id=telegram_user_id)
+        await callback.answer()
 
 
 @router.callback_query(F.data == "followup_type:new_topic")
@@ -2533,6 +2551,10 @@ async def handle_followup_new_topic_callback(callback: CallbackQuery) -> None:
 
     # Логируем нажатие кнопки пользователем (ДО закрытия топиков)
     await _log_user_callback("[Кнопка] Задать вопрос по новой теме", callback=callback)
+
+    # Очищаем pending-сообщение (если пользователь написал текст до нажатия кнопки)
+    from src.handlers.common import PENDING_USER_MESSAGES
+    PENDING_USER_MESSAGES.pop(telegram_user_id, None)
 
     # Получаем user_id
     user_id = await get_or_create_user(

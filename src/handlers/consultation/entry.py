@@ -1584,7 +1584,24 @@ async def process_followup_question_logic(message: Message) -> None:
 
         detected_category = saved_category or "не определена"
 
-        if culture in ("не определено", "общая информация"):
+        # Короткие утвердительные сообщения не могут сменить тему — пропускаем классификацию
+        SHORT_FOLLOWUP_TRIGGERS = {
+            "давай", "да", "ок", "окей", "хорошо", "продолжай", "продолжи",
+            "и что", "что ещё", "ещё", "дальше", "понял", "понятно", "ясно",
+            "конечно", "угу", "ага", "го", "пиши", "говори", "рассказывай",
+        }
+        user_text_lower = user_text.strip().lower()
+        is_short_affirmative = (
+            len(user_text.strip()) < 20
+            and user_text_lower in SHORT_FOLLOWUP_TRIGGERS
+        )
+
+        if is_short_affirmative:
+            print(f"[followup] Short affirmative message — treating as same_topic, skipping classification")
+            topic_change = "same_topic"
+            new_culture = culture
+            new_correction_hint = None
+        elif culture in ("не определено", "общая информация"):
             print(f"[followup] Culture not yet defined - treating as same_topic, skipping topic change check")
             topic_change = "same_topic"
             new_culture = culture
@@ -1608,11 +1625,6 @@ async def process_followup_question_logic(message: Message) -> None:
             classification_tokens += compare_tokens
 
         print(f"[followup] Culture change decision: {topic_change!r}")
-
-        if new_correction_hint and topic_change != "clear_change":
-            print(f"[followup] CORRECTION HINT detected in follow-up — forcing clear_change")
-            topic_change = "clear_change"
-            new_culture = "не определено"
 
         if topic_change == "clear_change":
             print(f"[followup] CLEAR CULTURE CHANGE - creating new topic with same category")

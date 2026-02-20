@@ -86,6 +86,47 @@ async def buy_tokens_handler(callback: CallbackQuery):
             )
             return
 
+        # --- Режим перенаправления на менеджера (тестовый запуск) ---
+        if settings.PAYMENTS_REDIRECT_MODE:
+            from urllib.parse import quote
+
+            price = int(package['price_rub'])
+            contact = settings.PAYMENTS_CONTACT_USERNAME
+
+            pre_filled = f"Здравствуйте, хочу купить пакет «{package['name']}» ({price}₽)"
+            link = f"https://t.me/{contact}?text={quote(pre_filled)}"
+
+            purchase_text = (
+                f"🛒 Пакет: <b>{package['name']}</b>\n"
+                f"💰 Цена: {price}₽\n"
+                f"🎁 Вы получите: {package['tokens_amount']} токенов\n\n"
+                f"Для покупки напишите нашему менеджеру — "
+                f"нажмите кнопку ниже."
+            )
+
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="✉️ Написать менеджеру",
+                    url=link,
+                )],
+                [InlineKeyboardButton(
+                    text="◀️ Назад к покупкам",
+                    callback_data="show_payment_menu",
+                )],
+            ])
+
+            await callback.message.edit_text(purchase_text, reply_markup=keyboard, parse_mode="HTML")
+
+            try:
+                from src.services.db.messages_repo import log_message
+                await log_message(user_id=user_id, direction="user", text=f"[Кнопка] Купить: {package['name']}", session_id=f"tg:{telegram_user_id}", meta={"type": "callback", "callback_data": callback.data})
+                await log_message(user_id=user_id, direction="bot", text=purchase_text, session_id=f"tg:{telegram_user_id}")
+            except Exception:
+                pass
+
+            logger.info(f"Token redirect shown: user={user_id}, package={package['name']}")
+            return
+
         # Создать платеж (скидка применяется внутри payment_service)
         payment = await payment_service.create_token_payment(
             user_id=user_id,

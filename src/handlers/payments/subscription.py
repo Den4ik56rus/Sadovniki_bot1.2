@@ -71,6 +71,49 @@ async def buy_subscription_handler(callback: CallbackQuery):
             )
             return
 
+        # --- Режим перенаправления на менеджера (тестовый запуск) ---
+        if settings.PAYMENTS_REDIRECT_MODE:
+            from urllib.parse import quote
+
+            price = int(plan['price_rub'])
+            qty = plan.get('tokens_included', 0)
+            contact = settings.PAYMENTS_CONTACT_USERNAME
+
+            pre_filled = f"Здравствуйте, хочу оформить подписку «{plan['name']}» ({price}₽/мес)"
+            link = f"https://t.me/{contact}?text={quote(pre_filled)}"
+
+            sub_text = (
+                f"📅 Подписка: <b>{plan['name']}</b>\n"
+                f"💰 Цена: {price}₽/мес\n"
+                f"⏱ Срок: {plan['duration_days']} дней\n"
+                f"🎁 Лимит: {pluralize_questions(qty)} в месяц\n\n"
+                f"Для оформления подписки напишите нашему менеджеру — "
+                f"нажмите кнопку ниже."
+            )
+
+            keyboard = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="✉️ Написать менеджеру",
+                    url=link,
+                )],
+                [InlineKeyboardButton(
+                    text="◀️ Назад к покупкам",
+                    callback_data="show_payment_menu",
+                )],
+            ])
+
+            await callback.message.edit_text(sub_text, reply_markup=keyboard, parse_mode="HTML")
+
+            try:
+                from src.services.db.messages_repo import log_message
+                await log_message(user_id=user_id, direction="user", text=f"[Кнопка] Подписка: {plan['name']}", session_id=f"tg:{telegram_user_id}", meta={"type": "callback", "callback_data": callback.data})
+                await log_message(user_id=user_id, direction="bot", text=sub_text, session_id=f"tg:{telegram_user_id}")
+            except Exception:
+                pass
+
+            logger.info(f"Subscription redirect shown: user={user_id}, plan={plan['name']}")
+            return
+
         # Создать платеж (скидка применяется внутри payment_service)
         payment = await payment_service.create_subscription_payment(
             user_id=user_id,

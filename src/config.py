@@ -154,6 +154,16 @@ class Settings(BaseSettings):
         description="Система налогообложения (1 = УСН доход)",
     )
 
+    # --- Перенаправление оплаты на менеджера (тестовый запуск) ---
+    PAYMENTS_REDIRECT_MODE: bool = Field(
+        False,
+        description="Перенаправлять на ручную оплату через сообщение вместо YooKassa",
+    )
+    PAYMENTS_CONTACT_USERNAME: str = Field(
+        "orenqueen56",
+        description="Username менеджера для ручной оплаты (без @)",
+    )
+
     # Общая конфигурация pydantic-settings
     model_config = SettingsConfigDict(
         env_file=".env",             # брать переменные ещё и из файла .env в корне проекта

@@ -126,10 +126,10 @@ def _build_menu_text(
             else:
                 price_str = f"{price}₽/мес"
             text_parts.append(
-                f"\n📅 Подписка: {plan['name']}\n"
-                f"💰 Цена: {price_str}\n"
-                f"⏱️ Срок: {plan.get('duration_days', 30)} дней\n"
-                f"🎁 Лимит: {qty} токенов в месяц"
+                f"\nПодписка: <b>{plan['name']}</b>\n"
+                f"Цена: {price_str}\n"
+                f"Срок: {plan.get('duration_days', 30)} дней\n"
+                f"<b>Лимит: {qty} токенов в месяц</b>"
                 f"{carryover_info}"
             )
 

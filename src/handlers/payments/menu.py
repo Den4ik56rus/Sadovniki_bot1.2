@@ -41,16 +41,16 @@ def get_payment_menu_keyboard(
 ) -> InlineKeyboardMarkup:
     buttons = []
 
-    # Кнопка оформить/продлить подписку
+    # Продлить / оформить подписку
     if has_subscription:
         buttons.append([InlineKeyboardButton(
             text="🔄 Продлить подписку",
-            callback_data="payment_menu_header_subscription"
+            callback_data="show_subscription_plans"
         )])
     else:
         buttons.append([InlineKeyboardButton(
             text="📋 Оформить подписку",
-            callback_data="payment_menu_header_subscription"
+            callback_data="show_subscription_plans"
         )])
 
     # Отменить автопродление — только если включено
@@ -60,48 +60,12 @@ def get_payment_menu_keyboard(
             callback_data="cancel_auto_renew"
         )])
 
-    # Доп. токены
+    # Купить доп. токены
     if token_packages:
         buttons.append([InlineKeyboardButton(
-            text="➕ Дополнительные токены:",
-            callback_data="payment_menu_header_tokens"
+            text="➕ Купить доп. токены",
+            callback_data="show_token_packages" if has_subscription else "buy_tokens_no_subscription"
         )])
-        if has_subscription:
-            best_discount = max(token_discount_percent, invite_discount_percent)
-            for package in token_packages:
-                price = int(package['price_rub'])
-                if best_discount > 0:
-                    discounted = int(price * (100 - best_discount) / 100)
-                    text = f"{package['name']}  {price}₽ → {discounted}₽"
-                else:
-                    text = f"{package['name']}  {price}₽"
-                buttons.append([InlineKeyboardButton(
-                    text=text,
-                    callback_data=f"buy_tokens_{package['id']}"
-                )])
-        else:
-            buttons.append([InlineKeyboardButton(
-                text="Купить доп. токены",
-                callback_data="buy_tokens_no_subscription"
-            )])
-
-    # Тарифные планы (раскрытые)
-    if subscription_plans:
-        buttons.append([InlineKeyboardButton(
-            text="─────────────────",
-            callback_data="payment_menu_header_subscription"
-        )])
-        for plan in subscription_plans:
-            price = int(plan['price_rub'])
-            if invite_discount_percent > 0:
-                discounted = int(price * (100 - invite_discount_percent) / 100)
-                text = f"{plan['name']}  {price}₽ → {discounted}₽/мес"
-            else:
-                text = f"{plan['name']}  {price}₽/мес"
-            buttons.append([InlineKeyboardButton(
-                text=text,
-                callback_data=f"buy_subscription_{plan['id']}"
-            )])
 
     buttons.append([InlineKeyboardButton(
         text="◀️ Назад в меню",
@@ -349,6 +313,86 @@ async def show_payment_menu_callback(callback: CallbackQuery):
 async def payment_menu_headers(callback: CallbackQuery):
     """Обработка кликов по заголовкам (они не активны, просто заглушка)."""
     await callback.answer()
+
+
+@router.callback_query(F.data == "show_subscription_plans")
+async def show_subscription_plans_handler(callback: CallbackQuery):
+    """Показать список тарифных планов с кнопками для покупки."""
+    await callback.answer()
+
+    from src.services.db.users_repo import get_or_create_user
+    from src.services.db.invite_link_repo import get_user_active_discount
+    user_id = await get_or_create_user(
+        telegram_user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+    )
+
+    subscription_plans = await subscription_plan_repo.get_all_active()
+    _inv = await get_user_active_discount(user_id)
+    invite_discount = _inv["discount_percent"] if _inv else 0
+
+    buttons = []
+    for plan in subscription_plans:
+        price = int(plan['price_rub'])
+        if invite_discount > 0:
+            discounted = int(price * (100 - invite_discount) / 100)
+            text = f"{plan['name']}  {price}₽ → {discounted}₽/мес"
+        else:
+            text = f"{plan['name']}  {price}₽/мес"
+        buttons.append([InlineKeyboardButton(
+            text=text,
+            callback_data=f"buy_subscription_{plan['id']}"
+        )])
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="show_payment_menu")])
+
+    await callback.message.edit_text(
+        "📅 <b>Выберите тариф:</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "show_token_packages")
+async def show_token_packages_handler(callback: CallbackQuery):
+    """Показать список пакетов доп. токенов с кнопками для покупки."""
+    await callback.answer()
+
+    from src.services.db.users_repo import get_or_create_user
+    from src.services.db.invite_link_repo import get_user_active_discount
+    user_id = await get_or_create_user(
+        telegram_user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+    )
+
+    token_packages = await token_package_repo.get_all_active()
+    _inv = await get_user_active_discount(user_id)
+    invite_discount = _inv["discount_percent"] if _inv else 0
+    _, token_discount, _ = await _get_subscription_info(user_id)
+    best_discount = max(token_discount, invite_discount)
+
+    buttons = []
+    for package in token_packages:
+        price = int(package['price_rub'])
+        if best_discount > 0:
+            discounted = int(price * (100 - best_discount) / 100)
+            text = f"{package['name']}  {price}₽ → {discounted}₽"
+        else:
+            text = f"{package['name']}  {price}₽"
+        buttons.append([InlineKeyboardButton(
+            text=text,
+            callback_data=f"buy_tokens_{package['id']}"
+        )])
+    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="show_payment_menu")])
+
+    await callback.message.edit_text(
+        "➕ <b>Выберите пакет токенов:</b>",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+        parse_mode="HTML",
+    )
 
 
 @router.callback_query(F.data == "buy_tokens_no_subscription")

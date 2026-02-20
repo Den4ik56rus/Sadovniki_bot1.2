@@ -709,7 +709,7 @@ async def handle_profile(message: Message) -> None:
 
     def _bar(used: int, total: int, length: int = 13) -> str:
         filled = int((used / total) * length) if total > 0 else 0
-        return "█" * filled + "░" * (length - filled)
+        return "▪️" * filled + "▫️" * (length - filled)
 
     if subscription and plan:
         sub_bar = _bar(sub_used, sub_granted)

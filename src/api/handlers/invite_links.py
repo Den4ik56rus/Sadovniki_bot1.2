@@ -141,6 +141,9 @@ async def update_invite_link(request: web.Request) -> web.Response:
         discount_percent = int(data.get('discount_percent', 0))
         discount_duration_days = int(data.get('discount_duration_days', 0))
         max_users = int(data.get('max_users', 0))
+        is_active = data.get('is_active')
+        if is_active is not None:
+            is_active = bool(is_active)
 
         # Валидация
         if not (0 <= discount_percent <= 100):
@@ -158,6 +161,7 @@ async def update_invite_link(request: web.Request) -> web.Response:
             discount_percent=discount_percent,
             discount_duration_days=discount_duration_days,
             max_users=max_users,
+            is_active=is_active,
         )
         if not link:
             raise web.HTTPNotFound(text='Invite link not found')
@@ -192,4 +196,35 @@ async def delete_invite_link(request: web.Request) -> web.Response:
         raise web.HTTPNotFound(text='Invite link not found')
     except Exception as e:
         logger.error(f'Error deleting invite link: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Database error')
+
+
+async def toggle_invite_link(request: web.Request) -> web.Response:
+    """
+    PATCH /api/admin/invite-links/{id}/toggle
+    Включить/выключить инвайт-ссылку.
+
+    Body: { "is_active": true/false }
+    """
+    try:
+        link_id = int(request.match_info['id'])
+        data = await request.json()
+        is_active = data.get('is_active')
+        if is_active is None:
+            raise web.HTTPBadRequest(text='is_active is required')
+
+        link = await invite_link_repo.toggle_invite_link_active(link_id, bool(is_active))
+        if not link:
+            raise web.HTTPNotFound(text='Invite link not found')
+
+        result = _serialize_dict(link)
+        result['deep_link'] = _build_deep_link(result['code'])
+        return web.json_response(result)
+
+    except web.HTTPBadRequest:
+        raise
+    except web.HTTPNotFound:
+        raise
+    except Exception as e:
+        logger.error(f'Error toggling invite link: {e}', exc_info=True)
         raise web.HTTPInternalServerError(text='Database error')

@@ -1265,6 +1265,13 @@ export const api = {
     })
   },
 
+  async toggleInviteLinkActive(id: number, is_active: boolean): Promise<InviteLink> {
+    return fetchApi<InviteLink>(`/invite-links/${id}/toggle`, {
+      method: 'PATCH',
+      body: JSON.stringify({ is_active }),
+    })
+  },
+
   async deleteInviteLink(id: number): Promise<{ success: boolean }> {
     return fetchApi<{ success: boolean }>(`/invite-links/${id}`, {
       method: 'DELETE',

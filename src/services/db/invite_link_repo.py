@@ -46,7 +46,7 @@ async def create_invite_link(
                     """
                     INSERT INTO invite_links (name, code, bonus_tokens, discount_percent, discount_duration_days, max_users)
                     VALUES ($1, $2, $3, $4, $5, $6)
-                    RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, created_at
+                    RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, created_at
                     """,
                     name, code, bonus_tokens, discount_percent, discount_duration_days, max_users,
                 )
@@ -62,7 +62,7 @@ async def get_invite_link_by_code(code: str) -> Optional[Dict[str, Any]]:
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, created_at
+            SELECT id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, created_at
             FROM invite_links WHERE code = $1
             """,
             code.upper(),
@@ -188,7 +188,7 @@ async def get_invite_links_with_stats(
             SELECT
                 il.id, il.name, il.code,
                 il.bonus_tokens, il.discount_percent, il.discount_duration_days, il.max_users,
-                il.created_at,
+                il.is_active, il.created_at,
                 COUNT(DISTINCT ilu.user_id) AS users_count,
                 COALESCE(SUM(p.amount_rub) FILTER (WHERE p.paid = true), 0) AS total_revenue_rub
             FROM invite_links il
@@ -250,18 +250,46 @@ async def update_invite_link(
     discount_percent: int = 0,
     discount_duration_days: int = 0,
     max_users: int = 0,
+    is_active: Optional[bool] = None,
 ) -> Optional[Dict[str, Any]]:
     """Обновить инвайт-ссылку. Возвращает обновлённую строку или None."""
     pool = get_pool()
     async with pool.acquire() as conn:
+        if is_active is not None:
+            row = await conn.fetchrow(
+                """
+                UPDATE invite_links
+                SET name = $1, bonus_tokens = $2, discount_percent = $3, discount_duration_days = $4, max_users = $5, is_active = $6
+                WHERE id = $7
+                RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, created_at
+                """,
+                name, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, link_id,
+            )
+        else:
+            row = await conn.fetchrow(
+                """
+                UPDATE invite_links
+                SET name = $1, bonus_tokens = $2, discount_percent = $3, discount_duration_days = $4, max_users = $5
+                WHERE id = $6
+                RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, created_at
+                """,
+                name, bonus_tokens, discount_percent, discount_duration_days, max_users, link_id,
+            )
+    if not row:
+        return None
+    return dict(row)
+
+
+async def toggle_invite_link_active(link_id: int, is_active: bool) -> Optional[Dict[str, Any]]:
+    """Включить/выключить инвайт-ссылку. Возвращает обновлённую строку или None."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            UPDATE invite_links
-            SET name = $1, bonus_tokens = $2, discount_percent = $3, discount_duration_days = $4, max_users = $5
-            WHERE id = $6
-            RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, created_at
+            UPDATE invite_links SET is_active = $1 WHERE id = $2
+            RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, created_at
             """,
-            name, bonus_tokens, discount_percent, discount_duration_days, max_users, link_id,
+            is_active, link_id,
         )
     if not row:
         return None

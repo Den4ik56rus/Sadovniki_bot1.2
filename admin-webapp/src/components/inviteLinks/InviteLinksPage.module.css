@@ -549,3 +549,51 @@
   font-size: 13px;
   color: var(--text-muted);
 }
+
+/* Toggle Switch */
+.statusCell {
+  text-align: center;
+  width: 60px;
+}
+
+.toggleSwitch {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  width: 40px;
+  height: 22px;
+  background: #D1D5DB;
+  border: none;
+  border-radius: 11px;
+  cursor: pointer;
+  padding: 2px;
+  transition: background 0.2s ease;
+}
+
+.toggleSwitchOn {
+  background: var(--accent-primary);
+}
+
+.toggleSwitchKnob {
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+  transform: translateX(0);
+}
+
+.toggleSwitchOn .toggleSwitchKnob {
+  transform: translateX(18px);
+}
+
+/* Inactive row */
+.rowInactive td {
+  opacity: 0.5;
+}
+
+.rowInactive .statusCell {
+  opacity: 1;
+}

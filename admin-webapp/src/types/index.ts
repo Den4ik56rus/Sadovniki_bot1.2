@@ -960,6 +960,7 @@ export interface InviteLink {
   discount_percent: number
   discount_duration_days: number
   max_users: number
+  is_active: boolean
 }
 
 export interface InviteLinksSummary {

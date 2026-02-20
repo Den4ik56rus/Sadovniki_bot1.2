@@ -20,6 +20,7 @@ export function InviteLinksPage() {
     setDateRange,
     createLink,
     updateLink,
+    toggleLinkActive,
     deleteLink,
   } = useInviteLinksStore()
 
@@ -354,6 +355,7 @@ export function InviteLinksPage() {
         <table className={styles.table}>
           <thead>
             <tr>
+              <th>Статус</th>
               <th>Название</th>
               <th>Ссылка</th>
               <th>Бонус</th>
@@ -368,7 +370,17 @@ export function InviteLinksPage() {
           </thead>
           <tbody>
             {links.map((link) => (
-              <tr key={link.id}>
+              <tr key={link.id} className={link.is_active === false ? styles.rowInactive : ''}>
+                {/* Статус — toggle switch */}
+                <td className={styles.statusCell}>
+                  <button
+                    className={`${styles.toggleSwitch} ${link.is_active !== false ? styles.toggleSwitchOn : ''}`}
+                    onClick={() => toggleLinkActive(link.id, link.is_active === false)}
+                    title={link.is_active !== false ? 'Отключить ссылку' : 'Включить ссылку'}
+                  >
+                    <span className={styles.toggleSwitchKnob} />
+                  </button>
+                </td>
                 {/* Название — с inline-редактированием */}
                 <td>
                   {editingId === link.id ? (

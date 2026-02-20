@@ -242,6 +242,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/api/admin/invite-links", invite_links.get_invite_links)
     app.router.add_post("/api/admin/invite-links", invite_links.create_invite_link)
     app.router.add_patch(r"/api/admin/invite-links/{id:\d+}", invite_links.update_invite_link)
+    app.router.add_patch(r"/api/admin/invite-links/{id:\d+}/toggle", invite_links.toggle_invite_link)
     app.router.add_delete(r"/api/admin/invite-links/{id:\d+}", invite_links.delete_invite_link)
 
     # Webhooks (платежные системы)

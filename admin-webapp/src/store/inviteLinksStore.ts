@@ -28,6 +28,7 @@ interface InviteLinksStore {
   setDateRange: (start?: string, end?: string) => void
   createLink: (data: InviteLinkData) => Promise<boolean>
   updateLink: (id: number, data: InviteLinkData) => Promise<boolean>
+  toggleLinkActive: (id: number, is_active: boolean) => Promise<boolean>
   deleteLink: (id: number) => Promise<boolean>
 }
 
@@ -76,6 +77,21 @@ export const useInviteLinksStore = create<InviteLinksStore>()((set, get) => ({
   updateLink: async (id: number, data: InviteLinkData) => {
     try {
       const updated = await api.updateInviteLink(id, data)
+      set((state) => ({
+        links: state.links.map((l) =>
+          l.id === id ? { ...l, ...updated } : l
+        ),
+      }))
+      return true
+    } catch (e) {
+      set({ error: String(e) })
+      return false
+    }
+  },
+
+  toggleLinkActive: async (id: number, is_active: boolean) => {
+    try {
+      const updated = await api.toggleInviteLinkActive(id, is_active)
       set((state) => ({
         links: state.links.map((l) =>
           l.id === id ? { ...l, ...updated } : l

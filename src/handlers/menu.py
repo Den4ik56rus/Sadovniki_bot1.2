@@ -140,6 +140,14 @@ async def cmd_start(message: Message) -> None:
             get_invite_link_by_code, track_user_invite_link
         )
         inv_link = await get_invite_link_by_code(invite_link_code)
+        if inv_link and not inv_link.get('is_active', True):
+            # Ссылка деактивирована — сообщаем и продолжаем как обычный /start
+            await message.answer(
+                "К сожалению, эта ссылка на данный момент устарела.\n\n"
+                "Но вы всё равно можете воспользоваться ботом!",
+                parse_mode="HTML",
+            )
+            inv_link = None  # Не обрабатываем дальше
         if inv_link:
             was_new, is_limit_reached = await track_user_invite_link(inv_link['id'], user_id)
             from src.services.db.client_funnel_repo import set_initial_source

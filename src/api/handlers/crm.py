@@ -441,6 +441,15 @@ async def update_client_billing(request: web.Request) -> web.Response:
                     f"UPDATE users SET {', '.join(token_updates)} WHERE id = ${idx}",
                     *token_params
                 )
+                # Пересчитываем token_balance из реальных данных
+                await conn.execute(
+                    """
+                    UPDATE users
+                    SET token_balance = COALESCE(subscription_token_balance, 0) + COALESCE(purchased_token_balance, 0)
+                    WHERE id = $1
+                    """,
+                    user_id
+                )
                 # Логируем в token_transactions
                 if sub_tokens is not None:
                     await conn.execute(

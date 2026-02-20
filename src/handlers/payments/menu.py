@@ -406,12 +406,21 @@ async def buy_tokens_no_subscription(callback: CallbackQuery):
 
 @router.callback_query(F.data == "main_menu")
 async def back_to_main_menu(callback: CallbackQuery):
-    """Вернуться в главное меню — удалить инлайн-сообщение."""
+    """Вернуться в профиль."""
     await callback.answer()
     try:
         await callback.message.delete()
     except Exception:
         pass
+    from src.handlers.menu import render_and_send_profile
+    await render_and_send_profile(
+        bot=callback.bot,
+        chat_id=callback.from_user.id,
+        telegram_user_id=callback.from_user.id,
+        username=callback.from_user.username,
+        first_name=callback.from_user.first_name,
+        last_name=callback.from_user.last_name,
+    )
 
 
 @router.callback_query(F.data == "cancel_auto_renew")

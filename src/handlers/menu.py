@@ -580,42 +580,33 @@ async def handle_back_to_menu(message: Message) -> None:
     await _log_bot_msg(menu_text, user_id=internal_user_id, session_id=f"tg:{user.id}", meta=serialize_keyboard(kb))
 
 
-@router.message(F.text == "👤 Мой профиль")
-async def handle_profile(message: Message) -> None:
-    """
-    Обработчик кнопки "Мой профиль".
-    Показывает баланс токенов и статистику пользователя.
-    """
-    user = message.from_user
-    if user is None:
-        return
+import logging
+logger = logging.getLogger(__name__)
 
-    # Получаем внутренний user_id
+
+async def render_and_send_profile(
+    bot,
+    chat_id: int,
+    telegram_user_id: int,
+    username=None,
+    first_name=None,
+    last_name=None,
+) -> None:
+    """Формирует и отправляет экран профиля пользователю."""
     internal_user_id = await get_or_create_user(
-        telegram_user_id=user.id,
-        username=user.username,
-        first_name=user.first_name,
-        last_name=user.last_name,
+        telegram_user_id=telegram_user_id,
+        username=username,
+        first_name=first_name,
+        last_name=last_name,
     )
 
-    # Получаем баланс токенов
     from src.services.db.tokens_repo import get_token_balance
-    balance = await get_token_balance(internal_user_id)
-
-    # Получаем количество консультаций
     from src.services.db.pool import get_pool
-    pool = get_pool()
-    async with pool.acquire() as conn:
-        topics_count = await conn.fetchval(
-            "SELECT COUNT(*) FROM topics WHERE user_id = $1",
-            internal_user_id,
-        )
-
-    # Получаем активную подписку, план, скидки
     from src.services.db.user_subscription_repo import get_active_subscription
     from src.services.db.subscription_plan_repo import get_by_id as get_plan_by_id
     from src.services.db.invite_link_repo import get_user_active_discount
     from src.services.db.tokens_repo import get_split_balance
+    from src.services.db.referral_repo import get_referral_stats
 
     subscription = await get_active_subscription(internal_user_id)
     plan = None
@@ -627,7 +618,6 @@ async def handle_profile(message: Message) -> None:
     ref_discount = ref_discount_data["discount_percent"] if ref_discount_data else 0
     ref_discount_expires = ref_discount_data["discount_expires_at"] if ref_discount_data else None
 
-    # Русские названия месяцев для форматирования дат
     _RU_MONTHS = {
         1: "января", 2: "февраля", 3: "марта", 4: "апреля",
         5: "мая", 6: "июня", 7: "июля", 8: "августа",
@@ -639,7 +629,6 @@ async def handle_profile(message: Message) -> None:
             return "—"
         return f"{dt.day} {_RU_MONTHS[dt.month]} {dt.year}"
 
-    # ── Блок тарифа ──────────────────────────────────────
     if subscription and plan:
         plan_name = plan.get("name", "—")
         expires_at = subscription["expires_at"]
@@ -647,13 +636,8 @@ async def handle_profile(message: Message) -> None:
         auto_renew_str = "✅ активно" if auto_renew else "❌ не активно"
         sub_line = f"📋 <b>Тариф:</b>\n<b>{plan_name}</b>  ✅\nПодписка до: {_fmt_date(expires_at)}\nАвтопродление: {auto_renew_str}"
     else:
-        plan_name = "Пробный"
         sub_line = "📋 <b>Тариф:</b>\n<b>Пробный</b>  |  Без подписки"
 
-    # ── Лимит токенов ────────────────────────────────────
-    # Подписочные: лимит = tokens_granted, перенос по max_carryover
-    # Докупленные: переносятся все (не сгорают), тратятся последними
-    # Израсходовано считается по транзакциям с момента started_at
     pool = get_pool()
     async with pool.acquire() as conn:
         if subscription:
@@ -685,7 +669,6 @@ async def handle_profile(message: Message) -> None:
             period_start = first_grant["created_at"] if first_grant else None
             purchased_in_period = 0
 
-        # Всего потрачено за период
         if period_start:
             total_spent = await conn.fetchval(
                 """
@@ -698,13 +681,9 @@ async def handle_profile(message: Message) -> None:
         else:
             total_spent = 0
 
-    # Текущие остатки из split_balance (реальный баланс)
-    sub_remaining = split["subscription_tokens"]   # остаток подписочных
-    pur_remaining = split["purchased_tokens"]       # остаток докупленных
-
-    # Потрачено подписочных = sub_granted - sub_remaining (но не меньше 0)
+    sub_remaining = split["subscription_tokens"]
+    pur_remaining = split["purchased_tokens"]
     sub_used = max(0, sub_granted - sub_remaining)
-    # Потрачено докупленных = purchased_in_period - pur_remaining (но не меньше 0)
     pur_used = max(0, purchased_in_period - pur_remaining)
 
     def _bar(used: int, total: int, length: int = 10) -> str:
@@ -731,8 +710,6 @@ async def handle_profile(message: Message) -> None:
         if max_carryover and max_carryover > 0:
             carryover_val = min(sub_remaining, max_carryover)
             limit_block += f"\n  ↩️ Перенос на след. месяц: <b>{carryover_val}</b> (макс. {max_carryover})"
-
-        # Шкала докупленных токенов (если есть)
         if purchased_in_period > 0:
             pur_bar = _bar(pur_used, purchased_in_period)
             limit_block += (
@@ -748,9 +725,7 @@ async def handle_profile(message: Message) -> None:
             f"  Использовано: {sub_used} из {sub_granted}"
         )
 
-    # ── Скидки ───────────────────────────────────────────
     token_discount = plan.get("token_discount_percent", 0) if plan else 0
-
     discount_lines = ""
     if ref_discount > 0 or token_discount > 0:
         discount_lines = "\n\n🎁 <b>Ваши скидки</b>\n"
@@ -760,12 +735,9 @@ async def handle_profile(message: Message) -> None:
         if token_discount > 0:
             discount_lines += f"  Доп. скидка на токены по подписке: <b>−{token_discount}%</b>"
 
-    # ── Реферальная статистика ────────────────────────────
-    from src.services.db.referral_repo import get_referral_stats
     ref_stats = await get_referral_stats(internal_user_id)
     ref_total = ref_stats["total_referrals"]
     ref_tokens = ref_stats["total_bonus_tokens"]
-
     referral_lines = ""
     if ref_total > 0:
         referral_lines = (
@@ -774,7 +746,6 @@ async def handle_profile(message: Message) -> None:
             f"  Начислено токенов в подарок: <b>{ref_tokens}</b>"
         )
 
-    # ── Итоговый текст ───────────────────────────────────
     profile_text = (
         f"🌿 <b>Ваш профиль</b>\n\n"
         f"{sub_line}\n\n"
@@ -783,7 +754,6 @@ async def handle_profile(message: Message) -> None:
         f"{referral_lines}"
     )
 
-    # Добавляем inline кнопки
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(
             text="⚙️ Управлять подпиской",
@@ -795,21 +765,22 @@ async def handle_profile(message: Message) -> None:
         )],
     ])
 
-    await message.answer(profile_text, parse_mode="HTML", reply_markup=keyboard)
+    await bot.send_message(chat_id, profile_text, parse_mode="HTML", reply_markup=keyboard)
 
-    # Логируем нажатие кнопки + ответ бота
-    await log_message(
-        user_id=internal_user_id,
-        direction="user",
-        text="👤 Мой профиль",
-        session_id=f"tg:{user.id}",
-        meta={"type": "callback", "callback_data": "profile"},
-    )
-    await _log_bot_msg(
-        profile_text,
-        user_id=internal_user_id,
-        session_id=f"tg:{user.id}",
-        meta=serialize_keyboard(keyboard),
+
+@router.message(F.text == "👤 Мой профиль")
+async def handle_profile(message: Message) -> None:
+    """Обработчик кнопки "Мой профиль"."""
+    user = message.from_user
+    if user is None:
+        return
+    await render_and_send_profile(
+        bot=message.bot,
+        chat_id=message.chat.id,
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
     )
 
 

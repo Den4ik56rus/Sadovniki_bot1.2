@@ -427,7 +427,7 @@ export function InviteLinksPage() {
                 {/* Ссылка — полностью видна + кнопка копирования */}
                 <td>
                   <div className={styles.deepLink}>
-                    <span className={styles.deepLinkUrl}>{link.deep_link}</span>
+                    <a href={link.deep_link} target="_blank" rel="noopener noreferrer" className={styles.deepLinkUrl}>{link.deep_link}</a>
                     <button
                       className={`${styles.copyButton} ${copiedId === link.id ? styles.copied : ''}`}
                       onClick={() => handleCopy(link.deep_link, link.id)}

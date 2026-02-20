@@ -390,10 +390,15 @@
 
 .deepLinkUrl {
   font-size: 13px;
-  color: var(--text-secondary);
+  color: var(--accent-primary);
   font-family: monospace;
   word-break: break-all;
   line-height: 1.4;
+  text-decoration: none;
+}
+
+.deepLinkUrl:hover {
+  text-decoration: underline;
 }
 
 .copyButton {

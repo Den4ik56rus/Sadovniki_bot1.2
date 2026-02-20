@@ -18,6 +18,19 @@ logger = logging.getLogger(__name__)
 router = Router(name="payments_menu")
 
 
+_RU_MONTHS = {
+    1: "января", 2: "февраля", 3: "марта", 4: "апреля",
+    5: "мая", 6: "июня", 7: "июля", 8: "августа",
+    9: "сентября", 10: "октября", 11: "ноября", 12: "декабря",
+}
+
+
+def _fmt_date(dt) -> str:
+    if not dt:
+        return "—"
+    return f"{dt.day} {_RU_MONTHS[dt.month]} {dt.year}"
+
+
 def get_payment_menu_keyboard(
     subscription_plans: list,
     token_packages: list,
@@ -25,77 +38,49 @@ def get_payment_menu_keyboard(
     token_discount_percent: int = 0,
     invite_discount_percent: int = 0,
 ) -> InlineKeyboardMarkup:
-    """
-    Создает клавиатуру меню покупок.
-
-    Args:
-        subscription_plans: Список активных планов подписки
-        token_packages: Список активных пакетов токенов
-        has_subscription: Есть ли активная подписка
-        token_discount_percent: Скидка на допы от подписки (0-100)
-        invite_discount_percent: Скидка по инвайт-ссылке (0-100)
-    """
     buttons = []
 
-    # Подписки — всегда показываем
+    # Тарифные планы
     if subscription_plans:
-        buttons.append([
-            InlineKeyboardButton(
-                text="📅 Подписка",
-                callback_data="payment_menu_header_subscription"
-            )
-        ])
-
+        buttons.append([InlineKeyboardButton(
+            text="📅 Тарифные планы:",
+            callback_data="payment_menu_header_subscription"
+        )])
         for plan in subscription_plans:
-            qty = plan.get('tokens_included', 0)
-            qty_text = f" ({pluralize_questions(qty)}/мес)" if qty else ""
             price = int(plan['price_rub'])
-            # Скидка на подписку — только по инвайту
             if invite_discount_percent > 0:
-                discounted = int(plan['price_rub'] * (100 - invite_discount_percent) / 100)
-                text = f"  {plan['name']} — {discounted}₽/мес{qty_text} (было {price}₽)"
+                discounted = int(price * (100 - invite_discount_percent) / 100)
+                text = f"{plan['name']}  {price}₽ → {discounted}₽/мес"
             else:
-                text = f"  {plan['name']} — {price}₽/мес{qty_text}"
-            buttons.append([
-                InlineKeyboardButton(
-                    text=text,
-                    callback_data=f"buy_subscription_{plan['id']}"
-                )
-            ])
+                text = f"{plan['name']}  {price}₽/мес"
+            buttons.append([InlineKeyboardButton(
+                text=text,
+                callback_data=f"buy_subscription_{plan['id']}"
+            )])
 
-    # Пакеты токенов — только для подписчиков
+    # Доп. токены
     if token_packages and has_subscription:
-        buttons.append([
-            InlineKeyboardButton(
-                text="📦 Дополнительные токены",
-                callback_data="payment_menu_header_tokens"
-            )
-        ])
-
-        # Лучшая скидка: подписочная или инвайтовая
+        buttons.append([InlineKeyboardButton(
+            text="➕ Дополнительные токены:",
+            callback_data="payment_menu_header_tokens"
+        )])
         best_discount = max(token_discount_percent, invite_discount_percent)
-
         for package in token_packages:
             price = int(package['price_rub'])
             if best_discount > 0:
-                discounted = int(package['price_rub'] * (100 - best_discount) / 100)
-                text = f"  {package['name']} — {discounted}₽ (было {price}₽)"
+                discounted = int(price * (100 - best_discount) / 100)
+                text = f"{package['name']}  {price}₽ → {discounted}₽"
             else:
-                text = f"  {package['name']} — {price}₽"
-            buttons.append([
-                InlineKeyboardButton(
-                    text=text,
-                    callback_data=f"buy_tokens_{package['id']}"
-                )
-            ])
+                text = f"{package['name']}  {price}₽"
+            buttons.append([InlineKeyboardButton(
+                text=text,
+                callback_data=f"buy_tokens_{package['id']}"
+            )])
 
-    # Кнопка возврата
-    buttons.append([
-        InlineKeyboardButton(
-            text="◀️ Назад в меню",
-            callback_data="main_menu"
-        )
-    ])
+    buttons.append([InlineKeyboardButton(
+        text="◀️ Назад в меню",
+        callback_data="main_menu"
+    )])
 
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
@@ -106,53 +91,64 @@ def _build_menu_text(
     has_subscription: bool = False,
     token_discount_percent: int = 0,
     invite_discount_percent: int = 0,
+    active_subscription: dict = None,
 ) -> str:
-    """Формирует текст меню покупок."""
-    text_parts = ["💰 Пополнить баланс\n"]
+    """Формирует текст меню управления подпиской."""
+    text_parts = ["⚙️ <b>Управлять подпиской</b>\n"]
 
-    if invite_discount_percent > 0:
-        text_parts.append(f"\n🎉 У вас скидка <b>{invite_discount_percent}%</b> по приглашению!\n")
+    # Блок текущей подписки
+    if active_subscription:
+        plan = active_subscription.get("plan", {})
+        plan_name = plan.get("name", "—")
+        expires_at = active_subscription.get("expires_at")
+        auto_renew = active_subscription.get("auto_renew", False)
+        auto_renew_str = "✅ активно" if auto_renew else "❌ не активно"
+        text_parts.append(
+            f"📋 <b>Тариф:</b>\n"
+            f"<b>{plan_name}</b>  ✅\n"
+            f"Подписка до: {_fmt_date(expires_at)}\n"
+            f"Автопродление: {auto_renew_str}\n"
+        )
+    else:
+        text_parts.append("📋 <b>Тариф:</b>\n<b>Пробный</b>  |  Без подписки\n")
 
-    # Подписки
+    # Тарифные планы
     if subscription_plans:
-        text_parts.append("\n📅 Подписка:")
+        text_parts.append("\n📅 <b>Тарифные планы:</b>")
         for plan in subscription_plans:
             qty = plan.get('tokens_included', 0)
-            tokens_info = f"({pluralize_questions(qty)}/мес)" if qty else ""
             carryover = plan.get('max_carryover', 0)
-            carryover_info = f", перенос до {carryover}" if carryover else ""
             price = int(plan['price_rub'])
+            carryover_info = f"\n  ↩️ Перенос: до {carryover} токенов" if carryover else ""
             if invite_discount_percent > 0:
-                discounted = int(plan['price_rub'] * (100 - invite_discount_percent) / 100)
-                text_parts.append(
-                    f"  • {plan['name']} — <s>{price}₽</s> <b>{discounted}₽</b>/мес {tokens_info}{carryover_info}"
-                )
+                discounted = int(price * (100 - invite_discount_percent) / 100)
+                price_str = f"<s>{price}₽</s> → <b>{discounted}₽</b>/мес  (скидка {invite_discount_percent}%)"
             else:
-                text_parts.append(
-                    f"  • {plan['name']} — {price}₽/мес {tokens_info}{carryover_info}"
-                )
+                price_str = f"{price}₽/мес"
+            text_parts.append(
+                f"\n📅 Подписка: {plan['name']}\n"
+                f"💰 Цена: {price_str}\n"
+                f"⏱️ Срок: {plan.get('duration_days', 30)} дней\n"
+                f"🎁 Лимит: {qty} токенов в месяц"
+                f"{carryover_info}"
+            )
 
-    # Пакеты токенов
+    # Доп. токены
     if token_packages and has_subscription:
         best_discount = max(token_discount_percent, invite_discount_percent)
-        text_parts.append("\n📦 Дополнительные токены:")
-        if best_discount > 0:
-            text_parts.append(f"  <i>Скидка подписчика: {best_discount}%</i>")
+        text_parts.append("\n\n➕ <b>Дополнительные токены:</b>")
         for package in token_packages:
             price = int(package['price_rub'])
             if best_discount > 0:
-                discounted = int(package['price_rub'] * (100 - best_discount) / 100)
+                discounted = int(price * (100 - best_discount) / 100)
                 text_parts.append(
                     f"  • {package['name']} — <s>{price}₽</s> <b>{discounted}₽</b>"
                 )
             else:
-                text_parts.append(
-                    f"  • {package['name']} — {price}₽"
-                )
+                text_parts.append(f"  • {package['name']} — {price}₽")
     elif token_packages and not has_subscription:
-        text_parts.append("\n📦 Дополнительные токены доступны подписчикам")
+        text_parts.append("\n\n➕ <b>Дополнительные токены</b>\n  Доступны только при активной подписке")
 
-    text_parts.append("\nВыберите подходящий вариант:")
     return "\n".join(text_parts)
 
 
@@ -160,14 +156,14 @@ async def _get_subscription_info(user_id: int) -> tuple:
     """Получает информацию о подписке пользователя.
 
     Returns:
-        (has_subscription, token_discount_percent)
+        (has_subscription, token_discount_percent, active_subscription_or_None)
     """
     from src.services.payments.subscription_service import get_active_subscription
     active_sub = await get_active_subscription(user_id)
     if active_sub:
         plan = active_sub.get("plan", {})
-        return True, plan.get("token_discount_percent", 0) or 0
-    return False, 0
+        return True, plan.get("token_discount_percent", 0) or 0, active_sub
+    return False, 0, None
 
 
 @router.message(Command("buy"))
@@ -219,13 +215,14 @@ async def show_payment_menu(message: Message):
         invite_discount = _inv["discount_percent"] if _inv else 0
 
         # Проверить подписку и скидку от неё
-        has_subscription, token_discount = await _get_subscription_info(internal_user_id)
+        has_subscription, token_discount, active_sub = await _get_subscription_info(internal_user_id)
 
         menu_text = _build_menu_text(
             token_packages, subscription_plans,
             has_subscription=has_subscription,
             token_discount_percent=token_discount,
             invite_discount_percent=invite_discount,
+            active_subscription=active_sub,
         )
         keyboard = get_payment_menu_keyboard(
             subscription_plans, token_packages,
@@ -286,13 +283,14 @@ async def show_payment_menu_callback(callback: CallbackQuery):
         invite_discount = _inv["discount_percent"] if _inv else 0
 
         # Проверить подписку и скидку от неё
-        has_subscription, token_discount = await _get_subscription_info(user_id)
+        has_subscription, token_discount, active_sub = await _get_subscription_info(user_id)
 
         menu_text = _build_menu_text(
             token_packages, subscription_plans,
             has_subscription=has_subscription,
             token_discount_percent=token_discount,
             invite_discount_percent=invite_discount,
+            active_subscription=active_sub,
         )
         keyboard = get_payment_menu_keyboard(
             subscription_plans, token_packages,

@@ -85,6 +85,12 @@ async def main() -> None:
     await set_main_menu_commands(bot)
     print("Команды зарегистрированы.")
 
+    # Восстановление после рестарта: уведомляем пользователей и восстанавливаем состояния
+    from src.startup_recovery import run_startup_recovery
+    print("Запускаю восстановление после рестарта...")
+    await run_startup_recovery(bot)
+    print("Восстановление завершено.")
+
     # Запускаем фоновую задачу для автопродления подписок
     background_task = asyncio.create_task(_subscription_renewal_task())
     print("Фоновая задача автопродления подписок запущена.")

@@ -27,6 +27,8 @@ from src.handlers.common import (
     CONSULTATION_STATE,
     CONSULTATION_CONTEXT,
     build_session_id_from_message,
+    set_consultation_state,
+    clear_consultation_state,
 )
 
 from src.services.db.users_repo import get_or_create_user
@@ -230,7 +232,7 @@ async def process_nutrition_consultation(
     # Отправляем ответ
     if is_clarification:
         await send_long_message(message, answer_text)
-        CONSULTATION_STATE[telegram_user_id] = "waiting_nutrition_clarification"
+        await set_consultation_state(telegram_user_id, "waiting_nutrition_clarification")
         print(f"[process_nutrition] LLM asking clarification, state -> waiting_nutrition_clarification")
     else:
         # Выбираем клавиатуру: фазовая (любой phase_mode) или обычная
@@ -279,7 +281,7 @@ async def process_nutrition_consultation(
             force_two_parts=_is_extended_nutrition,
         )
         CONSULTATION_CONTEXT[telegram_user_id]["full_question"] = root_question
-        CONSULTATION_STATE[telegram_user_id] = next_state
+        await set_consultation_state(telegram_user_id, next_state)
         print(f"[process_nutrition] state -> {next_state}, phase_mode={phase_mode}, use_rag={use_rag}")
 
         # Сохраняем контекст для фазового продолжения
@@ -502,7 +504,7 @@ async def handle_nutrition_root(message: Message) -> None:
         answer_text = markdown_to_telegram_html(answer_text)
         await message.answer(answer_text)
         # Переводим в состояние ожидания ответа на уточняющий вопрос
-        CONSULTATION_STATE[user.id] = "waiting_nutrition_clarification"
+        await set_consultation_state(user.id, "waiting_nutrition_clarification")
         print(f"[nutrition] STEP1 done, LLM asking for clarification, state -> waiting_nutrition_clarification")
     else:
         await finalize_streaming_message(
@@ -515,7 +517,7 @@ async def handle_nutrition_root(message: Message) -> None:
         CONSULTATION_CONTEXT[user.id]["full_question"] = root_question
 
         # Переводим в режим ожидания follow-up (контекст сохраняем для кнопок)
-        CONSULTATION_STATE[user.id] = "waiting_followup"
+        await set_consultation_state(user.id, "waiting_followup")
         print(f"[nutrition] STEP1 done, showing followup buttons, use_rag={use_rag}")
 
     # Логируем ответ бота
@@ -565,7 +567,7 @@ async def handle_nutrition_clarification(message: Message) -> None:
     ctx = CONSULTATION_CONTEXT.get(user.id)
     if not ctx:
         print(f"[nutrition] STEP1.5 no context for user_id={user.id}, reset state")
-        CONSULTATION_STATE.pop(user.id, None)
+        await clear_consultation_state(user.id)
         return
 
     root_question: str = ctx.get("root_question", "")
@@ -577,8 +579,7 @@ async def handle_nutrition_clarification(message: Message) -> None:
     # Дополнительная проверка валидности контекста
     if not all([user_id, topic_id, root_question]):
         print(f"[nutrition] STEP1.5 invalid context for user_id={user.id}, reset state and context")
-        CONSULTATION_STATE.pop(user.id, None)
-        CONSULTATION_CONTEXT.pop(user.id, None)
+        await clear_consultation_state(user.id)
         return
 
     # Ответ пользователя на уточняющий вопрос
@@ -693,7 +694,7 @@ async def handle_nutrition_clarification(message: Message) -> None:
     CONSULTATION_CONTEXT[user.id] = ctx
 
     # Переводим в режим ожидания follow-up (контекст сохраняем для кнопок)
-    CONSULTATION_STATE[user.id] = "waiting_followup"
+    await set_consultation_state(user.id, "waiting_followup")
     print(f"[nutrition] STEP1.5 done, showing followup buttons")
 
 
@@ -718,7 +719,7 @@ async def handle_variety_clarification(message: Message) -> None:
     ctx = CONSULTATION_CONTEXT.get(user.id)
     if not ctx:
         print(f"[nutrition] STEP2 (variety) no context for user_id={user.id}, reset state")
-        CONSULTATION_STATE.pop(user.id, None)
+        await clear_consultation_state(user.id)
         return
 
     # Проверяем, что контекст содержит все необходимые поля
@@ -731,8 +732,7 @@ async def handle_variety_clarification(message: Message) -> None:
     # Дополнительная проверка валидности контекста
     if not all([user_id, topic_id, old_culture]):
         print(f"[nutrition] STEP2 (variety) invalid context for user_id={user.id}, reset state and context")
-        CONSULTATION_STATE.pop(user.id, None)
-        CONSULTATION_CONTEXT.pop(user.id, None)
+        await clear_consultation_state(user.id)
         return
 
     # Ответ пользователя о типе культуры
@@ -878,7 +878,7 @@ async def handle_variety_clarification(message: Message) -> None:
     CONSULTATION_CONTEXT[user.id] = ctx
 
     # Переводим в режим ожидания follow-up (контекст сохраняем для кнопок)
-    CONSULTATION_STATE[user.id] = "waiting_followup"
+    await set_consultation_state(user.id, "waiting_followup")
     print(f"[nutrition] STEP2 (variety) done, showing followup buttons")
 
 
@@ -912,11 +912,9 @@ async def handle_nutrition_new_topic(message: Message) -> None:
     await close_open_topics(internal_user_id)
     print(f"[nutrition_new_topic] Закрыты все топики для internal_user_id={internal_user_id} (telegram_user_id={user.id})")
 
-    # Очищаем контекст и состояние
-    CONSULTATION_CONTEXT.pop(user.id, None)
-
-    # Устанавливаем новое состояние - ждем вопрос
-    CONSULTATION_STATE[user.id] = "waiting_consultation_question"
+    # Очищаем контекст и устанавливаем новое состояние - ждем вопрос
+    await clear_consultation_state(user.id)
+    await set_consultation_state(user.id, "waiting_consultation_question")
 
     # Просим задать вопрос с инлайн-кнопками примеров
     kb = get_example_questions_keyboard()
@@ -943,7 +941,7 @@ async def handle_nutrition_replace_params(message: Message) -> None:
         return
 
     # Устанавливаем состояние ожидания новых параметров
-    CONSULTATION_STATE[user.id] = "waiting_param_replacement"
+    await set_consultation_state(user.id, "waiting_param_replacement")
 
     params_prompt = (
         "Укажите ваши параметры:\n"
@@ -971,7 +969,7 @@ async def handle_param_replacement(message: Message) -> None:
         ctx_lost2 = "Контекст консультации утерян"
         await message.answer(ctx_lost2)
         await _log_bot_msg(ctx_lost2, telegram_user_id=user.id)
-        CONSULTATION_STATE.pop(user.id, None)
+        await clear_consultation_state(user.id)
         return
 
     # Извлекаем параметры из текста пользователя
@@ -1075,7 +1073,7 @@ async def handle_param_replacement(message: Message) -> None:
     )
 
     # Очищаем состояние
-    CONSULTATION_STATE.pop(user.id, None)
+    await clear_consultation_state(user.id)
 
 
 # Маппинг категорий на тексты запросов для детального плана

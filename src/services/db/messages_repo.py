@@ -198,6 +198,48 @@ async def get_recent_messages(topic_id: int, limit: int = 5) -> List[dict]:
         return [dict(row) for row in reversed(rows)]
 
 
+async def find_unanswered_user_messages(since_minutes: int = 30) -> List[dict]:
+    """
+    Находит пользователей, которые отправили вопрос но не получили ответа.
+
+    Ищет direction='user' сообщения за последние since_minutes минут,
+    для которых нет последующего direction='bot' сообщения в том же topic_id.
+
+    Возвращает один результат на пользователя (самый последний неотвеченный вопрос).
+    Используется при запуске бота для детектирования пропущенных ответов.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT DISTINCT ON (m.user_id)
+                u.telegram_user_id,
+                m.user_id,
+                m.id AS message_id,
+                m.text,
+                m.created_at,
+                m.topic_id
+            FROM messages m
+            JOIN users u ON u.id = m.user_id
+            WHERE m.direction = 'user'
+              AND m.created_at >= NOW() - ($1 || ' minutes')::INTERVAL
+              AND NOT EXISTS (
+                  SELECT 1 FROM messages bot_msg
+                  WHERE bot_msg.user_id = m.user_id
+                    AND bot_msg.direction = 'bot'
+                    AND bot_msg.created_at > m.created_at
+                    AND (
+                        bot_msg.topic_id = m.topic_id
+                        OR (m.topic_id IS NULL AND bot_msg.topic_id IS NULL)
+                    )
+              )
+            ORDER BY m.user_id, m.created_at DESC
+            """,
+            since_minutes,
+        )
+    return [dict(r) for r in rows]
+
+
 async def get_user_chat_history(user_id: int, limit: int = 500) -> Dict[str, Any]:
     """
     Возвращает полную историю чата пользователя со всех топиков + без топика.

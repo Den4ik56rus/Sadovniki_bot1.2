@@ -17,7 +17,7 @@ from src.services.db.messages_repo import log_message                # Логи�
 from src.services.db.moderation_repo import moderation_count_pending # Подсчёт вопросов на модерации
 
 # Импортируем глобальное состояние консультации и утилиту для сборки session_id
-from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT, build_session_id_from_message
+from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT, build_session_id_from_message, set_consultation_state, clear_consultation_state
 
 # Импортируем функцию, создающую клавиатуру главного меню
 from src.keyboards.main.main_menu import get_main_keyboard, get_admin_start_keyboard
@@ -241,8 +241,7 @@ async def cmd_start(message: Message) -> None:
 
     # Очищаем состояние и контекст консультации при /start
     if user is not None:
-        CONSULTATION_STATE.pop(user.id, None)
-        CONSULTATION_CONTEXT.pop(user.id, None)
+        await clear_consultation_state(user.id)
 
 
 @router.message(F.text == "👤 Режим пользователя")
@@ -341,10 +340,10 @@ async def handle_consultation_button(message: Message) -> None:
     await close_open_topics(internal_user_id)
 
     # Очищаем старый контекст
-    CONSULTATION_CONTEXT.pop(user.id, None)
+    await clear_consultation_state(user.id)
 
     # Устанавливаем новое состояние - ждем вопрос
-    CONSULTATION_STATE[user.id] = "waiting_consultation_question"
+    await set_consultation_state(user.id, "waiting_consultation_question")
 
     # Логируем нажатие кнопки пользователем
     await log_message(
@@ -415,15 +414,15 @@ async def handle_consultation_category(callback: CallbackQuery) -> None:
     await close_open_topics(internal_user_id)
 
     # Очищаем старый контекст перед началом новой консультации
-    CONSULTATION_CONTEXT.pop(user.id, None)
+    await clear_consultation_state(user.id)
 
     # Специальная ветка для питания растений
     if category_code == "nutrition":
-        CONSULTATION_STATE[user.id] = "waiting_nutrition_root"
+        await set_consultation_state(user.id, "waiting_nutrition_root")
         print(f"[menu] Установлено состояние waiting_nutrition_root для user {user.id}")
         text = "Напишите свой вопрос по питанию ягодных культур."
     else:
-        CONSULTATION_STATE[user.id] = "waiting_root"
+        await set_consultation_state(user.id, "waiting_root")
         print(f"[menu] Установлено состояние waiting_root для user {user.id}")
         text = (
             f"Вы выбрали тему: «{category_title}».\n\n"
@@ -502,8 +501,8 @@ async def handle_example_question(callback: CallbackQuery) -> None:
     await callback.answer()
 
     # Очищаем старый контекст и сразу запускаем пайплайн с примером вопроса
-    CONSULTATION_CONTEXT.pop(user.id, None)
-    CONSULTATION_STATE[user.id] = "waiting_consultation_question"
+    await clear_consultation_state(user.id)
+    await set_consultation_state(user.id, "waiting_consultation_question")
 
     await run_consultation_pipeline(
         message=callback.message,
@@ -534,7 +533,7 @@ async def handle_custom_question(callback: CallbackQuery) -> None:
 
     await callback.answer()
 
-    CONSULTATION_STATE[user.id] = "waiting_consultation_question"
+    await set_consultation_state(user.id, "waiting_consultation_question")
     custom_prompt = "✏️ Напишите ваш вопрос:"
     await callback.message.answer(custom_prompt)
     await _log_bot_msg(custom_prompt, telegram_user_id=user.id)
@@ -563,10 +562,7 @@ async def handle_back_to_menu(message: Message) -> None:
     await close_open_topics(internal_user_id)
 
     # Очистить состояние консультации
-    if user.id in CONSULTATION_STATE:
-        del CONSULTATION_STATE[user.id]
-    if user.id in CONSULTATION_CONTEXT:
-        del CONSULTATION_CONTEXT[user.id]
+    await clear_consultation_state(user.id)
 
     # Логируем нажатие кнопки пользователем
     await log_message(

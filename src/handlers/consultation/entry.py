@@ -79,6 +79,8 @@ from src.handlers.common import (
     build_session_id_from_message,
     CONSULTATION_STATE,
     CONSULTATION_CONTEXT,
+    set_consultation_state,
+    clear_consultation_state,
 )
 
 # Утилита форматирования Markdown → HTML
@@ -341,8 +343,8 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
         # Если LLM задал уточняющий вопрос
         if is_clarification_question(reply_text):
             print(f"[_process_culture] LLM asked clarification, setting state")
-            CONSULTATION_STATE[telegram_user_id] = "waiting_clarification_answer"
             _add_clarification(context, "culture", reply_text)
+            await set_consultation_state(telegram_user_id, "waiting_clarification_answer")
 
             await log_message(
                 user_id=user_id,
@@ -519,7 +521,7 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
             print(f"ERROR in moderation_add: {e}")
 
         # Переводим в соответствующее состояние
-        CONSULTATION_STATE[telegram_user_id] = next_state
+        await set_consultation_state(telegram_user_id, next_state)
 
 
 # Константа: максимальная длина сообщения в Telegram
@@ -866,7 +868,7 @@ async def run_consultation_pipeline(
         )
         await message.answer(insufficient_text)
         await _log_bot_msg(insufficient_text, user_id=internal_user_id, session_id=f"tg:{telegram_user_id}", telegram_user_id=telegram_user_id)
-        CONSULTATION_STATE.pop(telegram_user_id, None)
+        await clear_consultation_state(telegram_user_id)
         return
 
     # Автоматически определяем категорию + культуру
@@ -912,7 +914,7 @@ async def run_consultation_pipeline(
         )
         await message.answer(insufficient_text2)
         await _log_bot_msg(insufficient_text2, user_id=internal_user_id, session_id=f"tg:{telegram_user_id}", telegram_user_id=telegram_user_id)
-        CONSULTATION_STATE.pop(telegram_user_id, None)
+        await clear_consultation_state(telegram_user_id)
         return
 
     # Фазовые механизмы (выбор формата, план по фазам) — только для этих категорий
@@ -944,7 +946,7 @@ async def run_consultation_pipeline(
                 "first_name": first_name,
                 "last_name": last_name,
             }
-            CONSULTATION_STATE[telegram_user_id] = "waiting_topic_select"
+            await set_consultation_state(telegram_user_id, "waiting_topic_select")
 
             topics_str = ", ".join(topics_list)
             multi_topic_text = (
@@ -975,7 +977,7 @@ async def run_consultation_pipeline(
             "first_name": first_name,
             "last_name": last_name,
         }
-        CONSULTATION_STATE[telegram_user_id] = "waiting_complexity_confirm"
+        await set_consultation_state(telegram_user_id, "waiting_complexity_confirm")
 
         # Персонализированное сообщение от LLM (fallback на шаблон)
         confirm_msg = complexity_result.get("confirm_message", "")
@@ -1035,7 +1037,7 @@ async def run_consultation_pipeline(
             "first_name": first_name,
             "last_name": last_name,
         }
-        CONSULTATION_STATE[telegram_user_id] = "waiting_complexity_confirm"
+        await set_consultation_state(telegram_user_id, "waiting_complexity_confirm")
 
         # Проверяем хватает ли на расширенный ответ (2 токена)
         has_enough_extended = await has_sufficient_tokens(internal_user_id, PHASE_COST)
@@ -1191,7 +1193,7 @@ async def handle_example_details(message: Message) -> None:
     full_question = f"{example}: {details}"
 
     # Очищаем временный контекст примера
-    CONSULTATION_CONTEXT.pop(user.id, None)
+    await clear_consultation_state(user.id)
 
     await run_consultation_pipeline(
         message=message,
@@ -1717,7 +1719,7 @@ async def process_followup_question_logic(message: Message) -> None:
                 "topic_id": topic_id,
                 "session_id": session_id,
             }
-            CONSULTATION_STATE[telegram_user_id] = "waiting_complexity_confirm"
+            await set_consultation_state(telegram_user_id, "waiting_complexity_confirm")
 
             has_enough_for_plan = await has_sufficient_tokens(user_id, PHASE_COST)
             personal_text = confirm_msg or "Ваш уточняющий вопрос предполагает развёрнутый план."
@@ -1817,8 +1819,6 @@ async def process_followup_question_logic(message: Message) -> None:
 
         if is_clarification_question(reply_text):
             print(f"[HYBRID_FLOW_FOLLOWUP] LLM asked clarification question, setting state")
-            CONSULTATION_STATE[telegram_user_id] = "waiting_clarification_answer"
-
             context = _init_consultation_context(
                 telegram_user_id=telegram_user_id,
                 root_question=user_text,
@@ -1831,6 +1831,7 @@ async def process_followup_question_logic(message: Message) -> None:
                 classification_tokens=classification_tokens,
             )
             _add_clarification(context, "culture", reply_text)
+            await set_consultation_state(telegram_user_id, "waiting_clarification_answer")
 
             await log_message(
                 user_id=user_id,
@@ -1925,7 +1926,7 @@ async def process_followup_question_logic(message: Message) -> None:
         print(f"ERROR in moderation_add: {e}")
 
     # Переводим в состояние ожидания выбора типа вопроса (инлайн-кнопки)
-    CONSULTATION_STATE[telegram_user_id] = "waiting_followup"
+    await set_consultation_state(telegram_user_id, "waiting_followup")
 
 
 # ==== CALLBACK: Подтверждение сложности (complexity_confirm) ====
@@ -1990,8 +1991,7 @@ async def handle_complexity_confirm(callback: CallbackQuery) -> None:
         )
 
         # Очистить контекст
-        CONSULTATION_CONTEXT.pop(telegram_user_id, None)
-        CONSULTATION_STATE.pop(telegram_user_id, None)
+        await clear_consultation_state(telegram_user_id)
         return
 
     # Убираем кнопки (для всех остальных действий)
@@ -2002,8 +2002,7 @@ async def handle_complexity_confirm(callback: CallbackQuery) -> None:
             pass
 
     if action == "cancel":
-        CONSULTATION_CONTEXT.pop(telegram_user_id, None)
-        CONSULTATION_STATE.pop(telegram_user_id, None)
+        await clear_consultation_state(telegram_user_id)
         await callback.answer("Отменено")
         if callback.message:
             cancel_text = "Консультация отменена. Вы можете задать другой вопрос."
@@ -2155,7 +2154,10 @@ async def handle_complexity_confirm(callback: CallbackQuery) -> None:
     # Очищаем pending контекст (если не фазовое продолжение)
     if not (action == "long" and phase_mode == "seasonal_phase"):
         CONSULTATION_CONTEXT.pop(telegram_user_id, None)
-    CONSULTATION_STATE.pop(telegram_user_id, None)
+        await clear_consultation_state(telegram_user_id)
+    else:
+        # Фазовое продолжение: контекст сохраняем, только сбрасываем state
+        CONSULTATION_STATE.pop(telegram_user_id, None)
 
     await callback.answer(f"Списано {pluralize_questions(cost)}")
 
@@ -2213,15 +2215,14 @@ async def handle_phase_continue(callback: CallbackQuery) -> None:
                 await callback.message.edit_reply_markup(reply_markup=None)
             except Exception:
                 pass
-        CONSULTATION_CONTEXT.pop(telegram_user_id, None)
-        CONSULTATION_STATE.pop(telegram_user_id, None)
+        await clear_consultation_state(telegram_user_id)
         await callback.answer("Консультация завершена")
         if callback.message:
             phase_done_text = "Консультация по фазам завершена. Вы можете задать новый вопрос."
             kb = get_example_questions_keyboard()
             await callback.message.answer(phase_done_text, reply_markup=kb)
             await _log_bot_msg(phase_done_text, telegram_user_id=telegram_user_id, meta=serialize_keyboard(kb))
-            CONSULTATION_STATE[telegram_user_id] = "waiting_consultation_question"
+            await set_consultation_state(telegram_user_id, "waiting_consultation_question")
         return
 
     if action == "select":
@@ -2237,7 +2238,7 @@ async def handle_phase_continue(callback: CallbackQuery) -> None:
             kb = get_phase_select_keyboard(phases_delivered)
             await callback.message.answer(phase_select_text, reply_markup=kb)
             await _log_bot_msg(phase_select_text, telegram_user_id=telegram_user_id, meta=serialize_keyboard(kb))
-        CONSULTATION_STATE[telegram_user_id] = "waiting_phase_select"
+        await set_consultation_state(telegram_user_id, "waiting_phase_select")
         return
 
     # Legacy: action == "next" — для обратной совместимости
@@ -2396,7 +2397,7 @@ async def handle_topic_select(callback: CallbackQuery) -> None:
     ctx["_pending_topic_select"] = False
     ctx["_pending_complexity"] = True
     ctx["complexity_result"] = complexity_result
-    CONSULTATION_STATE[telegram_user_id] = "waiting_complexity_confirm"
+    await set_consultation_state(telegram_user_id, "waiting_complexity_confirm")
 
     await callback.answer(f"Тема: {selected_topic}")
 
@@ -2488,7 +2489,7 @@ async def handle_followup_clarification_callback(callback: CallbackQuery) -> Non
     await _log_user_callback("[Кнопка] Задать уточняющий вопрос", callback=callback)
 
     # Переводим в состояние ожидания уточняющего вопроса
-    CONSULTATION_STATE[telegram_user_id] = "waiting_followup_text"
+    await set_consultation_state(telegram_user_id, "waiting_followup_text")
 
     if callback.message:
         clarif_prompt = "Напишите уточняющий вопрос:"
@@ -2522,9 +2523,9 @@ async def handle_followup_new_topic_callback(callback: CallbackQuery) -> None:
     from src.services.db.topics_repo import close_open_topics
     await close_open_topics(user_id)
 
-    # Очищаем контекст и состояние
-    CONSULTATION_CONTEXT.pop(telegram_user_id, None)
-    CONSULTATION_STATE[telegram_user_id] = "waiting_consultation_question"
+    # Очищаем контекст и переводим в состояние ожидания нового вопроса
+    await clear_consultation_state(telegram_user_id)
+    await set_consultation_state(telegram_user_id, "waiting_consultation_question")
 
     # Запрос нового вопроса с инлайн-кнопками примеров
     if callback.message:
@@ -2589,9 +2590,9 @@ async def handle_new_topic_callback(callback: CallbackQuery) -> None:
     from src.services.db.topics_repo import close_open_topics
     await close_open_topics(user_id)
 
-    # Очищаем контекст и состояние
-    CONSULTATION_CONTEXT.pop(telegram_user_id, None)
-    CONSULTATION_STATE[telegram_user_id] = "waiting_consultation_question"
+    # Очищаем контекст и переводим в состояние ожидания нового вопроса
+    await clear_consultation_state(telegram_user_id)
+    await set_consultation_state(telegram_user_id, "waiting_consultation_question")
 
     # Запрос нового вопроса с инлайн-кнопками примеров
     if callback.message:

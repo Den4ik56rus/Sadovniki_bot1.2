@@ -13,7 +13,7 @@ from src.services.db.messages_repo import log_message, get_last_messages
 from src.services.llm.consultation_llm import ask_consultation_llm, compose_full_question
 from src.services.db.moderation_repo import moderation_add
 
-from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT
+from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT, set_consultation_state, clear_consultation_state
 from src.handlers.consultation.entry import finalize_streaming_message, _log_bot_msg, _log_user_callback
 from src.utils.status_manager import StatusMessageManager
 from src.services.db.tokens_repo import add_tokens
@@ -138,7 +138,7 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
         )
         await callback.message.answer(err_text)
         await _log_bot_msg(err_text, user_id=user_id, session_id=session_id, topic_id=topic_id)
-        CONSULTATION_STATE.pop(telegram_user_id, None)
+        await clear_consultation_state(telegram_user_id)
         return
 
     # Забираем стриминг-сообщение ДО complete() чтобы переиспользовать
@@ -172,4 +172,4 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
         print(f"ERROR in moderation_add: {e}")
 
     # Переводим в режим ожидания follow-up
-    CONSULTATION_STATE[telegram_user_id] = "waiting_followup"
+    await set_consultation_state(telegram_user_id, "waiting_followup")

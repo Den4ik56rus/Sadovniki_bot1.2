@@ -5,12 +5,16 @@
     - CONSULTATION_STATE — простое состояние консультации по user_id
     - CONSULTATION_CONTEXT — доп. данные по текущей консультации (рут-вопрос, культура и т.п.)
     - build_session_id_from_message — построение session_id по сообщению
+    - set_consultation_state — установить состояние + сохранить в БД
+    - clear_consultation_state — очистить состояние + удалить из БД
 """
 
-from typing import Dict, Any          # Dict и Any используем для типизации словарей
+import logging
+from typing import Any, Dict, Optional
 
 from aiogram.types import Message     # Message — тип для входящих сообщений Telegram
 
+logger = logging.getLogger(__name__)
 
 # Простое состояние консультации:
 # для каждого пользователя можно хранить, чего мы от него ждём (на каком шаге сценария он сейчас)
@@ -20,6 +24,40 @@ CONSULTATION_STATE: Dict[int, str] = {}   # Пример: {123456789: "waiting_n
 # Дополнительный контекст консультации:
 # сюда будем складывать сам рут-вопрос, полный вопрос, культуру, user_id, topic_id и т.п.
 CONSULTATION_CONTEXT: Dict[int, Dict[str, Any]] = {}  # Пример: {123456789: {"category": "nutrition", "root_question": "..."}}
+
+
+async def set_consultation_state(
+    telegram_user_id: int,
+    state: str,
+    context: Optional[Dict[str, Any]] = None,
+) -> None:
+    """
+    Устанавливает CONSULTATION_STATE и опционально CONSULTATION_CONTEXT,
+    одновременно сохраняя в БД для восстановления после рестарта.
+    """
+    CONSULTATION_STATE[telegram_user_id] = state
+    if context is not None:
+        CONSULTATION_CONTEXT[telegram_user_id] = context
+    try:
+        from src.services.db.user_state_repo import save_user_state
+        ctx = CONSULTATION_CONTEXT.get(telegram_user_id, {})
+        await save_user_state(telegram_user_id, state, ctx)
+    except Exception as e:
+        logger.warning(f"[state] Не удалось сохранить состояние для {telegram_user_id}: {e}")
+
+
+async def clear_consultation_state(telegram_user_id: int) -> None:
+    """
+    Очищает CONSULTATION_STATE и CONSULTATION_CONTEXT,
+    одновременно удаляя запись из БД.
+    """
+    CONSULTATION_STATE.pop(telegram_user_id, None)
+    CONSULTATION_CONTEXT.pop(telegram_user_id, None)
+    try:
+        from src.services.db.user_state_repo import clear_user_state
+        await clear_user_state(telegram_user_id)
+    except Exception as e:
+        logger.warning(f"[state] Не удалось очистить состояние для {telegram_user_id}: {e}")
 
 
 def build_session_id_from_message(message: Message) -> str:

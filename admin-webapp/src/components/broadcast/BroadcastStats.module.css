@@ -1,0 +1,164 @@
+/* Broadcast Stats Styles */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+/* Section */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.sectionLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.sectionCount {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.warning {
+  font-size: 12px;
+  color: #B45309;
+  background: #FEF3C7;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border: 1px solid #FDE68A;
+}
+
+/* Bars */
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.barRow {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.barClickable {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  width: 100%;
+  transition: all 0.15s;
+}
+
+.barClickable:hover:not(:disabled) {
+  border-color: var(--accent-primary);
+  background: var(--bg-primary);
+}
+
+.barClickable:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.barHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.barLabel {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.barValue {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.barTrack {
+  height: 6px;
+  background: var(--border-default);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #4A7C59, #6AA87A);
+  transition: width 0.3s ease;
+}
+
+.barFillPoll {
+  background: linear-gradient(90deg, #3B82F6, #60A5FA);
+}
+
+/* User list (drill-down) */
+.userList {
+  display: flex;
+  flex-direction: column;
+  padding: 4px 0 4px 12px;
+  border-left: 2px solid var(--accent-primary);
+  margin-left: 8px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.userListEmpty {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 8px 12px;
+  font-style: italic;
+}
+
+.userRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  text-decoration: none;
+  color: var(--text-primary);
+  font-size: 13px;
+  transition: background 0.15s;
+}
+
+.userRow:hover {
+  background: var(--bg-secondary);
+}
+
+.userName {
+  font-weight: 500;
+}
+
+.userHandle {
+  font-size: 12px;
+  color: var(--text-muted);
+}

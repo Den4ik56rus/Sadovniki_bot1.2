@@ -1,0 +1,110 @@
+/* Message Editor Styles */
+
+.container {
+  border: 1px solid var(--border-default);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+/* Toolbar */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border-default);
+  background: var(--bg-tertiary);
+}
+
+.toolbarBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.1s ease;
+}
+
+.toolbarBtn:hover {
+  background: var(--border-default);
+  color: var(--text-primary);
+}
+
+.toolbarBtnActive {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.toolbarBtnActive:hover {
+  background: var(--accent-primary);
+  opacity: 0.9;
+}
+
+.toolbarDivider {
+  width: 1px;
+  height: 20px;
+  background: var(--border-default);
+  margin: 0 4px;
+}
+
+/* Editor content area */
+.editor {
+  min-height: 160px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.editor :global(.tiptap) {
+  padding: 12px 14px;
+  min-height: 160px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--text-primary);
+  outline: none;
+}
+
+.editor :global(.tiptap p.is-editor-empty:first-child::before) {
+  content: attr(data-placeholder);
+  color: var(--text-muted);
+  float: left;
+  height: 0;
+  pointer-events: none;
+}
+
+.editor :global(.tiptap p) {
+  margin: 0 0 8px;
+}
+
+.editor :global(.tiptap p:last-child) {
+  margin-bottom: 0;
+}
+
+.editor :global(.tiptap strong) {
+  font-weight: 700;
+}
+
+.editor :global(.tiptap em) {
+  font-style: italic;
+}
+
+.editor :global(.tiptap code) {
+  background: rgba(0, 0, 0, 0.06);
+  padding: 2px 4px;
+  border-radius: 3px;
+  font-family: monospace;
+  font-size: 13px;
+}
+
+.editor :global(.tiptap a) {
+  color: var(--accent-primary);
+  text-decoration: underline;
+  cursor: pointer;
+}

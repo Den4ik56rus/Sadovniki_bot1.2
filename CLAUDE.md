@@ -11,11 +11,11 @@ Before making ANY changes:
 2. Read `session-summary.md` — contains latest session changes
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
-**Current Project State (2026-02-19):**
-- Version: 1.3.0
-- Phase: Complexity flow + user experience features
-- Latest changes: Enforce answer length limits (standard=1 msg, extended=2 msgs), single-phase answers, new choice template with topic_in_correct_case
-- CRITICAL: DB schemas 48-51 NOT YET APPLIED — must apply before running bot
+**Current Project State (2026-02-21):**
+- Version: 1.5.2
+- Phase: Broadcast system + user experience
+- Latest changes: Full broadcast system (mass messaging from admin panel), CRM activity feed broadcast events, .env.local support for test bot
+- CRITICAL: DB schemas 62-63 NOT YET APPLIED ON PRODUCTION — must apply before using broadcasts
 - See: `session-summary.md` for details
 
 ## Collaboration Rules

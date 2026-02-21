@@ -743,6 +743,62 @@ async def get_client_activity_with_consultations(
           AND m.topic_id IS NULL
     """
 
+    # Запрос для рассылок, отправленных клиенту
+    broadcasts_query = """
+        SELECT
+            br.id,
+            'broadcast_recipient' as source,
+            'broadcast_sent' as event_type,
+            jsonb_build_object(
+                'broadcast_id', b.id,
+                'broadcast_title', b.title,
+                'message_preview', LEFT(b.message_text, 200),
+                'has_photo', b.photo_path IS NOT NULL,
+                'has_poll', b.poll_question IS NOT NULL
+            ) as event_data,
+            br.sent_at as created_at
+        FROM broadcast_recipients br
+        JOIN broadcasts b ON b.id = br.broadcast_id
+        WHERE br.user_id = $1 AND br.status = 'sent'
+    """
+
+    # Клики по кнопкам рассылок
+    button_clicks_query = """
+        SELECT
+            bbc.id,
+            'button_click' as source,
+            'broadcast_button_click' as event_type,
+            jsonb_build_object(
+                'broadcast_id', bbc.broadcast_id,
+                'broadcast_title', b.title,
+                'option_key', bbc.option_key,
+                'button_text', bbc.button_text
+            ) as event_data,
+            bbc.clicked_at as created_at
+        FROM broadcast_button_clicks bbc
+        JOIN broadcasts b ON b.id = bbc.broadcast_id
+        WHERE bbc.user_id = $1
+    """
+
+    # Ответы на опросы рассылок
+    poll_answers_query = """
+        SELECT
+            bpa.id,
+            'poll_answer' as source,
+            'broadcast_poll_answer' as event_type,
+            jsonb_build_object(
+                'broadcast_id', bpa.broadcast_id,
+                'broadcast_title', b.title,
+                'poll_question', b.poll_question,
+                'poll_options', b.poll_options,
+                'option_ids', bpa.option_ids
+            ) as event_data,
+            bpa.answered_at as created_at
+        FROM broadcast_poll_answers bpa
+        JOIN broadcasts b ON b.id = bpa.broadcast_id
+        WHERE bpa.user_id = $1
+    """
+
     # Объединяем
     combined_query = f"""
         WITH combined AS (
@@ -751,6 +807,12 @@ async def get_client_activity_with_consultations(
             {consultation_query}
             UNION ALL
             {messages_query}
+            UNION ALL
+            {broadcasts_query}
+            UNION ALL
+            {button_clicks_query}
+            UNION ALL
+            {poll_answers_query}
         )
         SELECT * FROM combined
     """

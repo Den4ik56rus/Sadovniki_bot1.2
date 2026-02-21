@@ -96,6 +96,15 @@ import type {
   ModerationStats,
   KBEntry,
   KBListResponse,
+  // Broadcasts
+  Broadcast,
+  BroadcastsResponse,
+  BroadcastRecipientsResponse,
+  BroadcastUsersResponse,
+  CreateBroadcastDto,
+  BroadcastTargetType,
+  BroadcastStats,
+  BroadcastStatsUsersResponse,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -1330,5 +1339,105 @@ export const api = {
       method: 'PATCH',
       body: JSON.stringify({ budget_usd: budgetUsd }),
     })
+  },
+
+  // =========================================================================
+  // Broadcasts (Рассылки)
+  // =========================================================================
+
+  async getBroadcasts(params?: { limit?: number; offset?: number }): Promise<BroadcastsResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return fetchApi<BroadcastsResponse>(`/broadcasts${query ? `?${query}` : ''}`)
+  },
+
+  async createBroadcast(data: CreateBroadcastDto): Promise<Broadcast> {
+    return fetchApi<Broadcast>('/broadcasts', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async getBroadcast(id: number): Promise<Broadcast> {
+    return fetchApi<Broadcast>(`/broadcasts/${id}`)
+  },
+
+  async updateBroadcast(id: number, data: Partial<CreateBroadcastDto>): Promise<Broadcast> {
+    return fetchApi<Broadcast>(`/broadcasts/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteBroadcast(id: number): Promise<{ success: boolean }> {
+    return fetchApi<{ success: boolean }>(`/broadcasts/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async sendBroadcast(id: number): Promise<{ success: boolean; total_recipients: number }> {
+    return fetchApi<{ success: boolean; total_recipients: number }>(`/broadcasts/${id}/send`, {
+      method: 'POST',
+    })
+  },
+
+  async scheduleBroadcast(id: number, scheduledAt: string): Promise<Broadcast> {
+    return fetchApi<Broadcast>(`/broadcasts/${id}/schedule`, {
+      method: 'POST',
+      body: JSON.stringify({ scheduled_at: scheduledAt }),
+    })
+  },
+
+  async cancelBroadcast(id: number): Promise<{ success: boolean }> {
+    return fetchApi<{ success: boolean }>(`/broadcasts/${id}/cancel`, {
+      method: 'POST',
+    })
+  },
+
+  async getBroadcastRecipients(id: number, status?: string): Promise<BroadcastRecipientsResponse> {
+    const query = status ? `?status=${status}` : ''
+    return fetchApi<BroadcastRecipientsResponse>(`/broadcasts/${id}/recipients${query}`)
+  },
+
+  async previewBroadcastCount(data: {
+    target_type: BroadcastTargetType
+    target_invite_link_id?: number | null
+    target_funnel_id?: string | null
+    target_stage_key?: string | null
+    target_user_ids?: number[] | null
+  }): Promise<{ count: number }> {
+    return fetchApi<{ count: number }>('/broadcasts/preview-count', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async getBroadcastUsers(): Promise<BroadcastUsersResponse> {
+    return fetchApi<BroadcastUsersResponse>('/broadcasts/users')
+  },
+
+  async uploadBroadcastPhoto(file: File): Promise<{ photo_path: string }> {
+    const formData = new FormData()
+    formData.append('photo', file)
+    const response = await fetch(`${API_BASE}/broadcasts/upload-photo`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!response.ok) {
+      const text = await response.text()
+      throw new Error(text || 'Upload failed')
+    }
+    return response.json()
+  },
+
+  async getBroadcastStats(id: number): Promise<BroadcastStats> {
+    return fetchApi<BroadcastStats>(`/broadcasts/${id}/stats`)
+  },
+
+  async getBroadcastStatUsers(id: number, type: 'button' | 'poll', key: string): Promise<BroadcastStatsUsersResponse> {
+    const param = type === 'button' ? `key=${key}` : `option=${key}`
+    return fetchApi<BroadcastStatsUsersResponse>(`/broadcasts/${id}/stats/users?type=${type}&${param}`)
   },
 }

@@ -1,0 +1,184 @@
+/* Broadcast List Styles */
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Card */
+.card {
+  padding: 16px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.card:hover {
+  border-color: var(--accent-primary);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.cardActive {
+  border-color: var(--accent-primary);
+  background: rgba(74, 124, 89, 0.04);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Status Badges */
+.badge {
+  flex-shrink: 0;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+}
+
+.badge_draft {
+  background: #F3F4F6;
+  color: #6B7280;
+}
+
+.badge_scheduled {
+  background: #DBEAFE;
+  color: #1D4ED8;
+}
+
+.badge_sending {
+  background: #FFF7ED;
+  color: #C2410C;
+  animation: pulse 2s ease-in-out infinite;
+}
+
+.badge_completed {
+  background: #DCFCE7;
+  color: #15803D;
+}
+
+.badge_failed {
+  background: #FEE2E2;
+  color: #B91C1C;
+}
+
+.badge_cancelled {
+  background: #F3F4F6;
+  color: #9CA3AF;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+/* Meta */
+.cardMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.metaItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* Stats */
+.cardStats {
+  display: flex;
+  gap: 16px;
+}
+
+.stat {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.statValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.statLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.statSent .statValue {
+  color: #15803D;
+}
+
+.statFailed .statValue {
+  color: #B91C1C;
+}
+
+/* Mini progress bar */
+.progressBar {
+  margin-top: 10px;
+  height: 4px;
+  background: #F3F4F6;
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.progressFill {
+  height: 100%;
+  background: var(--accent-primary);
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+/* States */
+.loading {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 14px;
+}
+
+.empty {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.emptyText {
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.emptyHint {
+  font-size: 13px;
+  color: var(--text-muted);
+}

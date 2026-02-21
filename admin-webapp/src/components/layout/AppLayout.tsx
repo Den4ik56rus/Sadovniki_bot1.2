@@ -12,7 +12,7 @@ interface AppLayoutProps {
 const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
   dashboard: { title: 'Рабочий стол', subtitle: 'Обзор показателей' },
   crm: { title: 'Сделки', subtitle: 'Управление воронкой' },
-  messages: { title: 'Сообщения', subtitle: 'Поддержка клиентов' },
+  messages: { title: 'Рассылки', subtitle: 'Управление рассылками' },
   buyers: { title: 'Покупатели', subtitle: 'Активные подписчики' },
   tasks: { title: 'Задачи', subtitle: 'Управление задачами' },
   lists: { title: 'Списки', subtitle: 'Сегментация клиентов' },

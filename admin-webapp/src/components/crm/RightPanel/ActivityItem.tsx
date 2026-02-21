@@ -67,6 +67,12 @@ export function ActivityItem({
         return '📄'
       case 'payment':
         return '💰'
+      case 'broadcast_sent':
+        return '📢'
+      case 'broadcast_button_click':
+        return '👆'
+      case 'broadcast_poll_answer':
+        return '📊'
       default:
         return '📌'
     }
@@ -301,6 +307,70 @@ export function ActivityItem({
               {paymentData.paid_at && (
                 <span>{format(new Date(paymentData.paid_at), 'd MMM yyyy', { locale: ru })}</span>
               )}
+            </div>
+          </div>
+        )
+      }
+
+      case 'broadcast_sent': {
+        const preview = data.message_preview ? stripHtml(String(data.message_preview)) : ''
+        return (
+          <div className={styles.broadcast}>
+            <div className={styles.broadcastHeader}>
+              <span className={styles.broadcastLabel}>Рассылка</span>
+            </div>
+            <div className={styles.broadcastTitle}>{String(data.broadcast_title)}</div>
+            {preview && (
+              <div className={styles.broadcastPreview}>
+                {preview.substring(0, 150)}
+                {preview.length > 150 && '...'}
+              </div>
+            )}
+            <div className={styles.broadcastMeta}>
+              {Boolean(data.has_photo) && <span>📷 Фото</span>}
+              {Boolean(data.has_poll) && <span>📊 Опрос</span>}
+            </div>
+          </div>
+        )
+      }
+
+      case 'broadcast_button_click': {
+        return (
+          <div className={styles.broadcastResponse}>
+            <div className={styles.broadcastResponseHeader}>
+              <span className={styles.broadcastResponseLabel}>Нажал кнопку</span>
+            </div>
+            <div className={styles.broadcastResponseAnswer}>
+              {String(data.button_text)}
+            </div>
+            <div className={styles.broadcastResponseMeta}>
+              <span>{String(data.broadcast_title)}</span>
+            </div>
+          </div>
+        )
+      }
+
+      case 'broadcast_poll_answer': {
+        const rawIds = data.option_ids
+        const optionIds: number[] = Array.isArray(rawIds) ? rawIds : (typeof rawIds === 'string' ? JSON.parse(rawIds) : [])
+        const rawOpts = data.poll_options
+        const pollOptions: string[] = Array.isArray(rawOpts) ? rawOpts : (typeof rawOpts === 'string' ? JSON.parse(rawOpts) : [])
+        const selectedAnswers = optionIds.map((idx: number) => pollOptions[idx] || `#${idx + 1}`).join(', ')
+        return (
+          <div className={styles.broadcastResponse}>
+            <div className={styles.broadcastResponseHeader}>
+              <span className={styles.broadcastResponseLabel}>Ответил на опрос</span>
+            </div>
+            {Boolean(data.poll_question) && (
+              <div className={styles.broadcastResponseQuestion}>
+                {String(data.poll_question)}
+              </div>
+            )}
+            <div className={styles.broadcastResponseAnswer}>
+              {selectedAnswers}
+            </div>
+            <div className={styles.broadcastResponseMeta}>
+              <span>{String(data.broadcast_title)}</span>
             </div>
           </div>
         )

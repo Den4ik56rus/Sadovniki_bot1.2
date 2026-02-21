@@ -32,6 +32,11 @@ const ALL_EVENT_TYPES: ActivityEventType[] = [
   'note',
   'status_change',
   'tag_change',
+  'field_change',
+  'payment',
+  'broadcast_sent',
+  'broadcast_button_click',
+  'broadcast_poll_answer',
 ]
 
 export function RightPanel({

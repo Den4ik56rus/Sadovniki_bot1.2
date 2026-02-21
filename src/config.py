@@ -11,10 +11,17 @@
     - pydantic-settings (BaseSettings) для удобной работы с конфигами
 """
 
+from pathlib import Path
 from functools import lru_cache  # Для кэширования настроек (чтобы не создавать их каждый раз)
 
 from pydantic_settings import BaseSettings, SettingsConfigDict  # Базовый класс для настроек
 from pydantic import Field                                      # Для описания полей с подсказками и значениями по умолчанию
+
+# Определяем какой .env файл использовать:
+# .env.local (тестовый бот) имеет приоритет над .env (продакшен)
+_project_root = Path(__file__).resolve().parent.parent
+_env_local = _project_root / ".env.local"
+_env_file = str(_env_local) if _env_local.exists() else ".env"
 
 
 class Settings(BaseSettings):
@@ -166,7 +173,7 @@ class Settings(BaseSettings):
 
     # Общая конфигурация pydantic-settings
     model_config = SettingsConfigDict(
-        env_file=".env",             # брать переменные ещё и из файла .env в корне проекта
+        env_file=_env_file,          # .env.local (тестовый бот) или .env (продакшен)
         env_file_encoding="utf-8",   # кодировка файла .env
         extra="ignore",              # игнорировать лишние переменные
     )
@@ -181,7 +188,10 @@ def get_settings() -> Settings:
         - Settings инициализируется только один раз
         - при повторных вызовах возвращается тот же объект
     """
-    return Settings()
+    s = Settings()
+    env_label = "LOCAL (.env.local)" if _env_local.exists() else "PRODUCTION (.env)"
+    print(f"[config] Loaded: {env_label} | Bot: @{s.telegram_bot_username}")
+    return s
 
 
 # Глобальный объект настроек, который мы импортируем во всех модулях:

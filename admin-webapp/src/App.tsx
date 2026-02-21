@@ -17,6 +17,7 @@ import { SettingsPage } from '@/components/settings'
 import { InviteLinksPage } from '@/components/inviteLinks'
 import { GuidesPage } from '@/components/guides'
 import { ModerationPage } from '@/components/moderation'
+import { BroadcastPage } from '@/components/broadcast'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
@@ -45,14 +46,8 @@ function App() {
       {/* Воронки - единый FunnelKanban для всех воронок (CRM, Покупатели, кастомные) */}
       {isFunnelView && currentFunnelId && <FunnelKanban funnelId={currentFunnelId} />}
 
-      {/* Сообщения - заглушка */}
-      {currentView === 'messages' && (
-        <PlaceholderPage
-          icon="💬"
-          title="Сообщения"
-          description="Раздел поддержки и сообщений находится в разработке"
-        />
-      )}
+      {/* Рассылки */}
+      {currentView === 'messages' && <BroadcastPage />}
 
       {/* Задачи - заглушка */}
       {currentView === 'tasks' && (

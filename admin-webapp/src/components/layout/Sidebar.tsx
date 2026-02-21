@@ -110,7 +110,7 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
     submenu: [], // Will be filled dynamically
     isDynamic: true,
   },
-  { id: 'messages', icon: Icons.messages, label: 'Сообщения' },
+  { id: 'messages', icon: Icons.messages, label: 'Рассылки' },
   { id: 'tasks', icon: Icons.tasks, label: 'Задачи' },
   { id: 'moderation', icon: Icons.moderation, label: 'Модерация' },
   {

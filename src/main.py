@@ -95,6 +95,11 @@ async def main() -> None:
     background_task = asyncio.create_task(_subscription_renewal_task())
     print("Фоновая задача автопродления подписок запущена.")
 
+    # Запускаем фоновую задачу для запланированных рассылок
+    from src.services.broadcast_scheduler import broadcast_scheduler_loop
+    broadcast_task = asyncio.create_task(broadcast_scheduler_loop())
+    print("Фоновая задача рассылок запущена.")
+
     print("Бот запущен. Нажмите Ctrl+C, чтобы остановить его.")
 
     try:
@@ -104,12 +109,17 @@ async def main() -> None:
         # Корректное закрытие
         print("Останавливаю бота...")
 
-        # Останавливаем фоновую задачу
+        # Останавливаем фоновые задачи
         background_task.cancel()
+        broadcast_task.cancel()
         try:
             await background_task
         except asyncio.CancelledError:
             print("Фоновая задача автопродления остановлена.")
+        try:
+            await broadcast_task
+        except asyncio.CancelledError:
+            print("Фоновая задача рассылок остановлена.")
 
         # Закрываем API сервер
         print("Останавливаю API сервер...")

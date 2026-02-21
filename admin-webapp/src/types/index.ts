@@ -280,7 +280,7 @@ export type CustomFieldType = 'text' | 'number' | 'date' | 'checkbox' | 'select'
 export type TaskPriority = 'low' | 'medium' | 'high'
 export type TaskStatus = 'pending' | 'completed' | 'cancelled'
 export type RepeatInterval = 'none' | 'daily' | 'weekly' | 'monthly'
-export type ActivityEventType = 'consultation' | 'chat_message' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change' | 'article' | 'payment'
+export type ActivityEventType = 'consultation' | 'chat_message' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change' | 'article' | 'payment' | 'broadcast_sent' | 'broadcast_button_click' | 'broadcast_poll_answer'
 
 export interface ClientTag {
   id: number
@@ -1163,4 +1163,129 @@ export interface KBEntry {
 export interface KBListResponse {
   items: KBEntry[]
   total: number
+}
+
+// =============================================================================
+// Broadcast Types (Рассылки)
+// =============================================================================
+
+export type BroadcastStatus = 'draft' | 'scheduled' | 'sending' | 'completed' | 'failed' | 'cancelled'
+export type BroadcastTargetType = 'all' | 'invite_link' | 'funnel_stage' | 'manual'
+
+export interface BroadcastButton {
+  row: number
+  text: string
+  type: 'url' | 'quick_reply'
+  url?: string
+  option_key?: string
+}
+
+export interface Broadcast {
+  id: number
+  title: string
+  message_text: string | null
+  photo_path: string | null
+  poll_question: string | null
+  poll_options: string[] | null
+  poll_is_anonymous: boolean
+  poll_allows_multiple: boolean
+  inline_buttons: BroadcastButton[] | null
+  target_type: BroadcastTargetType
+  target_invite_link_id: number | null
+  target_funnel_id: string | null
+  target_stage_key: string | null
+  target_user_ids: number[] | null
+  scheduled_at: string | null
+  status: BroadcastStatus
+  total_recipients: number
+  sent_count: number
+  failed_count: number
+  created_at: string
+  started_at: string | null
+  completed_at: string | null
+}
+
+export interface BroadcastsResponse {
+  broadcasts: Broadcast[]
+}
+
+export interface BroadcastRecipient {
+  id: number
+  broadcast_id: number
+  user_id: number
+  telegram_user_id: number
+  username: string | null
+  first_name: string | null
+  last_name: string | null
+  status: 'pending' | 'sent' | 'failed'
+  error_message: string | null
+  sent_at: string | null
+}
+
+export interface BroadcastRecipientsResponse {
+  recipients: BroadcastRecipient[]
+}
+
+export interface BroadcastUser {
+  id: number
+  telegram_user_id: number
+  username: string | null
+  first_name: string | null
+  last_name: string | null
+}
+
+export interface BroadcastUsersResponse {
+  users: BroadcastUser[]
+}
+
+export interface CreateBroadcastDto {
+  title: string
+  message_text?: string | null
+  photo_path?: string | null
+  poll_question?: string | null
+  poll_options?: string[] | null
+  poll_is_anonymous?: boolean
+  poll_allows_multiple?: boolean
+  inline_buttons?: BroadcastButton[] | null
+  target_type: BroadcastTargetType
+  target_invite_link_id?: number | null
+  target_funnel_id?: string | null
+  target_stage_key?: string | null
+  target_user_ids?: number[] | null
+  scheduled_at?: string | null
+}
+
+// Broadcast Stats Types
+export interface ButtonClickStat {
+  option_key: string
+  button_text: string
+  click_count: number
+  percentage: number
+}
+
+export interface PollAnswerStat {
+  option_index: number
+  option_text: string
+  answer_count: number
+  percentage: number
+}
+
+export interface BroadcastStats {
+  button_clicks: ButtonClickStat[]
+  poll_answers: PollAnswerStat[]
+  total_button_respondents: number
+  total_poll_respondents: number
+}
+
+export interface StatUser {
+  user_id: number
+  first_name: string | null
+  last_name: string | null
+  username: string | null
+  clicked_at?: string
+  answered_at?: string
+}
+
+export interface BroadcastStatsUsersResponse {
+  users: StatUser[]
 }

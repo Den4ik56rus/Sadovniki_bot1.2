@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts
 
 
 def setup_routes(app: web.Application) -> None:
@@ -244,6 +244,26 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_patch(r"/api/admin/invite-links/{id:\d+}", invite_links.update_invite_link)
     app.router.add_patch(r"/api/admin/invite-links/{id:\d+}/toggle", invite_links.toggle_invite_link)
     app.router.add_delete(r"/api/admin/invite-links/{id:\d+}", invite_links.delete_invite_link)
+
+    # Broadcasts API (рассылки из админ-панели)
+    app.router.add_get("/api/admin/broadcasts", broadcasts.get_broadcasts)
+    app.router.add_post("/api/admin/broadcasts", broadcasts.create_broadcast)
+    app.router.add_post("/api/admin/broadcasts/preview-count", broadcasts.preview_recipient_count)
+    app.router.add_get("/api/admin/broadcasts/users", broadcasts.get_broadcast_users)
+    app.router.add_post("/api/admin/broadcasts/upload-photo", broadcasts.upload_broadcast_photo)
+    app.router.add_get(r"/api/admin/broadcasts/photo/{filename}", broadcasts.get_broadcast_photo)
+    app.router.add_get(r"/api/admin/broadcasts/{id:\d+}", broadcasts.get_broadcast)
+    app.router.add_put(r"/api/admin/broadcasts/{id:\d+}", broadcasts.update_broadcast)
+    app.router.add_delete(r"/api/admin/broadcasts/{id:\d+}", broadcasts.delete_broadcast)
+    app.router.add_post(r"/api/admin/broadcasts/{id:\d+}/send", broadcasts.send_broadcast)
+    app.router.add_post(r"/api/admin/broadcasts/{id:\d+}/schedule", broadcasts.schedule_broadcast)
+    app.router.add_post(r"/api/admin/broadcasts/{id:\d+}/cancel", broadcasts.cancel_broadcast)
+    app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/recipients", broadcasts.get_broadcast_recipients)
+    app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/stats", broadcasts.get_broadcast_stats)
+    app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/stats/users", broadcasts.get_broadcast_stat_users)
+
+    # SSE: Broadcast progress
+    app.router.add_get(r"/api/admin/events/broadcast/{broadcast_id:\d+}", sse.broadcast_stream)
 
     # Webhooks (платежные системы)
     app.router.add_post("/api/webhooks/yookassa", webhooks.yookassa_webhook)

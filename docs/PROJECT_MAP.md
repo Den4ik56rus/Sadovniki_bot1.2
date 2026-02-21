@@ -1,8 +1,8 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2026-02-18
-**Project:** Sadovniki-bot v1.2.3
-**Status:** Active development — complexity flow + avatars + invite links added
+**Last Updated:** 2026-02-21
+**Project:** Sadovniki-bot v1.5.2
+**Status:** Active development — broadcast system added, DB migrations 62-63 pending on production
 
 ## Quick Navigation
 
@@ -163,10 +163,11 @@ User Question
 | KB Moderation | ✅ Production | [MODERATION.md](features/MODERATION.md) | Queue system |
 | Terminology Management | ✅ Production | [TERMINOLOGY.md](features/TERMINOLOGY.md) | Preferred wording |
 | Admin Panel (SSE) | ✅ Production | [ADMIN_PANEL.md](features/ADMIN_PANEL.md) | Real-time monitoring |
-| User Avatars | ⏳ Implemented, migrations pending | - | Telegram profile photos |
-| Invite Links | ⏳ Implemented, migrations pending | - | Campaign tracking with revenue stats |
-| Full Message Logging | ✅ Implemented | - | All bot/user messages + buttons logged |
-| CRM ChatHistory | ⏳ Implemented, needs API verification | - | Full conversation timeline per client |
+| User Avatars | ✅ Production | - | Telegram profile photos |
+| Invite Links | ✅ Production | - | Campaign tracking with revenue stats |
+| Full Message Logging | ✅ Production | - | All bot/user messages + buttons logged |
+| CRM ChatHistory | ✅ Production | - | Full conversation timeline per client |
+| Broadcasts | ⏳ Implemented, DB migrations pending | [BROADCASTS.md](features/BROADCASTS.md) | Mass messaging with photos/polls/buttons |
 | Article Writing Mode | ✅ Production | - | Admin feature, needs docs |
 | Document Upload | ✅ Production | [DOCUMENT_PIPELINE.md](features/DOCUMENT_PIPELINE.md) | PDF/TXT/MD/DOCX |
 | CRM Deals Kanban | ✅ Production | - | Sales funnel management, needs docs |
@@ -208,28 +209,26 @@ User Question
 
 ## Active Context
 
-### Current Phase: Complexity Flow + User Experience Features
+### Current Phase: Broadcast System + User Experience
 
 **Focus Areas:**
-1. Complexity-based consultation pricing (short/long/turnkey)
-2. Seasonal phase plan delivery
-3. User avatars and campaign tracking (invite links)
-4. Full message logging and CRM chat history
+1. Broadcast system — mass messaging from admin panel
+2. CRM activity feed — broadcast events per client
+3. .env.local support for test bot development
 
-**Last Session Changes (2026-02-18):**
-- Complexity classifier (complexity_llm.py) — LLM-based question difficulty detection
-- 3-tier pricing: short_answer (1 token), long_answer (2 tokens), turnkey_solution (purchase)
-- Phase-eligible questions: offer short or detailed seasonal plan
-- 5 new consultation keyboards for complexity confirmation and phase selection
-- User avatar system: download from Telegram, serve via static route, display in CRM cards
-- Invite links (campaign tracking): create named links, track users + revenue
-- Full message logging: ALL bot messages + button presses logged with meta/keyboard JSON
-- messages_repo.py: SSE broadcast on every logged message, attach_topic functions
-- CRM ChatHistory component: full conversation timeline with topic dividers, date separators
-- chat_message event type in activity feed: conversation bubbles with keyboard rendering
-- complexity block in TopicView: tier, phase, cost display
-- Pending: schemas 48-51 not applied, complexity callback flow needs end-to-end testing
-- DB migrations 48-51 MUST be applied before next bot session
+**Last Session Changes (2026-02-21):**
+- Full broadcast system: create/edit/delete/send/schedule/cancel broadcasts
+- Content types: text (TipTap editor), photo, Telegram poll, inline buttons (URL + quick_reply)
+- Targeting: all users, invite_link, funnel_stage, manual user selection
+- Real-time delivery progress via SSE (broadcast_stream endpoint)
+- Stats: delivery report, button click distribution, poll answer distribution
+- BroadcastPage replaces Messages placeholder in admin panel
+- Bot callbacks: quick_reply button tracking + PollAnswer recording
+- Broadcast scheduler: background loop, checks every 60s for scheduled broadcasts
+- CRM activity feed: broadcast_sent / broadcast_button_click / broadcast_poll_answer events
+- .env.local detection in config.py (takes priority over .env for test bot)
+- DB constraint fix in schema_61 (PostgreSQL < 15 compatibility)
+- DB migrations 62-63 MUST be applied before using broadcast system on production
 
 ### Constraints & Invariants
 
@@ -277,6 +276,7 @@ User Question
 - [MODERATION.md](features/MODERATION.md) — Knowledge base moderation
 - [TERMINOLOGY.md](features/TERMINOLOGY.md) — Terminology management
 - [ADMIN_PANEL.md](features/ADMIN_PANEL.md) — Admin monitoring, SSE, cost tracking
+- [BROADCASTS.md](features/BROADCASTS.md) — Mass messaging system (broadcasts)
 - [DOCUMENT_PIPELINE.md](features/DOCUMENT_PIPELINE.md) — PDF processing, chunking, embedding
 - [TOPIC_MANAGEMENT.md](TOPIC_MANAGEMENT.md) — Session tracking, topic continuation
 

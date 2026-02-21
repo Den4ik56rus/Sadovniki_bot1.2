@@ -455,6 +455,119 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
+   BROADCAST - Broadcast Sent to Client
+   ═══════════════════════════════════════════════════════════ */
+
+.broadcast {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  color: white;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border-bottom-left-radius: var(--radius-sm);
+  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25);
+  max-width: 85%;
+}
+
+.broadcastHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.broadcastLabel {
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+  border-radius: var(--radius-full);
+}
+
+.broadcastTitle {
+  font-size: var(--text-sm);
+  color: white;
+  font-weight: var(--font-medium);
+  line-height: 1.4;
+}
+
+.broadcastPreview {
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.8);
+  line-height: 1.5;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+}
+
+.broadcastMeta {
+  display: flex;
+  gap: var(--space-3);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+  padding-top: var(--space-1);
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BROADCAST RESPONSE - Button Click & Poll Answer
+   ═══════════════════════════════════════════════════════════ */
+
+.broadcastResponse {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  color: white;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-lg);
+  border-bottom-right-radius: var(--radius-sm);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+  max-width: 85%;
+  margin-left: auto;
+}
+
+.broadcastResponseHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.broadcastResponseLabel {
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.25);
+  color: white;
+  border-radius: var(--radius-full);
+}
+
+.broadcastResponseQuestion {
+  font-size: var(--text-xs);
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.4;
+}
+
+.broadcastResponseAnswer {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: white;
+  line-height: 1.4;
+}
+
+.broadcastResponseMeta {
+  display: flex;
+  gap: var(--space-3);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.65);
+  padding-top: var(--space-1);
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+/* ═══════════════════════════════════════════════════════════
    CHAT MESSAGE - Inline Chat Bubbles
    ═══════════════════════════════════════════════════════════ */
 

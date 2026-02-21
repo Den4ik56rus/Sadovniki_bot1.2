@@ -26,6 +26,9 @@ from src.handlers.admin import article_writing as article_handlers
 # Платежи (покупка токенов и подписок)
 from src.handlers.payments import payments_router
 
+# Кнопки рассылок + PollAnswer
+from src.handlers.broadcast_callbacks import router as broadcast_cb_router
+
 
 def setup_routers(dp: Dispatcher) -> None:
     """
@@ -41,6 +44,9 @@ def setup_routers(dp: Dispatcher) -> None:
 
     # 2. Платежи (покупка токенов и подписок)
     dp.include_router(payments_router)
+
+    # 2.5. Кнопки рассылок + PollAnswer (перед админкой и консультациями)
+    dp.include_router(broadcast_cb_router)
 
     # 3. Админка (модерация /kb_pending и пр.) — ПЕРЕД консультациями!
     dp.include_router(moderation_handlers.router)

@@ -233,7 +233,7 @@ async def update_broadcast(request: web.Request) -> web.Response:
 async def delete_broadcast(request: web.Request) -> web.Response:
     """
     DELETE /api/admin/broadcasts/{id}
-    Удалить рассылку (только draft/scheduled).
+    Удалить рассылку (все статусы кроме sending).
     """
     try:
         broadcast_id = int(request.match_info['id'])
@@ -247,6 +247,26 @@ async def delete_broadcast(request: web.Request) -> web.Response:
         raise web.HTTPNotFound(text='Broadcast not found')
     except Exception as e:
         logger.error(f'Error deleting broadcast: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Database error')
+
+
+async def delete_broadcasts_bulk(request: web.Request) -> web.Response:
+    """
+    POST /api/admin/broadcasts/bulk-delete
+    Удалить несколько рассылок (все статусы кроме sending).
+    """
+    try:
+        data = await request.json()
+        ids = data.get('ids', [])
+        if not ids or not isinstance(ids, list):
+            raise web.HTTPBadRequest(text='ids array required')
+        broadcast_ids = [int(i) for i in ids]
+        deleted_count = await broadcast_repo.delete_broadcasts_bulk(broadcast_ids)
+        return web.json_response({'success': True, 'deleted_count': deleted_count})
+    except web.HTTPBadRequest:
+        raise
+    except Exception as e:
+        logger.error(f'Error bulk deleting broadcasts: {e}', exc_info=True)
         raise web.HTTPInternalServerError(text='Database error')
 
 
@@ -284,6 +304,51 @@ async def send_broadcast(request: web.Request) -> web.Response:
     except Exception as e:
         logger.error(f'Error sending broadcast: {e}', exc_info=True)
         raise web.HTTPInternalServerError(text='Failed to send broadcast')
+
+
+async def test_send_broadcast(request: web.Request) -> web.Response:
+    """
+    POST /api/admin/broadcasts/{id}/test-send
+    Тестовая отправка рассылки администраторам (без записи в recipients).
+    """
+    try:
+        broadcast_id = int(request.match_info['id'])
+        broadcast = await broadcast_repo.get_broadcast(broadcast_id)
+        if not broadcast:
+            raise web.HTTPNotFound(text='Broadcast not found')
+
+        from src.config import settings
+        admin_ids_str = settings.admin_ids
+        if not admin_ids_str:
+            raise web.HTTPBadRequest(text='ADMIN_IDS not configured')
+
+        admin_tg_ids = [int(x.strip()) for x in admin_ids_str.split(',') if x.strip()]
+        if not admin_tg_ids:
+            raise web.HTTPBadRequest(text='No admin IDs found')
+
+        from src.services.broadcast_sender import send_to_single_user
+        results = []
+        for tg_id in admin_tg_ids:
+            success = await send_to_single_user(
+                broadcast_id=broadcast_id,
+                user_id=0,
+                telegram_user_id=tg_id,
+            )
+            results.append({'telegram_user_id': tg_id, 'success': success})
+
+        return web.json_response({
+            'success': all(r['success'] for r in results),
+            'results': results,
+            'admin_count': len(admin_tg_ids),
+        })
+
+    except web.HTTPBadRequest:
+        raise
+    except web.HTTPNotFound:
+        raise
+    except Exception as e:
+        logger.error(f'Error test-sending broadcast: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Failed to test-send broadcast')
 
 
 async def schedule_broadcast(request: web.Request) -> web.Response:
@@ -486,6 +551,87 @@ async def get_broadcast_photo(request: web.Request) -> web.Response:
     return web.FileResponse(filepath)
 
 
+async def redirect_broadcast_url(request: web.Request) -> web.Response:
+    """
+    GET /api/r/{broadcast_id}/{option_key}
+    Публичный redirect endpoint для трекинга кликов по URL-кнопкам рассылки.
+    Записывает клик и перенаправляет на целевой URL.
+    """
+    try:
+        broadcast_id = int(request.match_info['broadcast_id'])
+        option_key = request.match_info['option_key']
+
+        # Находим broadcast и URL кнопки
+        broadcast = await broadcast_repo.get_broadcast(broadcast_id)
+        if not broadcast:
+            raise web.HTTPNotFound(text='Broadcast not found')
+
+        target_url = None
+        button_text = option_key
+        buttons = broadcast.get('inline_buttons')
+        if buttons:
+            if isinstance(buttons, str):
+                buttons = json.loads(buttons)
+            for btn in buttons:
+                if btn.get('option_key') == option_key:
+                    target_url = btn.get('url')
+                    button_text = btn.get('text', option_key)
+                    break
+
+        if not target_url:
+            raise web.HTTPNotFound(text='URL not found')
+
+        # Пытаемся определить user по query param (telegram_user_id)
+        tg_id_str = request.query.get('u')
+        user_id = None
+        if tg_id_str:
+            try:
+                from src.services.db.pool import get_pool
+                pool = get_pool()
+                async with pool.acquire() as conn:
+                    row = await conn.fetchrow(
+                        "SELECT id FROM users WHERE telegram_user_id = $1",
+                        int(tg_id_str),
+                    )
+                    if row:
+                        user_id = row['id']
+            except (ValueError, Exception):
+                pass
+
+        # Записываем клик (даже если user_id не определён)
+        if user_id:
+            from src.services.db.broadcast_repo import record_button_click, resolve_run_id_from_recipient
+            run_id = await resolve_run_id_from_recipient(broadcast_id, user_id)
+            await record_button_click(
+                broadcast_id=broadcast_id,
+                user_id=user_id,
+                telegram_user_id=int(tg_id_str) if tg_id_str else 0,
+                option_key=option_key,
+                button_text=button_text,
+                run_id=run_id,
+            )
+        else:
+            # Анонимный клик — записываем без user_id
+            from src.services.db.pool import get_pool
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                await conn.execute(
+                    """INSERT INTO broadcast_button_clicks
+                       (broadcast_id, user_id, telegram_user_id, option_key, button_text)
+                       VALUES ($1, 0, 0, $2, $3)""",
+                    broadcast_id, option_key, button_text,
+                )
+
+        # 302 Redirect на целевой URL
+        raise web.HTTPFound(location=target_url)
+
+    except (web.HTTPFound, web.HTTPNotFound):
+        raise
+    except Exception as e:
+        logger.error(f'Error in broadcast redirect: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Redirect error')
+
+
 def _validate_inline_buttons(buttons: list) -> None:
     """Валидация массива inline-кнопок."""
     if not isinstance(buttons, list):
@@ -511,6 +657,20 @@ def _validate_inline_buttons(buttons: list) -> None:
             url = btn.get('url', '')
             if not url or not url.startswith(('http://', 'https://')):
                 raise web.HTTPBadRequest(text='URL button requires a valid URL')
+
+        reply_text = btn.get('reply_text')
+        if reply_text is not None:
+            if btn_type != 'quick_reply':
+                raise web.HTTPBadRequest(text='reply_text is only allowed for quick_reply buttons')
+            if not isinstance(reply_text, str) or len(reply_text) > 4096:
+                raise web.HTTPBadRequest(text='reply_text must be a string (max 4096 characters)')
+
+        ask_for_response = btn.get('ask_for_response')
+        if ask_for_response is not None:
+            if btn_type != 'quick_reply':
+                raise web.HTTPBadRequest(text='ask_for_response is only allowed for quick_reply buttons')
+            if not isinstance(ask_for_response, bool):
+                raise web.HTTPBadRequest(text='ask_for_response must be a boolean')
 
         rows.add(btn.get('row', 0))
 
@@ -612,4 +772,200 @@ async def get_broadcast_stat_users(request: web.Request) -> web.Response:
         raise web.HTTPNotFound(text='Broadcast not found')
     except Exception as e:
         logger.error(f'Error getting broadcast stat users: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Database error')
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BROADCAST RUNS — повторные запуски рассылок
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def resend_broadcast(request: web.Request) -> web.Response:
+    """
+    POST /api/admin/broadcasts/{id}/resend
+    Повторно отправить рассылку с новыми получателями.
+
+    Body: {
+        "target_type": "all|invite_link|funnel_stage|manual",
+        "target_invite_link_id": null,
+        "target_funnel_id": null,
+        "target_stage_key": null,
+        "target_user_ids": null
+    }
+    """
+    try:
+        broadcast_id = int(request.match_info['id'])
+        broadcast = await broadcast_repo.get_broadcast(broadcast_id)
+        if not broadcast:
+            raise web.HTTPNotFound(text='Broadcast not found')
+
+        # Разрешаем resend только для completed/failed/cancelled
+        if broadcast['status'] not in ('completed', 'failed', 'cancelled'):
+            raise web.HTTPBadRequest(
+                text=f"Cannot resend broadcast with status '{broadcast['status']}'. Must be completed, failed, or cancelled."
+            )
+
+        data = await request.json()
+        target_type = data.get('target_type', 'all')
+        if target_type not in ('all', 'invite_link', 'funnel_stage', 'manual'):
+            raise web.HTTPBadRequest(text='Invalid target_type')
+
+        # Создаём новый run
+        run = await broadcast_repo.create_run(
+            broadcast_id=broadcast_id,
+            target_type=target_type,
+            target_invite_link_id=data.get('target_invite_link_id'),
+            target_funnel_id=data.get('target_funnel_id'),
+            target_stage_key=data.get('target_stage_key'),
+            target_user_ids=data.get('target_user_ids'),
+        )
+
+        # Собираем получателей для run
+        count = await broadcast_repo.resolve_recipients_for_run(run['id'])
+        if count == 0:
+            raise web.HTTPBadRequest(text='No recipients found for this targeting')
+
+        # Сбрасываем статус рассылки на sending (для UI)
+        await broadcast_repo.update_broadcast_status(broadcast_id, 'sending')
+
+        # Запускаем отправку в фоне
+        asyncio.create_task(execute_broadcast(broadcast_id, run_id=run['id']))
+
+        return web.json_response({
+            'success': True,
+            'run': _serialize_dict(run),
+            'total_recipients': count,
+        })
+
+    except web.HTTPBadRequest:
+        raise
+    except web.HTTPNotFound:
+        raise
+    except Exception as e:
+        logger.error(f'Error resending broadcast: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Failed to resend broadcast')
+
+
+async def get_broadcast_runs(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/broadcasts/{id}/runs
+    Список запусков рассылки.
+    """
+    try:
+        broadcast_id = int(request.match_info['id'])
+        runs = await broadcast_repo.get_runs(broadcast_id)
+        return web.json_response({
+            'runs': [_serialize_dict(r) for r in runs],
+        })
+    except Exception as e:
+        logger.error(f'Error getting broadcast runs: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Database error')
+
+
+async def get_run_stats(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/broadcasts/{id}/runs/{run_id}/stats
+    Статистика для конкретного запуска.
+    """
+    try:
+        broadcast_id = int(request.match_info['id'])
+        run_id = int(request.match_info['run_id'])
+
+        broadcast = await broadcast_repo.get_broadcast(broadcast_id)
+        if not broadcast:
+            raise web.HTTPNotFound(text='Broadcast not found')
+
+        button_clicks = await broadcast_repo.get_button_click_stats_by_run(broadcast_id, run_id)
+        poll_answers = await broadcast_repo.get_poll_answer_stats_by_run(broadcast_id, run_id)
+
+        total_button = sum(s['click_count'] for s in button_clicks)
+        for stat in button_clicks:
+            stat['percentage'] = round(stat['click_count'] / total_button * 100, 1) if total_button > 0 else 0
+
+        total_poll_respondents = 0
+        if poll_answers:
+            from src.services.db.pool import get_pool
+            pool = get_pool()
+            async with pool.acquire() as conn:
+                row = await conn.fetchrow(
+                    "SELECT COUNT(*) AS cnt FROM broadcast_poll_answers WHERE broadcast_id = $1 AND run_id = $2",
+                    broadcast_id, run_id,
+                )
+            total_poll_respondents = row['cnt'] if row else 0
+
+        for stat in poll_answers:
+            stat['percentage'] = round(stat['answer_count'] / total_poll_respondents * 100, 1) if total_poll_respondents > 0 else 0
+
+        poll_options = broadcast.get('poll_options')
+        if isinstance(poll_options, str):
+            poll_options = json.loads(poll_options)
+        if poll_options:
+            for stat in poll_answers:
+                idx = stat['option_index']
+                stat['option_text'] = poll_options[idx] if idx < len(poll_options) else f'Вариант {idx + 1}'
+
+        return web.json_response({
+            'button_clicks': button_clicks,
+            'poll_answers': [_serialize_dict(s) for s in poll_answers],
+            'total_button_respondents': total_button,
+            'total_poll_respondents': total_poll_respondents,
+        })
+
+    except (ValueError, web.HTTPNotFound):
+        raise web.HTTPNotFound(text='Not found')
+    except Exception as e:
+        logger.error(f'Error getting run stats: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Database error')
+
+
+async def get_run_stat_users(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/broadcasts/{id}/runs/{run_id}/stats/users?type=button&key=opt_0
+    GET /api/admin/broadcasts/{id}/runs/{run_id}/stats/users?type=poll&option=0
+    """
+    try:
+        broadcast_id = int(request.match_info['id'])
+        run_id = int(request.match_info['run_id'])
+        stat_type = request.query.get('type')
+
+        if stat_type == 'button':
+            option_key = request.query.get('key', '')
+            if not option_key:
+                raise web.HTTPBadRequest(text='key parameter required')
+            users = await broadcast_repo.get_button_click_users_by_run(broadcast_id, option_key, run_id)
+        elif stat_type == 'poll':
+            option_str = request.query.get('option', '')
+            if option_str == '':
+                raise web.HTTPBadRequest(text='option parameter required')
+            option_index = int(option_str)
+            users = await broadcast_repo.get_poll_answer_users_by_run(broadcast_id, option_index, run_id)
+        else:
+            raise web.HTTPBadRequest(text='type must be "button" or "poll"')
+
+        return web.json_response({
+            'users': [_serialize_dict(u) for u in users],
+        })
+
+    except web.HTTPBadRequest:
+        raise
+    except Exception as e:
+        logger.error(f'Error getting run stat users: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Database error')
+
+
+async def get_run_recipients(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/broadcasts/{id}/runs/{run_id}/recipients
+    Получатели конкретного запуска.
+    """
+    try:
+        run_id = int(request.match_info['run_id'])
+        status_filter = request.query.get('status')
+
+        recipients = await broadcast_repo.get_run_recipients(run_id, status_filter=status_filter)
+        return web.json_response({
+            'recipients': [_serialize_dict(r) for r in recipients],
+        })
+
+    except Exception as e:
+        logger.error(f'Error getting run recipients: {e}', exc_info=True)
         raise web.HTTPInternalServerError(text='Database error')

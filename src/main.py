@@ -121,9 +121,17 @@ async def main() -> None:
         except asyncio.CancelledError:
             print("Фоновая задача рассылок остановлена.")
 
-        # Закрываем API сервер
+        # Закрываем SSE соединения перед остановкой API сервера
+        from src.api.sse_manager import sse_manager
+        print("Закрываю SSE соединения...")
+        await sse_manager.shutdown()
+
+        # Закрываем API сервер (с таймаутом чтобы не зависал)
         print("Останавливаю API сервер...")
-        await runner.cleanup()
+        try:
+            await asyncio.wait_for(runner.cleanup(), timeout=5.0)
+        except asyncio.TimeoutError:
+            print("API сервер не остановился за 5 секунд, принудительное завершение.")
         print("API сервер остановлен.")
 
         # Закрываем пул БД

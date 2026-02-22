@@ -1,10 +1,11 @@
 // Broadcast Detail — детальный просмотр рассылки
 
-import { useEffect } from 'react'
+import { useState, useEffect } from 'react'
 import { useBroadcastStore } from '@/store/broadcastStore'
 import type { BroadcastStatus } from '@/types'
 import { BroadcastProgress } from './BroadcastProgress'
 import { BroadcastStats } from './BroadcastStats'
+import { ResendDialog } from './ResendDialog'
 import styles from './BroadcastDetail.module.css'
 
 const STATUS_LABELS: Record<BroadcastStatus, string> = {
@@ -61,14 +62,21 @@ export function BroadcastDetail({ onEdit }: Props) {
     deleteBroadcast,
     selectBroadcast,
     isSending,
+    runs,
+    currentRunId,
+    fetchRuns,
+    setCurrentRun,
   } = useBroadcastStore()
 
-  // Load recipients for completed/failed broadcasts
+  const [showResendDialog, setShowResendDialog] = useState(false)
+
+  // Load recipients and runs for completed/failed broadcasts
   useEffect(() => {
-    if (broadcast && (broadcast.status === 'completed' || broadcast.status === 'failed')) {
+    if (broadcast && (broadcast.status === 'completed' || broadcast.status === 'failed' || broadcast.status === 'cancelled')) {
       fetchRecipients(broadcast.id)
+      fetchRuns(broadcast.id)
     }
-  }, [broadcast, fetchRecipients])
+  }, [broadcast, fetchRecipients, fetchRuns])
 
   if (!broadcast) return null
 
@@ -91,6 +99,14 @@ export function BroadcastDetail({ onEdit }: Props) {
     selectBroadcast(null)
   }
 
+  // Текущий выбранный run для просмотра статистики
+  const selectedRun = currentRunId ? runs.find(r => r.id === currentRunId) : null
+
+  // Показываем результаты: из run если выбран, иначе из broadcast
+  const resultsSource = selectedRun || broadcast
+  const showResults = broadcast.status === 'completed' || broadcast.status === 'failed' || broadcast.status === 'cancelled'
+  const canResend = broadcast.status === 'completed' || broadcast.status === 'failed' || broadcast.status === 'cancelled'
+
   return (
     <div className={styles.container}>
       {/* Header */}
@@ -104,6 +120,48 @@ export function BroadcastDetail({ onEdit }: Props) {
       {/* Sending progress */}
       {broadcast.status === 'sending' && (
         <BroadcastProgress broadcast={broadcast} />
+      )}
+
+      {/* Run selector — если есть несколько запусков */}
+      {runs.length > 1 && (
+        <div className={styles.runsSection}>
+          <h4 className={styles.sectionTitle}>Запуски</h4>
+          <div className={styles.runsTabs}>
+            <button
+              className={`${styles.runTab} ${!currentRunId ? styles.runTabActive : ''}`}
+              onClick={() => setCurrentRun(null)}
+            >
+              Общая ({broadcast.total_recipients})
+            </button>
+            {runs.map((run) => (
+              <button
+                key={run.id}
+                className={`${styles.runTab} ${currentRunId === run.id ? styles.runTabActive : ''}`}
+                onClick={() => setCurrentRun(run.id)}
+              >
+                #{run.run_number} — {TARGET_LABELS[run.target_type] || run.target_type}
+                <span className={styles.runTabCount}>{run.total_recipients}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Runs: показать единственный запуск если он есть */}
+      {runs.length === 1 && (
+        <div className={styles.runsSection}>
+          <h4 className={styles.sectionTitle}>Запуск #1</h4>
+          <div className={styles.infoGrid}>
+            <div className={styles.infoItem}>
+              <span className={styles.infoLabel}>Аудитория</span>
+              <span className={styles.infoValue}>{TARGET_LABELS[runs[0].target_type]}</span>
+            </div>
+            <div className={styles.infoItem}>
+              <span className={styles.infoLabel}>Получателей</span>
+              <span className={styles.infoValue}>{runs[0].total_recipients}</span>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Info grid */}
@@ -141,20 +199,22 @@ export function BroadcastDetail({ onEdit }: Props) {
       </div>
 
       {/* Results for completed/failed */}
-      {(broadcast.status === 'completed' || broadcast.status === 'failed') && (
+      {showResults && (
         <div className={styles.resultsSection}>
-          <h4 className={styles.sectionTitle}>Результаты</h4>
+          <h4 className={styles.sectionTitle}>
+            Результаты {selectedRun ? `(запуск #${selectedRun.run_number})` : ''}
+          </h4>
           <div className={styles.resultCards}>
             <div className={`${styles.resultCard} ${styles.resultCardSent}`}>
-              <span className={styles.resultValue}>{broadcast.sent_count}</span>
+              <span className={styles.resultValue}>{resultsSource.sent_count}</span>
               <span className={styles.resultLabel}>Доставлено</span>
             </div>
             <div className={`${styles.resultCard} ${styles.resultCardFailed}`}>
-              <span className={styles.resultValue}>{broadcast.failed_count}</span>
+              <span className={styles.resultValue}>{resultsSource.failed_count}</span>
               <span className={styles.resultLabel}>Ошибок</span>
             </div>
             <div className={styles.resultCard}>
-              <span className={styles.resultValue}>{broadcast.total_recipients}</span>
+              <span className={styles.resultValue}>{resultsSource.total_recipients}</span>
               <span className={styles.resultLabel}>Всего</span>
             </div>
           </div>
@@ -210,20 +270,21 @@ export function BroadcastDetail({ onEdit }: Props) {
                 {opt}
               </div>
             ))}
-            <div className={styles.pollFlags}>
-              {broadcast.poll_is_anonymous && <span>Анонимный</span>}
-              {broadcast.poll_allows_multiple && <span>Множественный выбор</span>}
-            </div>
+            {broadcast.poll_allows_multiple && (
+              <div className={styles.pollFlags}>
+                <span>Множественный выбор</span>
+              </div>
+            )}
           </div>
         </div>
       )}
 
       {/* Stats for completed broadcasts */}
-      {(broadcast.status === 'completed' || broadcast.status === 'failed') && (
+      {showResults && (
         <div className={styles.previewSection}>
           <BroadcastStats
             broadcastId={broadcast.id}
-            isAnonymousPoll={broadcast.poll_is_anonymous}
+            runId={currentRunId}
             hasPoll={!!broadcast.poll_question}
             hasButtons={!!inlineButtons && inlineButtons.length > 0}
           />
@@ -231,7 +292,7 @@ export function BroadcastDetail({ onEdit }: Props) {
       )}
 
       {/* Recipients list for completed/failed */}
-      {(broadcast.status === 'completed' || broadcast.status === 'failed') && recipients.length > 0 && (
+      {showResults && recipients.length > 0 && (
         <div className={styles.recipientsSection}>
           <h4 className={styles.sectionTitle}>
             Получатели ({recipients.length})
@@ -273,12 +334,25 @@ export function BroadcastDetail({ onEdit }: Props) {
             Отменить рассылку
           </button>
         )}
+        {canResend && (
+          <button className={styles.resendBtn} onClick={() => setShowResendDialog(true)}>
+            Повторить рассылку
+          </button>
+        )}
         {(broadcast.status === 'draft' || broadcast.status === 'cancelled' || broadcast.status === 'completed' || broadcast.status === 'failed') && (
           <button className={styles.deleteBtn} onClick={handleDelete}>
             Удалить
           </button>
         )}
       </div>
+
+      {/* Resend dialog */}
+      {showResendDialog && (
+        <ResendDialog
+          broadcastId={broadcast.id}
+          onClose={() => setShowResendDialog(false)}
+        />
+      )}
     </div>
   )
 }

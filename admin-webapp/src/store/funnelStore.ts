@@ -3,7 +3,7 @@
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 import { api } from '@/services/api'
-import type { Funnel, FunnelStage, FunnelClient, CreateFunnelDto, CreateStageDto } from '@/types'
+import type { Funnel, FunnelStage, FunnelClient, CreateFunnelDto, CreateStageDto, FunnelStageTrigger, FunnelSortOption } from '@/types'
 
 interface FunnelStore {
   // State
@@ -18,6 +18,10 @@ interface FunnelStore {
   isSettingsMode: boolean
   sseConnected: boolean
   selectedInviteLinkId: number | null
+  sortOption: FunnelSortOption
+
+  // Triggers
+  triggers: FunnelStageTrigger[]
 
   // Funnel actions
   fetchFunnels: () => Promise<void>
@@ -51,6 +55,15 @@ interface FunnelStore {
   // Invite link filter
   setInviteLinkFilter: (id: number | null) => void
 
+  // Sort
+  setSortOption: (option: FunnelSortOption) => void
+
+  // Triggers
+  fetchTriggers: (funnelId: string) => Promise<void>
+  createTrigger: (funnelId: string, stageKey: string, broadcastId: number) => Promise<boolean>
+  deleteTrigger: (triggerId: number) => Promise<boolean>
+  toggleTrigger: (triggerId: number, isActive: boolean) => Promise<boolean>
+
   // Reset
   reset: () => void
 }
@@ -70,6 +83,8 @@ export const useFunnelStore = create<FunnelStore>()(
       isSettingsMode: false,
       sseConnected: false,
       selectedInviteLinkId: null,
+      sortOption: 'last_activity_desc' as FunnelSortOption,
+      triggers: [],
 
       // Funnel actions
       fetchFunnels: async () => {
@@ -424,13 +439,73 @@ export const useFunnelStore = create<FunnelStore>()(
       setSseConnected: (connected: boolean) => set({ sseConnected: connected }),
 
       // Settings mode
-      toggleSettingsMode: () => set((state) => ({ isSettingsMode: !state.isSettingsMode })),
+      toggleSettingsMode: () => {
+        const wasSettings = get().isSettingsMode
+        set({ isSettingsMode: !wasSettings })
+        // Загружаем триггеры при входе в режим настроек
+        if (!wasSettings) {
+          const funnelId = get().currentFunnelId
+          if (funnelId) get().fetchTriggers(funnelId)
+        }
+      },
 
       // Invite link filter
       setInviteLinkFilter: (id: number | null) => {
         set({ selectedInviteLinkId: id })
         const funnelId = get().currentFunnelId
         if (funnelId) get().fetchClients(funnelId)
+      },
+
+      // Sort
+      setSortOption: (option: FunnelSortOption) => set({ sortOption: option }),
+
+      // Triggers
+      fetchTriggers: async (funnelId: string) => {
+        try {
+          const data = await api.getFunnelTriggers(funnelId)
+          set({ triggers: data.triggers })
+        } catch (e) {
+          console.error('[fetchTriggers] Error:', e)
+        }
+      },
+
+      createTrigger: async (funnelId: string, stageKey: string, broadcastId: number) => {
+        try {
+          await api.createStageTrigger(funnelId, stageKey, broadcastId)
+          await get().fetchTriggers(funnelId)
+          return true
+        } catch (e) {
+          set({ error: (e as Error).message })
+          return false
+        }
+      },
+
+      deleteTrigger: async (triggerId: number) => {
+        try {
+          await api.deleteStageTrigger(triggerId)
+          set((state) => ({
+            triggers: state.triggers.filter((t) => t.id !== triggerId),
+          }))
+          return true
+        } catch (e) {
+          set({ error: (e as Error).message })
+          return false
+        }
+      },
+
+      toggleTrigger: async (triggerId: number, isActive: boolean) => {
+        try {
+          const result = await api.toggleStageTrigger(triggerId, isActive)
+          set((state) => ({
+            triggers: state.triggers.map((t) =>
+              t.id === triggerId ? { ...t, is_active: result.trigger.is_active } : t
+            ),
+          }))
+          return true
+        } catch (e) {
+          set({ error: (e as Error).message })
+          return false
+        }
       },
 
       // Reset
@@ -446,12 +521,13 @@ export const useFunnelStore = create<FunnelStore>()(
         isSettingsMode: false,
         sseConnected: false,
         selectedInviteLinkId: null,
+        sortOption: 'last_activity_desc' as FunnelSortOption,
+        triggers: [],
       }),
     }),
     {
       name: 'funnel-storage',
-      // URL is now the source of truth for currentFunnelId
-      partialize: () => ({}),
+      partialize: (state) => ({ sortOption: state.sortOption }),
     }
   )
 )

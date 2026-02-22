@@ -7,21 +7,25 @@ import styles from './BroadcastStats.module.css'
 
 interface Props {
   broadcastId: number
-  isAnonymousPoll: boolean
+  runId?: number | null
   hasPoll: boolean
   hasButtons: boolean
 }
 
-export function BroadcastStats({ broadcastId, isAnonymousPoll, hasPoll, hasButtons }: Props) {
-  const { stats, statUsers, fetchStats, fetchStatUsers } = useBroadcastStore()
+export function BroadcastStats({ broadcastId, runId, hasPoll, hasButtons }: Props) {
+  const { stats, statUsers, fetchStats, fetchStatUsers, fetchRunStats, fetchRunStatUsers } = useBroadcastStore()
   const [expandedSection, setExpandedSection] = useState<{
     type: 'button' | 'poll'
     key: string
   } | null>(null)
 
   useEffect(() => {
-    fetchStats(broadcastId)
-  }, [broadcastId, fetchStats])
+    if (runId) {
+      fetchRunStats(broadcastId, runId)
+    } else {
+      fetchStats(broadcastId)
+    }
+  }, [broadcastId, runId, fetchStats, fetchRunStats])
 
   const handleBarClick = (type: 'button' | 'poll', key: string) => {
     if (expandedSection?.type === type && expandedSection?.key === key) {
@@ -29,7 +33,11 @@ export function BroadcastStats({ broadcastId, isAnonymousPoll, hasPoll, hasButto
       return
     }
     setExpandedSection({ type, key })
-    fetchStatUsers(broadcastId, type, key)
+    if (runId) {
+      fetchRunStatUsers(broadcastId, runId, type, key)
+    } else {
+      fetchStatUsers(broadcastId, type, key)
+    }
   }
 
   if (!stats) return null
@@ -91,18 +99,12 @@ export function BroadcastStats({ broadcastId, isAnonymousPoll, hasPoll, hasButto
               {stats.total_poll_respondents} ответов
             </span>
           </div>
-          {isAnonymousPoll && (
-            <div className={styles.warning}>
-              Анонимный опрос — ответы по пользователям не отслеживаются
-            </div>
-          )}
           <div className={styles.bars}>
             {stats.poll_answers.map((stat) => (
               <div key={stat.option_index} className={styles.barRow}>
                 <button
                   className={styles.barClickable}
-                  onClick={() => !isAnonymousPoll && handleBarClick('poll', String(stat.option_index))}
-                  disabled={isAnonymousPoll}
+                  onClick={() => handleBarClick('poll', String(stat.option_index))}
                 >
                   <div className={styles.barHeader}>
                     <span className={styles.barLabel}>{stat.option_text}</span>
@@ -117,7 +119,7 @@ export function BroadcastStats({ broadcastId, isAnonymousPoll, hasPoll, hasButto
                     />
                   </div>
                 </button>
-                {!isAnonymousPoll && expandedSection?.type === 'poll' && expandedSection?.key === String(stat.option_index) && (
+                {expandedSection?.type === 'poll' && expandedSection?.key === String(stat.option_index) && (
                   <UserList users={statUsers} />
                 )}
               </div>
@@ -138,23 +140,29 @@ function UserList({ users }: { users: StatUser[] }) {
   return (
     <div className={styles.userList}>
       {users.map((u) => (
-        <a
-          key={u.user_id}
-          className={styles.userRow}
-          href={`#/funnel/crm/client/${u.user_id}`}
-          onClick={(e) => {
-            e.preventDefault()
-            // Навигация через hash
-            window.location.hash = `/funnel/crm/client/${u.user_id}`
-          }}
-        >
-          <span className={styles.userName}>
-            {u.first_name || u.username || `ID: ${u.user_id}`}
-          </span>
-          {u.username && (
-            <span className={styles.userHandle}>@{u.username}</span>
+        <div key={u.user_id} className={styles.userEntry}>
+          <a
+            className={styles.userRow}
+            href={`#/funnel/crm/client/${u.user_id}`}
+            onClick={(e) => {
+              e.preventDefault()
+              window.location.hash = `/funnel/crm/client/${u.user_id}`
+            }}
+          >
+            <span className={styles.userName}>
+              {u.first_name || u.username || `ID: ${u.user_id}`}
+            </span>
+            {u.username && (
+              <span className={styles.userHandle}>@{u.username}</span>
+            )}
+          </a>
+          {u.text_response && (
+            <div className={styles.userResponse}>
+              <span className={styles.responseIcon}>💬</span>
+              <span className={styles.responseText}>{u.text_response}</span>
+            </div>
           )}
-        </a>
+        </div>
       ))}
     </div>
   )

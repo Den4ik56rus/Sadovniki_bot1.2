@@ -145,6 +145,10 @@ async def telegram_auth_middleware(request: web.Request, handler):
     if request.path.startswith("/api/admin"):
         return await handler(request)
 
+    # Пропускаем redirect-трекер рассылок (публичный)
+    if request.path.startswith("/api/r/"):
+        return await handler(request)
+
     # Получаем initData из заголовка
     init_data = request.headers.get("X-Telegram-Init-Data", "")
 

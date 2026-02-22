@@ -470,3 +470,107 @@ async def get_client_funnels(request: web.Request) -> web.Response:
     except Exception as e:
         logger.error(f"Error getting funnels for client {user_id}: {e}")
         return web.json_response({"error": str(e)}, status=500)
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# STAGE TRIGGERS — триггеры автоматической отправки рассылок при смене этапа
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def get_funnel_triggers(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/funnels/{id}/triggers
+    Все триггеры для воронки.
+    """
+    funnel_id = request.match_info.get("id")
+    try:
+        from src.services.db import funnel_trigger_repo
+        triggers = await funnel_trigger_repo.get_triggers_for_funnel(funnel_id)
+        return web.json_response({"triggers": triggers})
+    except Exception as e:
+        logger.error(f"Error getting triggers for funnel {funnel_id}: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def get_stage_triggers(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/funnels/{id}/stages/{key}/triggers
+    Триггеры для конкретного этапа.
+    """
+    funnel_id = request.match_info.get("id")
+    stage_key = request.match_info.get("key")
+    try:
+        from src.services.db import funnel_trigger_repo
+        triggers = await funnel_trigger_repo.get_triggers_for_stage(funnel_id, stage_key)
+        return web.json_response({"triggers": triggers})
+    except Exception as e:
+        logger.error(f"Error getting triggers for stage {funnel_id}/{stage_key}: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def create_stage_trigger(request: web.Request) -> web.Response:
+    """
+    POST /api/admin/funnels/{id}/stages/{key}/triggers
+    Создать триггер: привязать рассылку к этапу.
+
+    Body: { "broadcast_id": 123 }
+    """
+    funnel_id = request.match_info.get("id")
+    stage_key = request.match_info.get("key")
+    try:
+        data = await request.json()
+        broadcast_id = data.get("broadcast_id")
+        if not broadcast_id:
+            return web.json_response({"error": "broadcast_id is required"}, status=400)
+
+        from src.services.db import funnel_trigger_repo
+        trigger = await funnel_trigger_repo.create_trigger(funnel_id, stage_key, int(broadcast_id))
+        if not trigger:
+            return web.json_response(
+                {"error": "Failed to create trigger (stage or broadcast not found, or duplicate)"},
+                status=400
+            )
+        return web.json_response({"trigger": trigger}, status=201)
+    except Exception as e:
+        logger.error(f"Error creating trigger for {funnel_id}/{stage_key}: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def delete_stage_trigger(request: web.Request) -> web.Response:
+    """
+    DELETE /api/admin/funnels/triggers/{id}
+    Удалить триггер.
+    """
+    try:
+        trigger_id = int(request.match_info.get("id"))
+        from src.services.db import funnel_trigger_repo
+        deleted = await funnel_trigger_repo.delete_trigger(trigger_id)
+        if not deleted:
+            return web.json_response({"error": "Trigger not found"}, status=404)
+        return web.json_response({"success": True})
+    except Exception as e:
+        logger.error(f"Error deleting trigger: {e}")
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def toggle_stage_trigger(request: web.Request) -> web.Response:
+    """
+    PATCH /api/admin/funnels/triggers/{id}
+    Включить/выключить триггер.
+
+    Body: { "is_active": true/false }
+    """
+    try:
+        trigger_id = int(request.match_info.get("id"))
+        data = await request.json()
+        is_active = data.get("is_active")
+        if is_active is None:
+            return web.json_response({"error": "is_active is required"}, status=400)
+
+        from src.services.db import funnel_trigger_repo
+        trigger = await funnel_trigger_repo.toggle_trigger(trigger_id, bool(is_active))
+        if not trigger:
+            return web.json_response({"error": "Trigger not found"}, status=404)
+        return web.json_response({"trigger": trigger})
+    except Exception as e:
+        logger.error(f"Error toggling trigger: {e}")
+        return web.json_response({"error": str(e)}, status=500)

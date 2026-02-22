@@ -26,12 +26,46 @@
   background: rgba(74, 124, 89, 0.04);
 }
 
+.cardSelected {
+  border-color: var(--accent-primary);
+  background: rgba(74, 124, 89, 0.06);
+}
+
 .cardHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 8px;
+}
+
+.cardHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.checkbox {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--border-default);
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.checkbox:hover {
+  border-color: var(--accent-primary);
+}
+
+.checkboxChecked {
+  background: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 .title {

@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import type { BroadcastButton } from '@/types'
+import { MessageEditor } from './MessageEditor'
 import styles from './ButtonEditor.module.css'
 
 interface Props {
@@ -14,6 +15,23 @@ const MAX_BUTTONS_PER_ROW = 2
 
 export function ButtonEditor({ buttons, onChange }: Props) {
   const [enabled, setEnabled] = useState(buttons.length > 0)
+  const [expandedReplies, setExpandedReplies] = useState<Set<string>>(() => {
+    const initial = new Set<string>()
+    const rowsMap: Record<number, BroadcastButton[]> = {}
+    for (const btn of buttons) {
+      const r = btn.row ?? 0
+      if (!rowsMap[r]) rowsMap[r] = []
+      rowsMap[r].push(btn)
+    }
+    for (const [rowIdx, rowBtns] of Object.entries(rowsMap)) {
+      rowBtns.forEach((btn, btnIdx) => {
+        if (btn.reply_text) {
+          initial.add(`${rowIdx}_${btnIdx}`)
+        }
+      })
+    }
+    return initial
+  })
 
   const handleToggle = () => {
     const next = !enabled
@@ -80,6 +98,16 @@ export function ButtonEditor({ buttons, onChange }: Props) {
     onChange(buttons.filter((b) => b.row !== rowIdx))
   }
 
+  const toggleReplyEditor = (rowIdx: number, btnIdx: number) => {
+    const key = `${rowIdx}_${btnIdx}`
+    setExpandedReplies((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
+
   return (
     <div className={styles.container}>
       <label className={styles.toggleLabel}>
@@ -127,11 +155,12 @@ export function ButtonEditor({ buttons, onChange }: Props) {
                           value={btn.type}
                           onChange={(e) => {
                             const newType = e.target.value as 'url' | 'quick_reply'
-                            const optIdx = buttons.filter((b) => b.type === 'quick_reply').length
+                            const optIdx = buttons.length
                             updateButton(rowIdx, btnIdx, {
                               type: newType,
                               url: newType === 'url' ? (btn.url || '') : undefined,
-                              option_key: newType === 'quick_reply' ? (btn.option_key || `opt_${optIdx}`) : undefined,
+                              option_key: btn.option_key || `opt_${optIdx}`,
+                              reply_text: newType === 'url' ? undefined : btn.reply_text,
                             })
                           }}
                         >
@@ -149,7 +178,51 @@ export function ButtonEditor({ buttons, onChange }: Props) {
                         )}
                         {btn.type === 'url' && (
                           <div className={styles.urlHint}>
-                            Telegram не отслеживает клики по ссылкам
+                            Откроет ссылку сразу в браузере
+                          </div>
+                        )}
+                        {btn.type === 'quick_reply' && (
+                          <div className={styles.replySection}>
+                            <button
+                              className={styles.replyToggle}
+                              onClick={() => toggleReplyEditor(rowIdx, btnIdx)}
+                              type="button"
+                            >
+                              <svg width="10" height="10" viewBox="0 0 10 10" fill="none">
+                                <path
+                                  d={expandedReplies.has(`${rowIdx}_${btnIdx}`) ? 'M2 3.5L5 6.5L8 3.5' : 'M3.5 2L6.5 5L3.5 8'}
+                                  stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"
+                                />
+                              </svg>
+                              {btn.reply_text ? 'Редактировать ответ' : 'Добавить ответ'}
+                            </button>
+                            {expandedReplies.has(`${rowIdx}_${btnIdx}`) && (
+                              <div className={styles.replyEditor}>
+                                <MessageEditor
+                                  value={btn.reply_text || ''}
+                                  onChange={(html) => {
+                                    const clean = html.replace(/<p><\/p>/g, '').trim()
+                                    updateButton(rowIdx, btnIdx, { reply_text: clean || undefined })
+                                  }}
+                                />
+                                <div className={styles.replyHint}>
+                                  Это сообщение будет отправлено пользователю при нажатии на кнопку
+                                </div>
+                              </div>
+                            )}
+                            <label className={styles.askResponseLabel}>
+                              <input
+                                type="checkbox"
+                                checked={btn.ask_for_response || false}
+                                onChange={(e) => updateButton(rowIdx, btnIdx, { ask_for_response: e.target.checked || undefined })}
+                              />
+                              <span>Запросить текстовый ответ</span>
+                            </label>
+                            {btn.ask_for_response && (
+                              <div className={styles.replyHint}>
+                                После нажатия бот попросит пользователя написать ответ. Ответы будут видны в статистике.
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>

@@ -744,6 +744,7 @@ async def get_client_activity_with_consultations(
     """
 
     # Запрос для рассылок, отправленных клиенту
+    # LEFT JOIN ответы на опрос и клики по кнопкам — показываем inline в карточке
     broadcasts_query = """
         SELECT
             br.id,
@@ -752,17 +753,41 @@ async def get_client_activity_with_consultations(
             jsonb_build_object(
                 'broadcast_id', b.id,
                 'broadcast_title', b.title,
-                'message_preview', LEFT(b.message_text, 200),
+                'message_text', b.message_text,
+                'photo_filename', CASE
+                    WHEN b.photo_path IS NOT NULL
+                    THEN regexp_replace(b.photo_path, '^.*/', '')
+                    ELSE NULL
+                END,
                 'has_photo', b.photo_path IS NOT NULL,
-                'has_poll', b.poll_question IS NOT NULL
+                'inline_buttons', CASE
+                    WHEN jsonb_typeof(COALESCE(b.inline_buttons, '[]'::jsonb)) = 'string'
+                    THEN (COALESCE(b.inline_buttons, '[]'::jsonb) #>> '{}')::jsonb
+                    ELSE COALESCE(b.inline_buttons, '[]'::jsonb)
+                END,
+                'poll_question', b.poll_question,
+                'poll_options', COALESCE(b.poll_options, '[]'::jsonb),
+                'poll_is_anonymous', COALESCE(b.poll_is_anonymous, false),
+                'poll_allows_multiple', COALESCE(b.poll_allows_multiple, false),
+                'has_poll', b.poll_question IS NOT NULL,
+                'user_poll_option_ids', bpa.option_ids,
+                'user_button_clicks', (
+                    SELECT jsonb_agg(bbc.button_text)
+                    FROM broadcast_button_clicks bbc
+                    WHERE bbc.broadcast_id = b.id AND bbc.user_id = br.user_id
+                      AND (bbc.run_id = br.run_id OR (bbc.run_id IS NULL AND br.run_id IS NULL))
+                )
             ) as event_data,
             br.sent_at as created_at
         FROM broadcast_recipients br
         JOIN broadcasts b ON b.id = br.broadcast_id
+        LEFT JOIN broadcast_poll_answers bpa
+            ON bpa.broadcast_id = b.id AND bpa.user_id = br.user_id
+            AND (bpa.run_id = br.run_id OR (bpa.run_id IS NULL AND br.run_id IS NULL))
         WHERE br.user_id = $1 AND br.status = 'sent'
     """
 
-    # Клики по кнопкам рассылок
+    # Клики по кнопкам рассылок (отдельное событие — оставляем для обратной совместимости)
     button_clicks_query = """
         SELECT
             bbc.id,
@@ -772,7 +797,48 @@ async def get_client_activity_with_consultations(
                 'broadcast_id', bbc.broadcast_id,
                 'broadcast_title', b.title,
                 'option_key', bbc.option_key,
-                'button_text', bbc.button_text
+                'button_text', bbc.button_text,
+                'button_type', (
+                    SELECT btn->>'type'
+                    FROM jsonb_array_elements(
+                        CASE WHEN jsonb_typeof(b.inline_buttons) = 'array'
+                             THEN b.inline_buttons
+                             WHEN jsonb_typeof(b.inline_buttons) = 'string'
+                             THEN (b.inline_buttons #>> '{}')::jsonb
+                             ELSE '[]'::jsonb
+                        END
+                    ) AS btn
+                    WHERE btn->>'option_key' = bbc.option_key
+                    LIMIT 1
+                ),
+                'reply_text', (
+                    SELECT btn->>'reply_text'
+                    FROM jsonb_array_elements(
+                        CASE WHEN jsonb_typeof(b.inline_buttons) = 'array'
+                             THEN b.inline_buttons
+                             WHEN jsonb_typeof(b.inline_buttons) = 'string'
+                             THEN (b.inline_buttons #>> '{}')::jsonb
+                             ELSE '[]'::jsonb
+                        END
+                    ) AS btn
+                    WHERE btn->>'option_key' = bbc.option_key
+                    LIMIT 1
+                ),
+                'ask_for_response', (
+                    SELECT (btn->>'ask_for_response')::boolean
+                    FROM jsonb_array_elements(
+                        CASE WHEN jsonb_typeof(b.inline_buttons) = 'array'
+                             THEN b.inline_buttons
+                             WHEN jsonb_typeof(b.inline_buttons) = 'string'
+                             THEN (b.inline_buttons #>> '{}')::jsonb
+                             ELSE '[]'::jsonb
+                        END
+                    ) AS btn
+                    WHERE btn->>'option_key' = bbc.option_key
+                    LIMIT 1
+                ),
+                'text_response', bbc.text_response,
+                'response_at', bbc.response_at
             ) as event_data,
             bbc.clicked_at as created_at
         FROM broadcast_button_clicks bbc
@@ -780,26 +846,7 @@ async def get_client_activity_with_consultations(
         WHERE bbc.user_id = $1
     """
 
-    # Ответы на опросы рассылок
-    poll_answers_query = """
-        SELECT
-            bpa.id,
-            'poll_answer' as source,
-            'broadcast_poll_answer' as event_type,
-            jsonb_build_object(
-                'broadcast_id', bpa.broadcast_id,
-                'broadcast_title', b.title,
-                'poll_question', b.poll_question,
-                'poll_options', b.poll_options,
-                'option_ids', bpa.option_ids
-            ) as event_data,
-            bpa.answered_at as created_at
-        FROM broadcast_poll_answers bpa
-        JOIN broadcasts b ON b.id = bpa.broadcast_id
-        WHERE bpa.user_id = $1
-    """
-
-    # Объединяем
+    # Объединяем (poll_answers больше не отдельный блок — ответы на опросы inline в broadcast_sent)
     combined_query = f"""
         WITH combined AS (
             {activity_query}
@@ -811,8 +858,6 @@ async def get_client_activity_with_consultations(
             {broadcasts_query}
             UNION ALL
             {button_clicks_query}
-            UNION ALL
-            {poll_answers_query}
         )
         SELECT * FROM combined
     """

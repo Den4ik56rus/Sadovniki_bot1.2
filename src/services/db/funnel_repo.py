@@ -545,6 +545,7 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     u.last_name,
                     u.avatar_path,
                     u.created_at as user_created_at,
+                    COALESCE(u.token_balance, 0) as token_balance,
                     cfp.stage_key as status,
                     cfp.manual_override,
                     cfp.entered_at,
@@ -552,7 +553,10 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     COALESCE(stats.total_consultations, 0) as total_consultations,
                     COALESCE(stats.total_tokens, 0) as total_tokens,
                     COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
-                    stats.last_consultation_at
+                    stats.last_consultation_at,
+                    sub_info.subscription_plan_name,
+                    sub_info.subscription_status,
+                    sub_info.subscription_expires_at
                 FROM client_funnel_position cfp
                 JOIN users u ON u.id = cfp.user_id
                 JOIN invite_link_users ilu ON ilu.user_id = u.id AND ilu.invite_link_id = $2
@@ -565,6 +569,17 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     FROM consultation_logs cl
                     WHERE cl.user_id = u.id
                 ) stats ON true
+                LEFT JOIN LATERAL (
+                    SELECT
+                        sp.name as subscription_plan_name,
+                        us.status as subscription_status,
+                        us.expires_at as subscription_expires_at
+                    FROM user_subscriptions us
+                    JOIN subscription_plans sp ON sp.id = us.subscription_plan_id
+                    WHERE us.user_id = u.id
+                    ORDER BY us.created_at DESC
+                    LIMIT 1
+                ) sub_info ON true
                 WHERE cfp.funnel_id = $1
                 ORDER BY stats.last_consultation_at DESC NULLS LAST, cfp.entered_at DESC
                 """,
@@ -581,6 +596,7 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     u.last_name,
                     u.avatar_path,
                     u.created_at as user_created_at,
+                    COALESCE(u.token_balance, 0) as token_balance,
                     cfp.stage_key as status,
                     cfp.manual_override,
                     cfp.entered_at,
@@ -588,7 +604,10 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     COALESCE(stats.total_consultations, 0) as total_consultations,
                     COALESCE(stats.total_tokens, 0) as total_tokens,
                     COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
-                    stats.last_consultation_at
+                    stats.last_consultation_at,
+                    sub_info.subscription_plan_name,
+                    sub_info.subscription_status,
+                    sub_info.subscription_expires_at
                 FROM client_funnel_position cfp
                 JOIN users u ON u.id = cfp.user_id
                 LEFT JOIN LATERAL (
@@ -600,6 +619,17 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     FROM consultation_logs cl
                     WHERE cl.user_id = u.id
                 ) stats ON true
+                LEFT JOIN LATERAL (
+                    SELECT
+                        sp.name as subscription_plan_name,
+                        us.status as subscription_status,
+                        us.expires_at as subscription_expires_at
+                    FROM user_subscriptions us
+                    JOIN subscription_plans sp ON sp.id = us.subscription_plan_id
+                    WHERE us.user_id = u.id
+                    ORDER BY us.created_at DESC
+                    LIMIT 1
+                ) sub_info ON true
                 WHERE cfp.funnel_id = $1
                 ORDER BY stats.last_consultation_at DESC NULLS LAST, cfp.entered_at DESC
                 """,
@@ -696,6 +726,15 @@ async def move_client_to_stage(
 
         success = result == "UPDATE 1"
 
+        # Получаем telegram_user_id для триггеров
+        telegram_user_id = None
+        if success:
+            tg_row = await conn.fetchrow(
+                "SELECT telegram_user_id FROM users WHERE id = $1",
+                user_id,
+            )
+            telegram_user_id = tg_row['telegram_user_id'] if tg_row else None
+
         if success:
             try:
                 from src.api.sse_manager import sse_manager
@@ -711,7 +750,130 @@ async def move_client_to_stage(
             except Exception as e:
                 logger.warning(f"Failed to broadcast SSE client_moved: {e}")
 
+            # Запускаем триггеры в фоне (не блокируя ответ)
+            if telegram_user_id:
+                try:
+                    import asyncio
+                    from src.services.funnel_trigger_sender import execute_stage_triggers
+                    asyncio.create_task(
+                        execute_stage_triggers(user_id, telegram_user_id, funnel_id, new_stage_key)
+                    )
+                except Exception as e:
+                    logger.warning(f"Failed to launch stage triggers: {e}")
+
         return success
+
+
+# Порядок системных стадий CRM-воронки (для авто-переходов)
+CRM_STAGE_ORDER = {'new': 0, 'tried': 1, 'trial_ended': 2, 'paid': 3}
+
+
+async def auto_move_client_in_crm(user_id: int, target_stage_key: str) -> bool:
+    """
+    Автоматически переместить клиента на этап CRM-воронки.
+
+    Отличия от move_client_to_stage():
+      - НЕ ставит manual_override=true (чтобы будущие авто-переходы работали)
+      - Проверяет manual_override: если true — пропускает
+      - Двигает только вперёд (по CRM_STAGE_ORDER)
+      - Создаёт запись в client_funnel_position если её нет
+
+    Возвращает True если перемещение произошло.
+    """
+    target_order = CRM_STAGE_ORDER.get(target_stage_key)
+    if target_order is None:
+        logger.warning(f"auto_move_client_in_crm: unknown target stage {target_stage_key}")
+        return False
+
+    pool = get_pool()
+
+    async with pool.acquire() as conn:
+        # Получаем текущую позицию
+        row = await conn.fetchrow(
+            """
+            SELECT stage_key, manual_override
+            FROM client_funnel_position
+            WHERE user_id = $1 AND funnel_id = 'crm'
+            """,
+            user_id,
+        )
+
+        if row is None:
+            # Пользователь ещё не в воронке — создаём запись со stage 'new'
+            await conn.execute(
+                """
+                INSERT INTO client_funnel_position (user_id, funnel_id, stage_key)
+                VALUES ($1, 'crm', 'new')
+                ON CONFLICT (user_id, funnel_id) DO NOTHING
+                """,
+                user_id,
+            )
+            current_stage = 'new'
+            manual_override = False
+        else:
+            current_stage = row['stage_key']
+            manual_override = row['manual_override']
+
+        # Админ вручную переместил — не трогаем
+        if manual_override:
+            logger.debug(f"auto_move skip user {user_id}: manual_override=true")
+            return False
+
+        # Уже на этой стадии или дальше — не трогаем
+        current_order = CRM_STAGE_ORDER.get(current_stage, -1)
+        if current_order >= target_order:
+            logger.debug(
+                f"auto_move skip user {user_id}: {current_stage}({current_order}) >= {target_stage_key}({target_order})"
+            )
+            return False
+
+        # Перемещаем (manual_override остаётся false)
+        await conn.execute(
+            """
+            UPDATE client_funnel_position
+            SET stage_key = $3, updated_at = NOW()
+            WHERE user_id = $1 AND funnel_id = 'crm'
+            """,
+            user_id,
+            'crm',
+            target_stage_key,
+        )
+
+        # Получаем telegram_user_id для триггеров
+        tg_row = await conn.fetchrow(
+            "SELECT telegram_user_id FROM users WHERE id = $1",
+            user_id,
+        )
+        telegram_user_id = tg_row['telegram_user_id'] if tg_row else None
+
+    # SSE — уведомляем админку
+    try:
+        from src.api.sse_manager import sse_manager
+        await sse_manager.broadcast(
+            event_type='client_moved',
+            data={
+                'user_id': user_id,
+                'from_stage': current_stage,
+                'to_stage': target_stage_key,
+            },
+            endpoint_type='funnel-crm',
+        )
+    except Exception as e:
+        logger.warning(f"auto_move SSE broadcast failed: {e}")
+
+    # Триггеры в фоне
+    if telegram_user_id:
+        try:
+            import asyncio
+            from src.services.funnel_trigger_sender import execute_stage_triggers
+            asyncio.create_task(
+                execute_stage_triggers(user_id, telegram_user_id, 'crm', target_stage_key)
+            )
+        except Exception as e:
+            logger.warning(f"auto_move triggers failed: {e}")
+
+    logger.info(f"auto_move user {user_id}: {current_stage} -> {target_stage_key}")
+    return True
 
 
 async def transfer_client(

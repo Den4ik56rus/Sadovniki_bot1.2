@@ -29,7 +29,7 @@ import { FunnelColumn } from './FunnelColumn'
 import { FunnelClientCard } from './FunnelClientCard'
 import { FunnelClientCardFull } from './FunnelClientCardFull'
 import { DropZone } from './DropZone'
-import type { FunnelClient } from '@/types'
+import type { FunnelClient, FunnelSortOption } from '@/types'
 import styles from './FunnelKanban.module.css'
 
 // Sortable wrapper for column in settings mode
@@ -89,6 +89,8 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
     isSettingsMode,
     selectedInviteLinkId,
     setInviteLinkFilter,
+    sortOption,
+    setSortOption,
     fetchStages,
     fetchClients,
     moveClient,
@@ -334,6 +336,46 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
     )
   }
 
+  // Sort clients by selected option
+  const sortClients = (clientList: FunnelClient[]): FunnelClient[] => {
+    const sorted = [...clientList]
+    switch (sortOption) {
+      case 'last_activity_desc':
+        return sorted.sort((a, b) => {
+          const aDate = a.last_consultation_at ? new Date(a.last_consultation_at).getTime() : 0
+          const bDate = b.last_consultation_at ? new Date(b.last_consultation_at).getTime() : 0
+          if (bDate !== aDate) return bDate - aDate
+          const aEntered = a.entered_at ? new Date(a.entered_at).getTime() : 0
+          const bEntered = b.entered_at ? new Date(b.entered_at).getTime() : 0
+          return bEntered - aEntered
+        })
+      case 'last_activity_asc':
+        return sorted.sort((a, b) => {
+          const aDate = a.last_consultation_at ? new Date(a.last_consultation_at).getTime() : Infinity
+          const bDate = b.last_consultation_at ? new Date(b.last_consultation_at).getTime() : Infinity
+          return aDate - bDate
+        })
+      case 'entered_desc':
+        return sorted.sort((a, b) => {
+          const aDate = a.entered_at ? new Date(a.entered_at).getTime() : 0
+          const bDate = b.entered_at ? new Date(b.entered_at).getTime() : 0
+          return bDate - aDate
+        })
+      case 'entered_asc':
+        return sorted.sort((a, b) => {
+          const aDate = a.entered_at ? new Date(a.entered_at).getTime() : Infinity
+          const bDate = b.entered_at ? new Date(b.entered_at).getTime() : Infinity
+          return aDate - bDate
+        })
+      case 'cost_desc':
+        return sorted.sort((a, b) => (b.total_cost_usd ?? 0) - (a.total_cost_usd ?? 0))
+      case 'cost_asc':
+        return sorted.sort((a, b) => (a.total_cost_usd ?? 0) - (b.total_cost_usd ?? 0))
+      default:
+        return sorted
+    }
+  }
+
   if (isLoadingClients && Object.values(clients).every((c) => (c?.length ?? 0) === 0)) {
     return (
       <div className={styles.loading}>
@@ -352,27 +394,44 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
 
   return (
     <div className={styles.container}>
-      {/* Фильтр по реферальным ссылкам */}
-      {inviteLinks.length > 0 && (
-        <div className={styles.filterBar}>
-          <label className={styles.filterLabel}>Кампания:</label>
-          <select
-            className={styles.filterSelect}
-            value={selectedInviteLinkId ?? ''}
-            onChange={(e) => setInviteLinkFilter(e.target.value ? Number(e.target.value) : null)}
-          >
-            <option value="">Все клиенты</option>
-            {inviteLinks.map((link) => (
-              <option key={link.id} value={link.id}>{link.name}</option>
-            ))}
-          </select>
-          {selectedInviteLinkId !== null && (
-            <button className={styles.filterClear} onClick={() => setInviteLinkFilter(null)}>
-              ✕ Сбросить
-            </button>
-          )}
-        </div>
-      )}
+      {/* Фильтр и сортировка */}
+      <div className={styles.filterBar}>
+        <label className={styles.filterLabel}>Сортировка:</label>
+        <select
+          className={styles.filterSelect}
+          value={sortOption}
+          onChange={(e) => setSortOption(e.target.value as FunnelSortOption)}
+        >
+          <option value="last_activity_desc">По активности (новые)</option>
+          <option value="last_activity_asc">По активности (старые)</option>
+          <option value="entered_desc">По дате входа (новые)</option>
+          <option value="entered_asc">По дате входа (старые)</option>
+          <option value="cost_desc">По стоимости (дороже)</option>
+          <option value="cost_asc">По стоимости (дешевле)</option>
+        </select>
+
+        {inviteLinks.length > 0 && (
+          <>
+            <span className={styles.filterDivider}>|</span>
+            <label className={styles.filterLabel}>Кампания:</label>
+            <select
+              className={styles.filterSelect}
+              value={selectedInviteLinkId ?? ''}
+              onChange={(e) => setInviteLinkFilter(e.target.value ? Number(e.target.value) : null)}
+            >
+              <option value="">Все клиенты</option>
+              {inviteLinks.map((link) => (
+                <option key={link.id} value={link.id}>{link.name}</option>
+              ))}
+            </select>
+            {selectedInviteLinkId !== null && (
+              <button className={styles.filterClear} onClick={() => setInviteLinkFilter(null)}>
+                ✕ Сбросить
+              </button>
+            )}
+          </>
+        )}
+      </div>
 
       {/* Kanban Board */}
       <DndContext
@@ -397,7 +456,7 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
                   stageKey={stage.stage_key}
                   title={stage.title}
                   color={stage.color}
-                  clients={filterClients(clients[stage.stage_key] || [])}
+                  clients={sortClients(filterClients(clients[stage.stage_key] || []))}
                   count={stats[stage.stage_key] || 0}
                   totalValue={(clients[stage.stage_key] || []).reduce((sum, c) => sum + c.total_cost_usd * usdRate, 0)}
                   onClientClick={(clientId) => setSelectedClientId(clientId)}
@@ -446,7 +505,7 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
                     stageKey={stage.stage_key}
                     title={stage.title}
                     color={stage.color}
-                    clients={filterClients(clients[stage.stage_key] || [])}
+                    clients={sortClients(filterClients(clients[stage.stage_key] || []))}
                     count={stats[stage.stage_key] || 0}
                     totalValue={(clients[stage.stage_key] || []).reduce((sum, c) => sum + c.total_cost_usd * usdRate, 0)}
                     onClientClick={() => {}}

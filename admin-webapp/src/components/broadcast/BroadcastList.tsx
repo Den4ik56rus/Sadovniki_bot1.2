@@ -44,13 +44,20 @@ export function BroadcastList({ onSelected }: Props) {
   const {
     broadcasts,
     currentBroadcast,
+    selectedIds,
     isLoading,
     selectBroadcast,
+    toggleSelect,
   } = useBroadcastStore()
 
   const handleSelect = (broadcast: Broadcast) => {
     selectBroadcast(broadcast)
     onSelected()
+  }
+
+  const handleCheckbox = (e: React.MouseEvent, id: number) => {
+    e.stopPropagation()
+    toggleSelect(id)
   }
 
   if (isLoading) {
@@ -72,11 +79,23 @@ export function BroadcastList({ onSelected }: Props) {
       {broadcasts.map((b) => (
         <div
           key={b.id}
-          className={`${styles.card} ${currentBroadcast?.id === b.id ? styles.cardActive : ''}`}
+          className={`${styles.card} ${currentBroadcast?.id === b.id ? styles.cardActive : ''} ${selectedIds.has(b.id) ? styles.cardSelected : ''}`}
           onClick={() => handleSelect(b)}
         >
           <div className={styles.cardHeader}>
-            <span className={styles.title}>{b.title || 'Без названия'}</span>
+            <div className={styles.cardHeaderLeft}>
+              <div
+                className={`${styles.checkbox} ${selectedIds.has(b.id) ? styles.checkboxChecked : ''}`}
+                onClick={(e) => handleCheckbox(e, b.id)}
+              >
+                {selectedIds.has(b.id) && (
+                  <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+                    <path d="M1 4L3.5 6.5L9 1" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
+                )}
+              </div>
+              <span className={styles.title}>{b.title || 'Без названия'}</span>
+            </div>
             <span className={`${styles.badge} ${styles[`badge_${b.status}`]}`}>
               {STATUS_LABELS[b.status]}
             </span>

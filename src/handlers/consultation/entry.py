@@ -17,6 +17,7 @@
         * добавить пару вопрос-ответ в очередь модерации
 """
 
+import asyncio
 import logging
 import os
 
@@ -238,6 +239,13 @@ async def _send_insufficient_tokens_error(
             telegram_user_id=telegram_user_id,
             topic_id=topic_id,
         )
+
+    # Авто-переход в CRM: * → trial_ended (токены кончились)
+    try:
+        from src.services.db.funnel_repo import auto_move_client_in_crm
+        asyncio.create_task(auto_move_client_in_crm(user_id, 'trial_ended'))
+    except Exception as e:
+        logger.warning(f"Auto-move to trial_ended failed: {e}")
 
 
 # ==== HELPER-ФУНКЦИИ ДЛЯ РАБОТЫ С КОНТЕКСТОМ УТОЧНЕНИЙ ====
@@ -573,6 +581,13 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
 
         # Переводим в соответствующее состояние
         await set_consultation_state(telegram_user_id, next_state)
+
+        # Авто-переход в CRM: new → tried (получил консультацию)
+        try:
+            from src.services.db.funnel_repo import auto_move_client_in_crm
+            asyncio.create_task(auto_move_client_in_crm(user_id, 'tried'))
+        except Exception as e:
+            logger.warning(f"Auto-move to tried failed: {e}")
 
 
 # Константа: максимальная длина сообщения в Telegram
@@ -922,6 +937,12 @@ async def run_consultation_pipeline(
         )
         await message.answer(insufficient_text)
         await _log_bot_msg(insufficient_text, user_id=internal_user_id, session_id=f"tg:{telegram_user_id}", telegram_user_id=telegram_user_id)
+        # Авто-переход в CRM: * → trial_ended (токены кончились)
+        try:
+            from src.services.db.funnel_repo import auto_move_client_in_crm
+            asyncio.create_task(auto_move_client_in_crm(internal_user_id, 'trial_ended'))
+        except Exception as e:
+            logger.warning(f"Auto-move to trial_ended failed: {e}")
         await clear_consultation_state(telegram_user_id)
         return
 

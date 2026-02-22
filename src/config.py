@@ -120,6 +120,10 @@ class Settings(BaseSettings):
         8080,
         description="Порт API сервера",
     )
+    api_base_url: str = Field(
+        "",
+        description="Публичный base URL API для redirect-ссылок (например: http://72.56.121.98)",
+    )
 
     # --- WebApp ---
     webapp_url: str = Field(

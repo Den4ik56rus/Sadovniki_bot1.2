@@ -37,15 +37,6 @@
   color: var(--text-muted);
 }
 
-.warning {
-  font-size: 12px;
-  color: #B45309;
-  background: #FEF3C7;
-  padding: 8px 12px;
-  border-radius: 6px;
-  border: 1px solid #FDE68A;
-}
-
 /* Bars */
 .bars {
   display: flex;
@@ -73,14 +64,9 @@
   transition: all 0.15s;
 }
 
-.barClickable:hover:not(:disabled) {
+.barClickable:hover {
   border-color: var(--accent-primary);
   background: var(--bg-primary);
-}
-
-.barClickable:disabled {
-  cursor: default;
-  opacity: 0.85;
 }
 
 .barHeader {
@@ -161,4 +147,35 @@
 .userHandle {
   font-size: 12px;
   color: var(--text-muted);
+}
+
+.userEntry {
+  display: flex;
+  flex-direction: column;
+}
+
+.userResponse {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 10px 8px 10px;
+  margin-top: -2px;
+}
+
+.responseIcon {
+  font-size: 12px;
+  flex-shrink: 0;
+  line-height: 1.4;
+}
+
+.responseText {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: var(--bg-secondary);
+  padding: 4px 8px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
 }

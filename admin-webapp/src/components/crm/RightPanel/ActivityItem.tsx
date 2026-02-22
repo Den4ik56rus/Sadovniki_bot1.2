@@ -313,68 +313,170 @@ export function ActivityItem({
       }
 
       case 'broadcast_sent': {
-        const preview = data.message_preview ? stripHtml(String(data.message_preview)) : ''
+        // message_text = full HTML (new API), message_preview = fallback (old API)
+        const hasFullData = Boolean(data.message_text)
+        const messageText = hasFullData
+          ? String(data.message_text)
+          : (data.message_preview ? stripHtml(String(data.message_preview)) : '')
+        const photoFilename = data.photo_filename ? String(data.photo_filename) : ''
+        const apiBase = import.meta.env.VITE_API_URL || '/api/admin'
+        const photoUrl = photoFilename ? `${apiBase}/broadcasts/photo/${photoFilename}` : ''
+        const buttons = Array.isArray(data.inline_buttons) ? data.inline_buttons as Array<{
+          row: number; text: string; type: string; option_key?: string; url?: string
+        }> : []
+        const hasPoll = Boolean(data.has_poll)
+        const pollQuestion = data.poll_question ? String(data.poll_question) : ''
+        const pollOptions: string[] = Array.isArray(data.poll_options) ? data.poll_options as string[] : []
+        const userPollRaw = data.user_poll_option_ids
+        const userPollIds: number[] = Array.isArray(userPollRaw) ? userPollRaw : []
+        const hasUserPollAnswer = userPollIds.length > 0
+        const userButtonClicksRaw = data.user_button_clicks
+        const userButtonClicks: string[] = Array.isArray(userButtonClicksRaw)
+          ? userButtonClicksRaw.map(String)
+          : (data.user_button_click ? [String(data.user_button_click)] : [])
+
+        // Group buttons by row
+        const buttonRows: Array<Array<typeof buttons[0]>> = []
+        for (const btn of buttons) {
+          while (buttonRows.length <= btn.row) buttonRows.push([])
+          buttonRows[btn.row].push(btn)
+        }
+
         return (
           <div className={styles.broadcast}>
             <div className={styles.broadcastHeader}>
-              <span className={styles.broadcastLabel}>Рассылка</span>
+              <span className={styles.broadcastLabel}>📢 Рассылка</span>
+              <span className={styles.broadcastName}>{String(data.broadcast_title)}</span>
             </div>
-            <div className={styles.broadcastTitle}>{String(data.broadcast_title)}</div>
-            {preview && (
-              <div className={styles.broadcastPreview}>
-                {preview.substring(0, 150)}
-                {preview.length > 150 && '...'}
+            {photoUrl && (
+              <div className={styles.broadcastPhoto}>
+                <img
+                  src={photoUrl}
+                  alt="Фото рассылки"
+                  className={styles.broadcastImg}
+                  loading="lazy"
+                />
               </div>
             )}
-            <div className={styles.broadcastMeta}>
-              {Boolean(data.has_photo) && <span>📷 Фото</span>}
-              {Boolean(data.has_poll) && <span>📊 Опрос</span>}
-            </div>
+            {messageText && (
+              hasFullData ? (
+                <div
+                  className={styles.broadcastText}
+                  dangerouslySetInnerHTML={{ __html: messageText }}
+                />
+              ) : (
+                <div className={styles.broadcastText}>{messageText}</div>
+              )
+            )}
+            {buttonRows.length > 0 && (
+              <div className={styles.broadcastButtons}>
+                {buttonRows.map((row, rowIdx) => (
+                  <div key={rowIdx} className={styles.broadcastButtonRow}>
+                    {row.map((btn, btnIdx) => (
+                      <span
+                        key={btnIdx}
+                        className={`${styles.broadcastButton} ${
+                          btn.type === 'url' ? styles.broadcastButtonUrl : ''
+                        } ${userButtonClicks.includes(btn.text) ? styles.broadcastButtonClicked : ''}`}
+                      >
+                        {btn.type === 'url' && '🔗 '}
+                        {userButtonClicks.includes(btn.text) && '✓ '}
+                        {btn.text}
+                      </span>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+            {hasPoll && pollQuestion && (
+              <div className={styles.broadcastPoll}>
+                <div className={styles.broadcastPollQuestion}>📊 {pollQuestion}</div>
+                <div className={styles.broadcastPollOptions}>
+                  {pollOptions.map((opt, i) => {
+                    const isSelected = userPollIds.includes(i)
+                    // Simulate percentage: selected options get a share, rest 0%
+                    const pct = hasUserPollAnswer
+                      ? (isSelected ? Math.round(100 / userPollIds.length) : 0)
+                      : 0
+                    return (
+                      <div
+                        key={i}
+                        className={`${styles.broadcastPollOption} ${isSelected ? styles.broadcastPollSelected : ''}`}
+                      >
+                        {hasUserPollAnswer && (
+                          <div
+                            className={styles.broadcastPollBar}
+                            style={{ width: `${pct}%` }}
+                          />
+                        )}
+                        <span className={styles.broadcastPollOptionContent}>
+                          {isSelected && <span className={styles.broadcastPollCheck}>✓</span>}
+                          <span className={styles.broadcastPollOptionText}>{String(opt)}</span>
+                        </span>
+                        {hasUserPollAnswer && (
+                          <span className={styles.broadcastPollPct}>{pct}%</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            {!hasFullData && (Boolean(data.has_photo) || (hasPoll && !pollQuestion)) && (
+              <div className={styles.broadcastFallbackMeta}>
+                {Boolean(data.has_photo) && !photoUrl && <span>📷 Фото</span>}
+                {hasPoll && !pollQuestion && <span>📊 Опрос</span>}
+              </div>
+            )}
           </div>
         )
       }
 
       case 'broadcast_button_click': {
+        const isUrlClick = data.button_type === 'url'
+        const replyText = data.reply_text ? String(data.reply_text) : null
+        const askForResponse = data.ask_for_response === true
+        const textResponse = data.text_response ? String(data.text_response) : null
         return (
-          <div className={styles.broadcastResponse}>
-            <div className={styles.broadcastResponseHeader}>
-              <span className={styles.broadcastResponseLabel}>Нажал кнопку</span>
+          <>
+            <div className={`${styles.broadcastResponse} ${isUrlClick ? styles.broadcastResponseUrl : ''}`}>
+              <div className={styles.broadcastResponseIcon}>{isUrlClick ? '🔗' : '👆'}</div>
+              <div className={styles.broadcastResponseBody}>
+                <span className={styles.broadcastResponseAction}>
+                  {isUrlClick ? 'Перешёл по ссылке' : 'Нажал кнопку'}
+                </span>
+                <span className={styles.broadcastResponseValue}>«{String(data.button_text)}»</span>
+                <span className={styles.broadcastResponseContext}>в рассылке «{String(data.broadcast_title)}»</span>
+              </div>
             </div>
-            <div className={styles.broadcastResponseAnswer}>
-              {String(data.button_text)}
-            </div>
-            <div className={styles.broadcastResponseMeta}>
-              <span>{String(data.broadcast_title)}</span>
-            </div>
-          </div>
+            {replyText && (
+              <div className={styles.botReplyBubble}>
+                <div className={styles.botReplyIcon}>🤖</div>
+                <div className={styles.botReplyText} dangerouslySetInnerHTML={{ __html: replyText }} />
+              </div>
+            )}
+            {askForResponse && (
+              <div className={styles.botReplyBubble}>
+                <div className={styles.botReplyIcon}>🤖</div>
+                <div className={styles.botReplyText}>Расскажите подробнее — мы обязательно прочитаем ваш ответ:</div>
+              </div>
+            )}
+            {textResponse && (
+              <div className={styles.userTextResponse}>
+                <div className={styles.userTextResponseIcon}>✍️</div>
+                <div className={styles.userTextResponseBody}>
+                  <span className={styles.userTextResponseLabel}>Ответ пользователя:</span>
+                  <span className={styles.userTextResponseText}>{textResponse}</span>
+                </div>
+              </div>
+            )}
+          </>
         )
       }
 
-      case 'broadcast_poll_answer': {
-        const rawIds = data.option_ids
-        const optionIds: number[] = Array.isArray(rawIds) ? rawIds : (typeof rawIds === 'string' ? JSON.parse(rawIds) : [])
-        const rawOpts = data.poll_options
-        const pollOptions: string[] = Array.isArray(rawOpts) ? rawOpts : (typeof rawOpts === 'string' ? JSON.parse(rawOpts) : [])
-        const selectedAnswers = optionIds.map((idx: number) => pollOptions[idx] || `#${idx + 1}`).join(', ')
-        return (
-          <div className={styles.broadcastResponse}>
-            <div className={styles.broadcastResponseHeader}>
-              <span className={styles.broadcastResponseLabel}>Ответил на опрос</span>
-            </div>
-            {Boolean(data.poll_question) && (
-              <div className={styles.broadcastResponseQuestion}>
-                {String(data.poll_question)}
-              </div>
-            )}
-            <div className={styles.broadcastResponseAnswer}>
-              {selectedAnswers}
-            </div>
-            <div className={styles.broadcastResponseMeta}>
-              <span>{String(data.broadcast_title)}</span>
-            </div>
-          </div>
-        )
-      }
+      // broadcast_poll_answer — hidden, shown inline in broadcast_sent card
+      case 'broadcast_poll_answer':
+        return null
 
       default:
         return <div>Неизвестное событие</div>
@@ -389,6 +491,11 @@ export function ActivityItem({
       paid: 'Купил',
     }
     return labels[status] || status
+  }
+
+  // Poll answers are shown inline in broadcast_sent card — skip separate event
+  if (event.event_type === 'broadcast_poll_answer') {
+    return null
   }
 
   // Chat messages use a different layout (full-width, aligned bubbles)

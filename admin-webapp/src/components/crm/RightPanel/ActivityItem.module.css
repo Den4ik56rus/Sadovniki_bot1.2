@@ -455,116 +455,350 @@
 }
 
 /* ═══════════════════════════════════════════════════════════
-   BROADCAST - Broadcast Sent to Client
+   BROADCAST - Telegram-style Message Card
    ═══════════════════════════════════════════════════════════ */
 
 .broadcast {
   display: flex;
   flex-direction: column;
-  gap: var(--space-2);
-  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
-  color: white;
-  padding: var(--space-3) var(--space-4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
   border-radius: var(--radius-lg);
   border-bottom-left-radius: var(--radius-sm);
-  box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25);
-  max-width: 85%;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  max-width: 88%;
+  overflow: hidden;
 }
 
 .broadcastHeader {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  color: white;
 }
 
 .broadcastLabel {
   font-size: 11px;
   font-weight: var(--font-semibold);
-  padding: 3px 8px;
-  background: rgba(255, 255, 255, 0.25);
-  color: white;
-  border-radius: var(--radius-full);
+  white-space: nowrap;
 }
 
-.broadcastTitle {
-  font-size: var(--text-sm);
-  color: white;
+.broadcastName {
+  font-size: 11px;
   font-weight: var(--font-medium);
-  line-height: 1.4;
-}
-
-.broadcastPreview {
-  font-size: var(--text-xs);
-  color: rgba(255, 255, 255, 0.8);
-  line-height: 1.5;
+  opacity: 0.9;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.broadcastMeta {
+/* Photo */
+.broadcastPhoto {
+  width: 100%;
+  max-height: 240px;
+  overflow: hidden;
+  background: var(--bg-input);
+}
+
+.broadcastImg {
+  width: 100%;
+  height: auto;
+  max-height: 240px;
+  object-fit: cover;
+  display: block;
+}
+
+/* Message text (HTML) */
+.broadcastText {
+  padding: var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.broadcastText b,
+.broadcastText strong {
+  font-weight: var(--font-semibold);
+}
+
+.broadcastText i,
+.broadcastText em {
+  font-style: italic;
+}
+
+.broadcastText a {
+  color: var(--accent-blue);
+  text-decoration: underline;
+}
+
+/* Inline buttons (Telegram style) */
+.broadcastButtons {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 0 var(--space-3) var(--space-3);
+}
+
+.broadcastButtonRow {
+  display: flex;
+  gap: 4px;
+}
+
+.broadcastButton {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 7px 8px;
+  font-size: var(--text-xs);
+  font-weight: var(--font-medium);
+  color: var(--accent-blue);
+  background: rgba(14, 165, 233, 0.08);
+  border: 1px solid rgba(14, 165, 233, 0.2);
+  border-radius: var(--radius-sm);
+  text-align: center;
+  cursor: default;
+}
+
+.broadcastButtonUrl {
+  color: #8B5CF6;
+  background: rgba(139, 92, 246, 0.08);
+  border-color: rgba(139, 92, 246, 0.2);
+}
+
+/* Poll (Telegram style) */
+.broadcastPoll {
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--border-default);
+}
+
+.broadcastPollQuestion {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  color: var(--text-primary);
+  margin-bottom: var(--space-2);
+}
+
+.broadcastPollOptions {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.broadcastPollOption {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 7px 10px;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  min-height: 32px;
+}
+
+.broadcastPollSelected {
+  color: var(--text-primary);
+  font-weight: var(--font-medium);
+}
+
+/* Progress bar background */
+.broadcastPollBar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  background: rgba(14, 165, 233, 0.15);
+  border-radius: var(--radius-sm);
+  transition: width 0.3s ease;
+}
+
+.broadcastPollSelected .broadcastPollBar {
+  background: rgba(14, 165, 233, 0.25);
+}
+
+.broadcastPollOptionContent {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.broadcastPollCheck {
+  color: #0EA5E9;
+  font-weight: var(--font-bold);
+  font-size: 13px;
+}
+
+.broadcastPollOptionText {
+  line-height: 1.3;
+}
+
+.broadcastPollPct {
+  position: relative;
+  z-index: 1;
+  font-size: 11px;
+  font-weight: var(--font-semibold);
+  color: var(--text-muted);
+  flex-shrink: 0;
+  margin-left: var(--space-2);
+}
+
+.broadcastPollSelected .broadcastPollPct {
+  color: #0EA5E9;
+}
+
+/* Clicked button highlight */
+.broadcastButtonClicked {
+  color: white;
+  background: #0EA5E9;
+  border-color: #0EA5E9;
+}
+
+/* Fallback indicators (old API without full data) */
+.broadcastFallbackMeta {
   display: flex;
   gap: var(--space-3);
+  padding: var(--space-2) var(--space-3);
   font-size: 11px;
-  color: rgba(255, 255, 255, 0.75);
-  padding-top: var(--space-1);
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-muted);
+  border-top: 1px solid var(--border-default);
 }
 
 /* ═══════════════════════════════════════════════════════════
-   BROADCAST RESPONSE - Button Click & Poll Answer
+   BROADCAST RESPONSE - Button Click & Poll Answer (compact)
    ═══════════════════════════════════════════════════════════ */
 
 .broadcastResponse {
   display: flex;
-  flex-direction: column;
-  gap: var(--space-1);
+  align-items: flex-start;
+  gap: var(--space-2);
   background: linear-gradient(135deg, #10B981 0%, #059669 100%);
   color: white;
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-lg);
   border-bottom-right-radius: var(--radius-sm);
-  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.25);
+  box-shadow: 0 1px 4px rgba(16, 185, 129, 0.2);
   max-width: 85%;
   margin-left: auto;
 }
 
-.broadcastResponseHeader {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
+.broadcastResponseIcon {
+  font-size: 16px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 1px;
 }
 
-.broadcastResponseLabel {
-  font-size: 11px;
+.broadcastResponseBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.broadcastResponseAction {
+  font-size: 10px;
   font-weight: var(--font-semibold);
-  padding: 3px 8px;
-  background: rgba(255, 255, 255, 0.25);
-  color: white;
-  border-radius: var(--radius-full);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  opacity: 0.8;
+}
+
+.broadcastResponseValue {
+  font-size: var(--text-sm);
+  font-weight: var(--font-semibold);
+  line-height: 1.3;
 }
 
 .broadcastResponseQuestion {
   font-size: var(--text-xs);
-  color: rgba(255, 255, 255, 0.75);
-  line-height: 1.4;
+  opacity: 0.75;
+  line-height: 1.3;
 }
 
-.broadcastResponseAnswer {
-  font-size: var(--text-sm);
-  font-weight: var(--font-semibold);
-  color: white;
-  line-height: 1.4;
+.broadcastResponseContext {
+  font-size: 10px;
+  opacity: 0.6;
+  margin-top: 2px;
 }
 
-.broadcastResponseMeta {
+.broadcastResponseUrl {
+  background: linear-gradient(135deg, #3B82F6 0%, #2563EB 100%);
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.2);
+}
+
+/* Bot reply bubble (shown after button click) */
+.botReplyBubble {
   display: flex;
-  gap: var(--space-3);
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.65);
-  padding-top: var(--space-1);
-  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  gap: 8px;
+  align-items: flex-start;
+  max-width: 85%;
+  padding: 8px 12px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: 12px 12px 12px 4px;
+  margin-top: 4px;
+}
+
+.botReplyIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1.3;
+}
+
+.botReplyText {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+  line-height: 1.4;
+}
+
+/* User text response (answer to ask_for_response) */
+.userTextResponse {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  max-width: 85%;
+  align-self: flex-end;
+  margin-left: auto;
+  padding: 8px 12px;
+  background: linear-gradient(135deg, #E0F2FE 0%, #DBEAFE 100%);
+  border-radius: 12px 12px 4px 12px;
+  margin-top: 4px;
+}
+
+.userTextResponseIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+  line-height: 1.3;
+}
+
+.userTextResponseBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.userTextResponseLabel {
+  font-size: 10px;
+  font-weight: 600;
+  color: #1E40AF;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.userTextResponseText {
+  font-size: var(--text-sm);
+  color: #1E3A5F;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 
 /* ═══════════════════════════════════════════════════════════

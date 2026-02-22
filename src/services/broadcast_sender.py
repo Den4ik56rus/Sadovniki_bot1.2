@@ -23,6 +23,11 @@ from src.services.db.broadcast_repo import (
     get_broadcast_recipients,
     save_recipient_result,
     save_recipient_poll_id,
+    # Run support
+    get_run,
+    update_run_status,
+    increment_run_counters,
+    get_run_recipients,
 )
 
 logger = logging.getLogger(__name__)
@@ -65,29 +70,52 @@ def sanitize_html_for_telegram(html: str) -> str:
     return text.strip()
 
 
+def _normalize_buttons(buttons_json) -> list:
+    """
+    Нормализовать кнопки: распарсить JSON, сгенерировать option_key для кнопок без него.
+    Возвращает список dict-ов (мутирует на месте).
+    """
+    if not buttons_json:
+        return []
+
+    if isinstance(buttons_json, str):
+        buttons_json = json.loads(buttons_json)
+
+    if not buttons_json:
+        return []
+
+    auto_idx = 0
+    for btn in buttons_json:
+        if not btn.get('option_key'):
+            btn['option_key'] = f"auto_{auto_idx}"
+            auto_idx += 1
+
+    return buttons_json
+
+
 def build_inline_keyboard(
     broadcast_id: int,
-    buttons_json,
+    buttons: list,
+    telegram_user_id: int = 0,
 ) -> Optional[InlineKeyboardMarkup]:
     """
-    Построить InlineKeyboardMarkup из JSONB массива кнопок.
+    Построить InlineKeyboardMarkup из нормализованного массива кнопок.
+    Кнопки должны быть предварительно обработаны через _normalize_buttons().
 
-    Формат buttons_json: [{"row":0, "text":"Да!", "type":"quick_reply", "option_key":"opt_0"},
-                           {"row":1, "text":"Сайт", "type":"url", "url":"https://..."}]
+    URL-кнопки идут через redirect-трекер /api/r/{broadcast_id}/{option_key}?u={tg_id}
+    для записи кликов. Если api_base_url не настроен — прямая ссылка без трекинга.
     """
-    if not buttons_json:
+    if not buttons:
         return None
 
-    import json as _json
-    if isinstance(buttons_json, str):
-        buttons_json = _json.loads(buttons_json)
-
-    if not buttons_json:
-        return None
+    from src.config import settings
+    # Telegram требует https:// для URL в inline-кнопках
+    raw_base = settings.api_base_url.rstrip('/') if settings.api_base_url else ''
+    base_url = raw_base if raw_base.startswith('https://') else ''
 
     # Группируем по row
     rows_dict: dict[int, list] = {}
-    for btn in buttons_json:
+    for btn in buttons:
         row_idx = btn.get('row', 0)
         rows_dict.setdefault(row_idx, []).append(btn)
 
@@ -95,11 +123,22 @@ def build_inline_keyboard(
     for row_idx in sorted(rows_dict.keys()):
         row_buttons = []
         for btn in rows_dict[row_idx]:
-            if btn['type'] == 'url':
-                row_buttons.append(InlineKeyboardButton(
-                    text=btn['text'],
-                    url=btn['url'],
-                ))
+            if btn['type'] == 'url' and btn.get('url'):
+                if base_url:
+                    # Через redirect-трекер: стрелочка ↗ + запись клика
+                    redirect_url = f"{base_url}/api/r/{broadcast_id}/{btn['option_key']}"
+                    if telegram_user_id:
+                        redirect_url += f"?u={telegram_user_id}"
+                    row_buttons.append(InlineKeyboardButton(
+                        text=btn['text'],
+                        url=redirect_url,
+                    ))
+                else:
+                    # Прямая ссылка без трекинга (api_base_url не настроен)
+                    row_buttons.append(InlineKeyboardButton(
+                        text=btn['text'],
+                        url=btn['url'],
+                    ))
             elif btn['type'] == 'quick_reply':
                 callback_data = f"bcast:{broadcast_id}:{btn['option_key']}"
                 row_buttons.append(InlineKeyboardButton(
@@ -115,12 +154,14 @@ def build_inline_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 
-async def execute_broadcast(broadcast_id: int) -> None:
+async def execute_broadcast(broadcast_id: int, run_id: Optional[int] = None) -> None:
     """
     Отправить рассылку всем получателям.
 
     Вызывается как asyncio.create_task() из API handler или scheduler.
     Отправляет текст/фото/опрос, обновляет счётчики, шлёт SSE прогресс.
+
+    Если run_id указан — работаем с recipients конкретного запуска и обновляем счётчики run.
     """
     broadcast = await get_broadcast(broadcast_id)
     if not broadcast:
@@ -129,11 +170,20 @@ async def execute_broadcast(broadcast_id: int) -> None:
 
     now = datetime.now(timezone.utc)
     await update_broadcast_status(broadcast_id, 'sending', started_at=now)
+    if run_id:
+        await update_run_status(run_id, 'sending', started_at=now)
 
-    recipients = await get_broadcast_recipients(broadcast_id, status_filter='pending')
+    # Получаем получателей: из конкретного run или всех
+    if run_id:
+        recipients = await get_run_recipients(run_id, status_filter='pending')
+    else:
+        recipients = await get_broadcast_recipients(broadcast_id, status_filter='pending')
+
     if not recipients:
-        logger.warning(f"Broadcast {broadcast_id}: no pending recipients")
+        logger.warning(f"Broadcast {broadcast_id} (run={run_id}): no pending recipients")
         await update_broadcast_status(broadcast_id, 'completed', completed_at=now)
+        if run_id:
+            await update_run_status(run_id, 'completed', completed_at=now)
         return
 
     from src.bot import get_bot  # lazy import to avoid circular dependency
@@ -145,19 +195,42 @@ async def execute_broadcast(broadcast_id: int) -> None:
     # Если photo_path — только имя файла, строим полный путь
     photo_path = broadcast['photo_path']
     if photo_path and not os.path.isabs(photo_path):
+        # Убираем возможный префикс data/broadcast_photos/ чтобы не дублировать
+        photo_path = photo_path.removeprefix('data/broadcast_photos/')
         base_dir = os.path.join(
             os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
             "data", "broadcast_photos"
         )
         photo_path = os.path.join(base_dir, photo_path)
 
+    # Проверяем существование файла фото, иначе отправляем без фото
+    if photo_path and not os.path.isfile(photo_path):
+        logger.warning(f"Broadcast {broadcast_id}: photo file not found: {photo_path}, sending without photo")
+        photo_path = None
+
     # JSONB поля могут вернуться как строки из asyncpg
     poll_options = broadcast['poll_options']
     if isinstance(poll_options, str):
         poll_options = json.loads(poll_options)
 
-    # Построить inline keyboard из кнопок
-    reply_markup = build_inline_keyboard(broadcast_id, broadcast.get('inline_buttons'))
+    # Нормализуем кнопки (генерируем option_key если отсутствует) и сохраняем в БД
+    inline_buttons = _normalize_buttons(broadcast.get('inline_buttons'))
+    if inline_buttons:
+        from src.services.db.pool import get_pool
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE broadcasts SET inline_buttons = $1::jsonb WHERE id = $2",
+                json.dumps(inline_buttons), broadcast_id,
+            )
+
+    # Есть ли URL-кнопки (нужен персональный reply_markup для каждого получателя)
+    has_url_buttons = any(b.get('type') == 'url' for b in inline_buttons)
+
+    # Если нет URL-кнопок — строим reply_markup один раз
+    shared_reply_markup = None
+    if not has_url_buttons:
+        shared_reply_markup = build_inline_keyboard(broadcast_id, inline_buttons)
 
     batch_sent = 0
     batch_failed = 0
@@ -169,10 +242,17 @@ async def execute_broadcast(broadcast_id: int) -> None:
         current = await get_broadcast(broadcast_id)
         if not current or current['status'] == 'cancelled':
             logger.info(f"Broadcast {broadcast_id} cancelled, stopping")
+            if run_id:
+                await update_run_status(run_id, 'cancelled')
             break
 
         tg_id = recipient['telegram_user_id']
         user_id = recipient['user_id']
+
+        # Персональный reply_markup для URL-кнопок (с telegram_user_id для трекинга)
+        reply_markup = shared_reply_markup
+        if has_url_buttons:
+            reply_markup = build_inline_keyboard(broadcast_id, inline_buttons, telegram_user_id=tg_id)
 
         try:
             # Отправляем контент
@@ -206,25 +286,25 @@ async def execute_broadcast(broadcast_id: int) -> None:
                     chat_id=tg_id,
                     question=broadcast['poll_question'],
                     options=poll_options,
-                    is_anonymous=broadcast.get('poll_is_anonymous', True),
+                    is_anonymous=False,
                     allows_multiple_answers=broadcast.get('poll_allows_multiple', False),
                 )
                 # Сохраняем poll_id для маппинга PollAnswer → broadcast
                 if poll_result and poll_result.poll:
                     try:
                         await save_recipient_poll_id(
-                            broadcast_id, user_id, poll_result.poll.id,
+                            broadcast_id, user_id, poll_result.poll.id, run_id=run_id,
                         )
                     except Exception as poll_err:
                         logger.warning(f"Failed to save poll_id for user {user_id}: {poll_err}")
 
-            await save_recipient_result(broadcast_id, user_id, 'sent')
+            await save_recipient_result(broadcast_id, user_id, 'sent', run_id=run_id)
             batch_sent += 1
             total_sent += 1
 
         except Exception as e:
             error_msg = str(e)[:500]
-            await save_recipient_result(broadcast_id, user_id, 'failed', error_msg)
+            await save_recipient_result(broadcast_id, user_id, 'failed', error_msg, run_id=run_id)
             batch_failed += 1
             total_failed += 1
             logger.warning(f"Broadcast {broadcast_id}: failed to send to user {user_id}: {error_msg}")
@@ -232,6 +312,8 @@ async def execute_broadcast(broadcast_id: int) -> None:
         # Обновляем счётчики и SSE каждые N отправок
         if (batch_sent + batch_failed) >= SSE_UPDATE_INTERVAL:
             await increment_broadcast_counters(broadcast_id, batch_sent, batch_failed)
+            if run_id:
+                await increment_run_counters(run_id, batch_sent, batch_failed)
             await _broadcast_progress_sse(broadcast_id, total_sent, total_failed, len(recipients))
             batch_sent = 0
             batch_failed = 0
@@ -242,18 +324,25 @@ async def execute_broadcast(broadcast_id: int) -> None:
     # Финальное обновление оставшегося batch
     if batch_sent > 0 or batch_failed > 0:
         await increment_broadcast_counters(broadcast_id, batch_sent, batch_failed)
+        if run_id:
+            await increment_run_counters(run_id, batch_sent, batch_failed)
 
     # Завершаем рассылку
     completed_at = datetime.now(timezone.utc)
     current = await get_broadcast(broadcast_id)
     if current and current['status'] != 'cancelled':
         await update_broadcast_status(broadcast_id, 'completed', completed_at=completed_at)
+    if run_id:
+        run_data = await get_run(run_id)
+        if run_data and run_data['status'] != 'cancelled':
+            await update_run_status(run_id, 'completed', completed_at=completed_at)
 
     # Финальный SSE
     await sse_manager.broadcast(
         event_type='broadcast_completed',
         data={
             'broadcast_id': broadcast_id,
+            'run_id': run_id,
             'sent_count': total_sent,
             'failed_count': total_failed,
             'total_recipients': len(recipients),
@@ -263,9 +352,84 @@ async def execute_broadcast(broadcast_id: int) -> None:
     )
 
     logger.info(
-        f"Broadcast {broadcast_id} completed: "
+        f"Broadcast {broadcast_id} (run={run_id}) completed: "
         f"{total_sent} sent, {total_failed} failed out of {len(recipients)}"
     )
+
+
+async def send_to_single_user(broadcast_id: int, user_id: int, telegram_user_id: int) -> bool:
+    """
+    Отправить рассылку одному пользователю (для триггеров воронки).
+    Возвращает True если успешно.
+    """
+    broadcast = await get_broadcast(broadcast_id)
+    if not broadcast:
+        return False
+
+    from src.bot import get_bot
+    bot = get_bot()
+
+    message_text = sanitize_html_for_telegram(broadcast['message_text']) if broadcast['message_text'] else None
+
+    photo_path = broadcast['photo_path']
+    if photo_path and not os.path.isabs(photo_path):
+        photo_path = photo_path.removeprefix('data/broadcast_photos/')
+        base_dir = os.path.join(
+            os.path.dirname(os.path.dirname(os.path.dirname(__file__))),
+            "data", "broadcast_photos"
+        )
+        photo_path = os.path.join(base_dir, photo_path)
+
+    if photo_path and not os.path.isfile(photo_path):
+        logger.warning(f"Broadcast {broadcast_id}: photo not found: {photo_path}, sending without photo")
+        photo_path = None
+
+    poll_options = broadcast['poll_options']
+    if isinstance(poll_options, str):
+        poll_options = json.loads(poll_options)
+
+    inline_buttons = _normalize_buttons(broadcast.get('inline_buttons'))
+    reply_markup = build_inline_keyboard(broadcast_id, inline_buttons, telegram_user_id=telegram_user_id)
+
+    try:
+        if photo_path:
+            photo = FSInputFile(photo_path)
+            if message_text:
+                await bot.send_photo(
+                    chat_id=telegram_user_id,
+                    photo=photo,
+                    caption=message_text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=reply_markup,
+                )
+            else:
+                await bot.send_photo(
+                    chat_id=telegram_user_id,
+                    photo=photo,
+                    reply_markup=reply_markup,
+                )
+        elif message_text:
+            await bot.send_message(
+                chat_id=telegram_user_id,
+                text=message_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=reply_markup,
+            )
+
+        if broadcast['poll_question'] and poll_options:
+            await bot.send_poll(
+                chat_id=telegram_user_id,
+                question=broadcast['poll_question'],
+                options=poll_options,
+                is_anonymous=broadcast.get('poll_is_anonymous', True),
+                allows_multiple_answers=broadcast.get('poll_allows_multiple', False),
+            )
+
+        return True
+
+    except Exception as e:
+        logger.warning(f"Trigger send to user {telegram_user_id} failed: {e}")
+        return False
 
 
 async def _broadcast_progress_sse(

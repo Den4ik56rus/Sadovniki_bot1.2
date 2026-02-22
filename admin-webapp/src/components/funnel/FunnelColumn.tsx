@@ -5,6 +5,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import type { FunnelClient } from '@/types'
 import { useFunnelStore } from '@/store/funnelStore'
 import { FunnelClientCard } from './FunnelClientCard'
+import { StageTriggerEditor } from './StageTriggerEditor'
 import styles from './FunnelColumn.module.css'
 
 interface FunnelColumnProps {
@@ -41,6 +42,7 @@ export function FunnelColumn({
     isSettingsMode,
     currentFunnelId,
     stages,
+    triggers,
     updateStage,
     createStage,
     deleteStage,
@@ -301,12 +303,13 @@ export function FunnelColumn({
       {/* Content depends on mode */}
       {isSettingsMode ? (
         <div className={styles.triggersSection}>
-          <button className={styles.addTriggerBtn}>
-            Добавить триггер
-          </button>
-          <div className={styles.triggersList}>
-            {/* Future: triggers list */}
-          </div>
+          {currentFunnelId && (
+            <StageTriggerEditor
+              funnelId={currentFunnelId}
+              stageKey={stageKey}
+              triggers={triggers}
+            />
+          )}
         </div>
       ) : (
         <>

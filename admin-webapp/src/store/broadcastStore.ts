@@ -2,12 +2,13 @@
 
 import { create } from 'zustand'
 import { api } from '@/services/api'
-import type { Broadcast, BroadcastUser, BroadcastRecipient, CreateBroadcastDto, BroadcastTargetType, BroadcastStats, StatUser } from '@/types'
+import type { Broadcast, BroadcastUser, BroadcastRecipient, CreateBroadcastDto, BroadcastTargetType, BroadcastStats, StatUser, BroadcastRun } from '@/types'
 
 interface BroadcastStore {
   // State
   broadcasts: Broadcast[]
   currentBroadcast: Broadcast | null
+  selectedIds: Set<number>
   users: BroadcastUser[]
   recipients: BroadcastRecipient[]
   recipientPreviewCount: number | null
@@ -15,14 +16,24 @@ interface BroadcastStore {
   statUsers: StatUser[]
   isLoading: boolean
   isSending: boolean
+  isTestSending: boolean
   error: string | null
+
+  // Runs state
+  runs: BroadcastRun[]
+  currentRunId: number | null
 
   // Actions
   fetchBroadcasts: () => Promise<void>
   createBroadcast: (data: CreateBroadcastDto) => Promise<Broadcast | null>
   updateBroadcast: (id: number, data: Partial<CreateBroadcastDto>) => Promise<boolean>
   deleteBroadcast: (id: number) => Promise<boolean>
+  deleteBroadcastsBulk: () => Promise<boolean>
+  toggleSelect: (id: number) => void
+  selectAll: () => void
+  clearSelection: () => void
   sendBroadcast: (id: number) => Promise<boolean>
+  testSendBroadcast: (id: number) => Promise<boolean>
   scheduleBroadcast: (id: number, scheduledAt: string) => Promise<boolean>
   cancelBroadcast: (id: number) => Promise<boolean>
   fetchUsers: () => Promise<void>
@@ -40,11 +51,25 @@ interface BroadcastStore {
   fetchStats: (id: number) => Promise<void>
   fetchStatUsers: (id: number, type: 'button' | 'poll', key: string) => Promise<void>
   clearError: () => void
+
+  // Runs actions
+  fetchRuns: (broadcastId: number) => Promise<void>
+  resendBroadcast: (id: number, data: {
+    target_type: BroadcastTargetType
+    target_invite_link_id?: number | null
+    target_funnel_id?: string | null
+    target_stage_key?: string | null
+    target_user_ids?: number[] | null
+  }) => Promise<boolean>
+  setCurrentRun: (runId: number | null) => void
+  fetchRunStats: (broadcastId: number, runId: number) => Promise<void>
+  fetchRunStatUsers: (broadcastId: number, runId: number, type: 'button' | 'poll', key: string) => Promise<void>
 }
 
 export const useBroadcastStore = create<BroadcastStore>()((set, get) => ({
   broadcasts: [],
   currentBroadcast: null,
+  selectedIds: new Set<number>(),
   users: [],
   recipients: [],
   recipientPreviewCount: null,
@@ -52,7 +77,10 @@ export const useBroadcastStore = create<BroadcastStore>()((set, get) => ({
   statUsers: [],
   isLoading: false,
   isSending: false,
+  isTestSending: false,
   error: null,
+  runs: [],
+  currentRunId: null,
 
   fetchBroadcasts: async () => {
     set({ isLoading: true, error: null })
@@ -106,6 +134,41 @@ export const useBroadcastStore = create<BroadcastStore>()((set, get) => ({
     }
   },
 
+  deleteBroadcastsBulk: async () => {
+    const ids = Array.from(get().selectedIds)
+    if (ids.length === 0) return false
+    try {
+      await api.deleteBroadcastsBulk(ids)
+      const deletedSet = new Set(ids)
+      set((state) => ({
+        broadcasts: state.broadcasts.filter((b) => !deletedSet.has(b.id)),
+        currentBroadcast: state.currentBroadcast && deletedSet.has(state.currentBroadcast.id) ? null : state.currentBroadcast,
+        selectedIds: new Set<number>(),
+      }))
+      return true
+    } catch (e) {
+      set({ error: String(e) })
+      return false
+    }
+  },
+
+  toggleSelect: (id: number) => {
+    set((state) => {
+      const next = new Set(state.selectedIds)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return { selectedIds: next }
+    })
+  },
+
+  selectAll: () => {
+    set((state) => ({
+      selectedIds: new Set(state.broadcasts.filter((b) => b.status !== 'sending').map((b) => b.id)),
+    }))
+  },
+
+  clearSelection: () => set({ selectedIds: new Set<number>() }),
+
   sendBroadcast: async (id: number) => {
     set({ isSending: true })
     try {
@@ -116,6 +179,18 @@ export const useBroadcastStore = create<BroadcastStore>()((set, get) => ({
       return true
     } catch (e) {
       set({ error: String(e), isSending: false })
+      return false
+    }
+  },
+
+  testSendBroadcast: async (id: number) => {
+    set({ isTestSending: true })
+    try {
+      const result = await api.testSendBroadcast(id)
+      set({ isTestSending: false })
+      return result.success
+    } catch (e) {
+      set({ error: String(e), isTestSending: false })
       return false
     }
   },
@@ -183,7 +258,7 @@ export const useBroadcastStore = create<BroadcastStore>()((set, get) => ({
   },
 
   selectBroadcast: (broadcast: Broadcast | null) => {
-    set({ currentBroadcast: broadcast, recipients: [] })
+    set({ currentBroadcast: broadcast, recipients: [], runs: [], currentRunId: null })
   },
 
   refreshBroadcast: async (id: number) => {
@@ -217,4 +292,53 @@ export const useBroadcastStore = create<BroadcastStore>()((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  // ═══════════════════════════════════════════════════════════════════
+  // RUNS — повторные запуски
+  // ═══════════════════════════════════════════════════════════════════
+
+  fetchRuns: async (broadcastId: number) => {
+    try {
+      const data = await api.getBroadcastRuns(broadcastId)
+      set({ runs: data.runs })
+    } catch (e) {
+      set({ error: String(e) })
+    }
+  },
+
+  resendBroadcast: async (id, data) => {
+    set({ isSending: true })
+    try {
+      await api.resendBroadcast(id, data)
+      await get().refreshBroadcast(id)
+      await get().fetchRuns(id)
+      set({ isSending: false })
+      return true
+    } catch (e) {
+      set({ error: String(e), isSending: false })
+      return false
+    }
+  },
+
+  setCurrentRun: (runId) => {
+    set({ currentRunId: runId, stats: null, statUsers: [] })
+  },
+
+  fetchRunStats: async (broadcastId, runId) => {
+    try {
+      const stats = await api.getRunStats(broadcastId, runId)
+      set({ stats })
+    } catch (e) {
+      set({ error: String(e) })
+    }
+  },
+
+  fetchRunStatUsers: async (broadcastId, runId, type, key) => {
+    try {
+      const data = await api.getRunStatUsers(broadcastId, runId, type, key)
+      set({ statUsers: data.users })
+    } catch (e) {
+      set({ error: String(e) })
+    }
+  },
 }))

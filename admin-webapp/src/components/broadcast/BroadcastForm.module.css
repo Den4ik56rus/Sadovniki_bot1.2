@@ -72,6 +72,7 @@
 .draftButton,
 .sendButton,
 .scheduleButton,
+.testButton,
 .cancelButton {
   padding: 10px 20px;
   border: none;
@@ -91,6 +92,15 @@
 
 .draftButton:hover:not(:disabled) {
   background: var(--border-default);
+}
+
+.testButton {
+  background: #F59E0B;
+  color: white;
+}
+
+.testButton:hover:not(:disabled) {
+  background: #D97706;
 }
 
 .sendButton {
@@ -123,7 +133,8 @@
 
 .draftButton:disabled,
 .sendButton:disabled,
-.scheduleButton:disabled {
+.scheduleButton:disabled,
+.testButton:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }

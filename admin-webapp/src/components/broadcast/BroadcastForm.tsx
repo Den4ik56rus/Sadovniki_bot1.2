@@ -22,7 +22,9 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
     updateBroadcast,
     sendBroadcast,
     scheduleBroadcast,
+    testSendBroadcast,
     isSending,
+    isTestSending,
   } = useBroadcastStore()
 
   // Form fields
@@ -38,7 +40,6 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
   // Poll fields
   const [pollQuestion, setPollQuestion] = useState(broadcast?.poll_question || '')
   const [pollOptions, setPollOptions] = useState<string[]>(broadcast?.poll_options || ['', ''])
-  const [pollIsAnonymous, setPollIsAnonymous] = useState(broadcast?.poll_is_anonymous ?? false)
   const [pollAllowsMultiple, setPollAllowsMultiple] = useState(broadcast?.poll_allows_multiple ?? false)
 
   // Inline buttons
@@ -68,7 +69,6 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
       setTargetUserIds(broadcast.target_user_ids || [])
       setPollQuestion(broadcast.poll_question || '')
       setPollOptions(broadcast.poll_options || ['', ''])
-      setPollIsAnonymous(broadcast.poll_is_anonymous ?? false)
       setPollAllowsMultiple(broadcast.poll_allows_multiple ?? false)
       setInlineButtons(broadcast.inline_buttons || [])
       setScheduleEnabled(!!broadcast.scheduled_at)
@@ -83,7 +83,7 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
       photo_path: photoPath || null,
       poll_question: pollQuestion.trim() || null,
       poll_options: pollQuestion.trim() ? pollOptions.filter((o) => o.trim()) : null,
-      poll_is_anonymous: pollIsAnonymous,
+      poll_is_anonymous: false,
       poll_allows_multiple: pollAllowsMultiple,
       inline_buttons: inlineButtons.length > 0 ? inlineButtons.filter((b) => b.text.trim()) : null,
       target_type: targetType,
@@ -95,7 +95,7 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
     }
   }, [
     title, messageText, photoPath,
-    pollQuestion, pollOptions, pollIsAnonymous, pollAllowsMultiple,
+    pollQuestion, pollOptions, pollAllowsMultiple,
     inlineButtons,
     targetType, targetInviteLinkId, targetFunnelId, targetStageKey, targetUserIds,
     scheduleEnabled, scheduledAt,
@@ -153,6 +153,28 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
     onSaved()
   }
 
+  const handleTestSend = async () => {
+    if (!canSave) return
+    setSaving(true)
+    let id = broadcast?.id
+    const dto = buildDto()
+    if (id) {
+      await updateBroadcast(id, dto)
+    } else {
+      const created = await createBroadcast(dto)
+      id = created?.id
+    }
+    if (id) {
+      const success = await testSendBroadcast(id)
+      if (success) {
+        alert('Тестовое сообщение отправлено администраторам!')
+      } else {
+        alert('Ошибка при тестовой отправке')
+      }
+    }
+    setSaving(false)
+  }
+
   return (
     <div className={styles.form}>
       {/* Title */}
@@ -208,12 +230,10 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
         <PollEditor
           pollQuestion={pollQuestion}
           pollOptions={pollOptions}
-          pollIsAnonymous={pollIsAnonymous}
           pollAllowsMultiple={pollAllowsMultiple}
-          onChange={({ question, options, isAnonymous, allowsMultiple }) => {
+          onChange={({ question, options, allowsMultiple }) => {
             if (question !== undefined) setPollQuestion(question)
             if (options !== undefined) setPollOptions(options)
-            if (isAnonymous !== undefined) setPollIsAnonymous(isAnonymous)
             if (allowsMultiple !== undefined) setPollAllowsMultiple(allowsMultiple)
           }}
         />
@@ -252,6 +272,14 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
 
       {/* Actions */}
       <div className={styles.actions}>
+        <button
+          className={styles.testButton}
+          onClick={handleTestSend}
+          disabled={!canSave || saving || isSending || isTestSending}
+        >
+          {isTestSending ? 'Отправка...' : 'Проверить'}
+        </button>
+
         <button
           className={styles.draftButton}
           onClick={handleSaveDraft}

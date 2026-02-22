@@ -64,3 +64,22 @@ htmlcov/
 .mypy_cache/
 .dmypy.json
 dmypy.json
+
+# Node
+node_modules/
+
+# Playwright MCP screenshots
+.playwright-mcp/
+
+# Screenshots in root
+/*.png
+
+# DB dumps
+*.dump
+
+# Data directories (user-generated content)
+data/avatars/
+data/broadcast_photos/
+data/fonts/
+data/guides/
+data/documents/

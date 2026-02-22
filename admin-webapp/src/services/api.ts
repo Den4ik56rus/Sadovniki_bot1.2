@@ -105,6 +105,10 @@ import type {
   BroadcastTargetType,
   BroadcastStats,
   BroadcastStatsUsersResponse,
+  BroadcastRun,
+  BroadcastRunsResponse,
+  FunnelStageTrigger,
+  FunnelTriggersResponse,
 } from '@/types'
 
 const API_BASE = import.meta.env.VITE_API_URL || '/api/admin'
@@ -1377,8 +1381,21 @@ export const api = {
     })
   },
 
+  async deleteBroadcastsBulk(ids: number[]): Promise<{ success: boolean; deleted_count: number }> {
+    return fetchApi<{ success: boolean; deleted_count: number }>('/broadcasts/bulk-delete', {
+      method: 'POST',
+      body: JSON.stringify({ ids }),
+    })
+  },
+
   async sendBroadcast(id: number): Promise<{ success: boolean; total_recipients: number }> {
     return fetchApi<{ success: boolean; total_recipients: number }>(`/broadcasts/${id}/send`, {
+      method: 'POST',
+    })
+  },
+
+  async testSendBroadcast(id: number): Promise<{ success: boolean; admin_count: number }> {
+    return fetchApi<{ success: boolean; admin_count: number }>(`/broadcasts/${id}/test-send`, {
       method: 'POST',
     })
   },
@@ -1439,5 +1456,69 @@ export const api = {
   async getBroadcastStatUsers(id: number, type: 'button' | 'poll', key: string): Promise<BroadcastStatsUsersResponse> {
     const param = type === 'button' ? `key=${key}` : `option=${key}`
     return fetchApi<BroadcastStatsUsersResponse>(`/broadcasts/${id}/stats/users?type=${type}&${param}`)
+  },
+
+  // Broadcast Runs (повторные запуски)
+  async resendBroadcast(id: number, data: {
+    target_type: BroadcastTargetType
+    target_invite_link_id?: number | null
+    target_funnel_id?: string | null
+    target_stage_key?: string | null
+    target_user_ids?: number[] | null
+  }): Promise<{ success: boolean; run: BroadcastRun; total_recipients: number }> {
+    return fetchApi(`/broadcasts/${id}/resend`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  },
+
+  async getBroadcastRuns(id: number): Promise<BroadcastRunsResponse> {
+    return fetchApi<BroadcastRunsResponse>(`/broadcasts/${id}/runs`)
+  },
+
+  async getRunStats(broadcastId: number, runId: number): Promise<BroadcastStats> {
+    return fetchApi<BroadcastStats>(`/broadcasts/${broadcastId}/runs/${runId}/stats`)
+  },
+
+  async getRunStatUsers(broadcastId: number, runId: number, type: 'button' | 'poll', key: string): Promise<BroadcastStatsUsersResponse> {
+    const param = type === 'button' ? `key=${key}` : `option=${key}`
+    return fetchApi<BroadcastStatsUsersResponse>(`/broadcasts/${broadcastId}/runs/${runId}/stats/users?type=${type}&${param}`)
+  },
+
+  async getRunRecipients(broadcastId: number, runId: number, status?: string): Promise<BroadcastRecipientsResponse> {
+    const query = status ? `?status=${status}` : ''
+    return fetchApi<BroadcastRecipientsResponse>(`/broadcasts/${broadcastId}/runs/${runId}/recipients${query}`)
+  },
+
+  // Funnel Stage Triggers
+  async getFunnelTriggers(funnelId: string): Promise<FunnelTriggersResponse> {
+    return fetchApi<FunnelTriggersResponse>(`/funnels/${funnelId}/triggers`)
+  },
+
+  async getStageTriggers(funnelId: string, stageKey: string): Promise<FunnelTriggersResponse> {
+    return fetchApi<FunnelTriggersResponse>(`/funnels/${funnelId}/stages/${stageKey}/triggers`)
+  },
+
+  async createStageTrigger(funnelId: string, stageKey: string, broadcastId: number): Promise<{ trigger: FunnelStageTrigger }> {
+    return fetchApi(`/funnels/${funnelId}/stages/${stageKey}/triggers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ broadcast_id: broadcastId }),
+    })
+  },
+
+  async deleteStageTrigger(triggerId: number): Promise<{ success: boolean }> {
+    return fetchApi(`/funnels/triggers/${triggerId}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async toggleStageTrigger(triggerId: number, isActive: boolean): Promise<{ trigger: FunnelStageTrigger }> {
+    return fetchApi(`/funnels/triggers/${triggerId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: isActive }),
+    })
   },
 }

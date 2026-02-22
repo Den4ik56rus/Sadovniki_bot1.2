@@ -20,6 +20,7 @@
     - save_recipient_poll_id — привязать poll_id к получателю
     - resolve_broadcast_from_poll_id — найти broadcast по poll_id
     - record_button_click — записать клик по quick_reply кнопке
+    - save_button_text_response — сохранить текстовый ответ на кнопку
     - record_poll_answer — записать ответ на опрос
     - get_button_click_stats — статистика кликов по кнопкам
     - get_button_click_users — список юзеров, нажавших кнопку
@@ -189,14 +190,28 @@ async def update_broadcast(
 
 
 async def delete_broadcast(broadcast_id: int) -> bool:
-    """Удалить рассылку. Только для status in ('draft', 'scheduled')."""
+    """Удалить рассылку. Все статусы кроме 'sending'."""
     pool = get_pool()
     async with pool.acquire() as conn:
         result = await conn.execute(
-            "DELETE FROM broadcasts WHERE id = $1 AND status IN ('draft', 'scheduled')",
+            "DELETE FROM broadcasts WHERE id = $1 AND status != 'sending'",
             broadcast_id,
         )
     return result == "DELETE 1"
+
+
+async def delete_broadcasts_bulk(broadcast_ids: List[int]) -> int:
+    """Удалить несколько рассылок. Пропускает статус 'sending'. Возвращает количество удалённых."""
+    if not broadcast_ids:
+        return 0
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM broadcasts WHERE id = ANY($1) AND status != 'sending'",
+            broadcast_ids,
+        )
+    # result = "DELETE N"
+    return int(result.split()[-1])
 
 
 async def update_broadcast_status(
@@ -275,7 +290,7 @@ async def resolve_recipients(broadcast_id: int) -> int:
                 SELECT $1, u.id, u.telegram_user_id
                 FROM users u
                 WHERE u.telegram_user_id != $2
-                ON CONFLICT (broadcast_id, user_id) DO NOTHING
+                ON CONFLICT (broadcast_id, run_id, user_id) DO NOTHING
             """
             await conn.execute(query, broadcast_id, bot_tg_id or 0)
 
@@ -290,7 +305,7 @@ async def resolve_recipients(broadcast_id: int) -> int:
                 JOIN invite_link_users ilu ON ilu.user_id = u.id
                 WHERE ilu.invite_link_id = $2
                   AND u.telegram_user_id != $3
-                ON CONFLICT (broadcast_id, user_id) DO NOTHING
+                ON CONFLICT (broadcast_id, run_id, user_id) DO NOTHING
             """
             await conn.execute(query, broadcast_id, link_id, bot_tg_id or 0)
 
@@ -306,7 +321,7 @@ async def resolve_recipients(broadcast_id: int) -> int:
                 JOIN client_funnel_position cfp ON cfp.user_id = u.id
                 WHERE cfp.funnel_id = $2 AND cfp.stage_key = $3
                   AND u.telegram_user_id != $4
-                ON CONFLICT (broadcast_id, user_id) DO NOTHING
+                ON CONFLICT (broadcast_id, run_id, user_id) DO NOTHING
             """
             await conn.execute(query, broadcast_id, funnel_id, stage_key, bot_tg_id or 0)
 
@@ -323,7 +338,7 @@ async def resolve_recipients(broadcast_id: int) -> int:
                 FROM users u
                 WHERE u.id = ANY($2::int[])
                   AND u.telegram_user_id != $3
-                ON CONFLICT (broadcast_id, user_id) DO NOTHING
+                ON CONFLICT (broadcast_id, run_id, user_id) DO NOTHING
             """
             await conn.execute(query, broadcast_id, user_ids, bot_tg_id or 0)
 
@@ -346,19 +361,30 @@ async def save_recipient_result(
     user_id: int,
     status: str,
     error_message: Optional[str] = None,
+    run_id: Optional[int] = None,
 ) -> None:
     """Сохранить результат отправки для получателя."""
     pool = get_pool()
     now = datetime.now(timezone.utc) if status == 'sent' else None
     async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            UPDATE broadcast_recipients
-            SET status = $1, error_message = $2, sent_at = $3
-            WHERE broadcast_id = $4 AND user_id = $5
-            """,
-            status, error_message, now, broadcast_id, user_id,
-        )
+        if run_id:
+            await conn.execute(
+                """
+                UPDATE broadcast_recipients
+                SET status = $1, error_message = $2, sent_at = $3
+                WHERE broadcast_id = $4 AND user_id = $5 AND run_id = $6
+                """,
+                status, error_message, now, broadcast_id, user_id, run_id,
+            )
+        else:
+            await conn.execute(
+                """
+                UPDATE broadcast_recipients
+                SET status = $1, error_message = $2, sent_at = $3
+                WHERE broadcast_id = $4 AND user_id = $5 AND run_id IS NULL
+                """,
+                status, error_message, now, broadcast_id, user_id,
+            )
 
 
 async def get_broadcast_recipients(
@@ -490,18 +516,29 @@ async def save_recipient_poll_id(
     broadcast_id: int,
     user_id: int,
     telegram_poll_id: str,
+    run_id: Optional[int] = None,
 ) -> None:
     """Привязать telegram poll_id к получателю (для маппинга PollAnswer → broadcast)."""
     pool = get_pool()
     async with pool.acquire() as conn:
-        await conn.execute(
-            """
-            UPDATE broadcast_recipients
-            SET telegram_poll_id = $1
-            WHERE broadcast_id = $2 AND user_id = $3
-            """,
-            telegram_poll_id, broadcast_id, user_id,
-        )
+        if run_id:
+            await conn.execute(
+                """
+                UPDATE broadcast_recipients
+                SET telegram_poll_id = $1
+                WHERE broadcast_id = $2 AND user_id = $3 AND run_id = $4
+                """,
+                telegram_poll_id, broadcast_id, user_id, run_id,
+            )
+        else:
+            await conn.execute(
+                """
+                UPDATE broadcast_recipients
+                SET telegram_poll_id = $1
+                WHERE broadcast_id = $2 AND user_id = $3 AND run_id IS NULL
+                """,
+                telegram_poll_id, broadcast_id, user_id,
+            )
 
 
 async def resolve_broadcast_from_poll_id(telegram_poll_id: str) -> Optional[int]:
@@ -525,19 +562,41 @@ async def record_button_click(
     telegram_user_id: int,
     option_key: str,
     button_text: str,
+    run_id: Optional[int] = None,
 ) -> None:
-    """Записать клик по quick_reply кнопке. При повторном клике — обновить."""
+    """Записать клик по кнопке рассылки. При повторном клике по той же кнопке — обновить время."""
     pool = get_pool()
     async with pool.acquire() as conn:
         await conn.execute(
             """
             INSERT INTO broadcast_button_clicks
-                (broadcast_id, user_id, telegram_user_id, option_key, button_text, clicked_at)
-            VALUES ($1, $2, $3, $4, $5, NOW())
-            ON CONFLICT (broadcast_id, user_id) DO UPDATE
-            SET option_key = $4, button_text = $5, clicked_at = NOW()
+                (broadcast_id, run_id, user_id, telegram_user_id, option_key, button_text, clicked_at)
+            VALUES ($1, $2, $3, $4, $5, $6, NOW())
+            ON CONFLICT (broadcast_id, run_id, user_id, option_key) DO UPDATE
+            SET button_text = $6, clicked_at = NOW()
             """,
-            broadcast_id, user_id, telegram_user_id, option_key, button_text,
+            broadcast_id, run_id, user_id, telegram_user_id, option_key, button_text,
+        )
+
+
+async def save_button_text_response(
+    broadcast_id: int,
+    user_id: int,
+    option_key: str,
+    text_response: str,
+    run_id: Optional[int] = None,
+) -> None:
+    """Сохранить текстовый ответ пользователя на кнопку рассылки."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE broadcast_button_clicks
+            SET text_response = $1, response_at = NOW()
+            WHERE broadcast_id = $2 AND user_id = $3 AND option_key = $4
+              AND (run_id = $5 OR ($5::int IS NULL AND run_id IS NULL))
+            """,
+            text_response, broadcast_id, user_id, option_key, run_id,
         )
 
 
@@ -547,26 +606,33 @@ async def record_poll_answer(
     telegram_user_id: int,
     telegram_poll_id: str,
     option_ids: List[int],
+    run_id: Optional[int] = None,
 ) -> None:
     """Записать ответ на опрос. Пустые option_ids = отзыв голоса."""
     pool = get_pool()
     async with pool.acquire() as conn:
         if not option_ids:
             # Отзыв голоса — удаляем запись
-            await conn.execute(
-                "DELETE FROM broadcast_poll_answers WHERE broadcast_id = $1 AND telegram_user_id = $2",
-                broadcast_id, telegram_user_id,
-            )
+            if run_id:
+                await conn.execute(
+                    "DELETE FROM broadcast_poll_answers WHERE broadcast_id = $1 AND telegram_user_id = $2 AND run_id = $3",
+                    broadcast_id, telegram_user_id, run_id,
+                )
+            else:
+                await conn.execute(
+                    "DELETE FROM broadcast_poll_answers WHERE broadcast_id = $1 AND telegram_user_id = $2 AND run_id IS NULL",
+                    broadcast_id, telegram_user_id,
+                )
         else:
             await conn.execute(
                 """
                 INSERT INTO broadcast_poll_answers
-                    (broadcast_id, user_id, telegram_user_id, telegram_poll_id, option_ids, answered_at)
-                VALUES ($1, $2, $3, $4, $5::jsonb, NOW())
-                ON CONFLICT (broadcast_id, telegram_user_id) DO UPDATE
-                SET option_ids = $5::jsonb, answered_at = NOW()
+                    (broadcast_id, run_id, user_id, telegram_user_id, telegram_poll_id, option_ids, answered_at)
+                VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW())
+                ON CONFLICT (broadcast_id, run_id, telegram_user_id) DO UPDATE
+                SET option_ids = $6::jsonb, answered_at = NOW()
                 """,
-                broadcast_id, user_id, telegram_user_id, telegram_poll_id,
+                broadcast_id, run_id, user_id, telegram_user_id, telegram_poll_id,
                 json.dumps(option_ids),
             )
 
@@ -597,7 +663,8 @@ async def get_button_click_users(
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT bbc.user_id, u.first_name, u.last_name, u.username, bbc.clicked_at
+            SELECT bbc.user_id, u.first_name, u.last_name, u.username,
+                   bbc.clicked_at, bbc.text_response, bbc.response_at
             FROM broadcast_button_clicks bbc
             JOIN users u ON u.id = bbc.user_id
             WHERE bbc.broadcast_id = $1 AND bbc.option_key = $2
@@ -610,6 +677,8 @@ async def get_button_click_users(
         d = dict(row)
         if d.get('clicked_at'):
             d['clicked_at'] = d['clicked_at'].isoformat()
+        if d.get('response_at'):
+            d['response_at'] = d['response_at'].isoformat()
         result.append(d)
     return result
 
@@ -623,12 +692,18 @@ async def get_poll_answer_stats(broadcast_id: int) -> List[Dict[str, Any]]:
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
-            SELECT opt::int AS option_index, COUNT(*) AS answer_count
+            SELECT (opt#>>'{}')::int AS option_index, COUNT(*) AS answer_count
             FROM broadcast_poll_answers,
-                 jsonb_array_elements(option_ids) AS opt
+                 jsonb_array_elements(
+                     CASE jsonb_typeof(option_ids)
+                         WHEN 'array' THEN option_ids
+                         WHEN 'string' THEN (option_ids#>>'{}')::jsonb
+                         ELSE jsonb_build_array(option_ids)
+                     END
+                 ) AS opt
             WHERE broadcast_id = $1
-            GROUP BY opt::int
-            ORDER BY opt::int
+            GROUP BY (opt#>>'{}')::int
+            ORDER BY (opt#>>'{}')::int
             """,
             broadcast_id,
         )
@@ -659,6 +734,433 @@ async def get_poll_answer_users(
             d['answered_at'] = d['answered_at'].isoformat()
         result.append(d)
     return result
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# BROADCAST RUNS — повторные запуски рассылок
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def create_run(
+    broadcast_id: int,
+    target_type: str = 'all',
+    target_invite_link_id: Optional[int] = None,
+    target_funnel_id: Optional[str] = None,
+    target_stage_key: Optional[str] = None,
+    target_user_ids: Optional[List[int]] = None,
+) -> Dict[str, Any]:
+    """Создать новый запуск рассылки (run)."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        # Определяем номер запуска
+        max_run = await conn.fetchval(
+            "SELECT COALESCE(MAX(run_number), 0) FROM broadcast_runs WHERE broadcast_id = $1",
+            broadcast_id,
+        )
+        run_number = max_run + 1
+
+        row = await conn.fetchrow(
+            """
+            INSERT INTO broadcast_runs (
+                broadcast_id, run_number, target_type,
+                target_invite_link_id, target_funnel_id, target_stage_key, target_user_ids,
+                status
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, 'pending')
+            RETURNING *
+            """,
+            broadcast_id, run_number, target_type,
+            target_invite_link_id, target_funnel_id, target_stage_key,
+            json.dumps(target_user_ids) if target_user_ids else None,
+        )
+    return _row_to_dict(row)
+
+
+async def get_runs(broadcast_id: int) -> List[Dict[str, Any]]:
+    """Список запусков рассылки."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT * FROM broadcast_runs
+            WHERE broadcast_id = $1
+            ORDER BY run_number ASC
+            """,
+            broadcast_id,
+        )
+    return [_row_to_dict(row) for row in rows]
+
+
+async def get_run(run_id: int) -> Optional[Dict[str, Any]]:
+    """Получить запуск по ID."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM broadcast_runs WHERE id = $1",
+            run_id,
+        )
+    return _row_to_dict(row) if row else None
+
+
+async def update_run_status(
+    run_id: int,
+    status: str,
+    started_at: Optional[datetime] = None,
+    completed_at: Optional[datetime] = None,
+) -> None:
+    """Обновить статус запуска."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        if started_at and completed_at:
+            await conn.execute(
+                "UPDATE broadcast_runs SET status = $1, started_at = $2, completed_at = $3 WHERE id = $4",
+                status, started_at, completed_at, run_id,
+            )
+        elif started_at:
+            await conn.execute(
+                "UPDATE broadcast_runs SET status = $1, started_at = $2 WHERE id = $3",
+                status, started_at, run_id,
+            )
+        elif completed_at:
+            await conn.execute(
+                "UPDATE broadcast_runs SET status = $1, completed_at = $2 WHERE id = $3",
+                status, completed_at, run_id,
+            )
+        else:
+            await conn.execute(
+                "UPDATE broadcast_runs SET status = $1 WHERE id = $2",
+                status, run_id,
+            )
+
+
+async def increment_run_counters(
+    run_id: int,
+    sent_delta: int = 0,
+    failed_delta: int = 0,
+) -> None:
+    """Атомарно увеличить счётчики sent_count и failed_count запуска."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE broadcast_runs
+            SET sent_count = sent_count + $1, failed_count = failed_count + $2
+            WHERE id = $3
+            """,
+            sent_delta, failed_delta, run_id,
+        )
+
+
+async def resolve_recipients_for_run(run_id: int) -> int:
+    """
+    Собрать получателей для конкретного запуска по target_type из run.
+    Записывает в broadcast_recipients с привязкой к run_id.
+    """
+    pool = get_pool()
+    run = await get_run(run_id)
+    if not run:
+        return 0
+
+    broadcast_id = run['broadcast_id']
+    target_type = run['target_type']
+
+    # Исключаем бота
+    bot_tg_id = None
+    try:
+        from src.config import get_settings
+        bot_tg_id = int(get_settings().telegram_bot_token.split(":")[0])
+    except Exception:
+        pass
+
+    async with pool.acquire() as conn:
+        if target_type == 'all':
+            query = """
+                INSERT INTO broadcast_recipients (broadcast_id, run_id, user_id, telegram_user_id)
+                SELECT $1, $2, u.id, u.telegram_user_id
+                FROM users u
+                WHERE u.telegram_user_id != $3
+                ON CONFLICT (broadcast_id, run_id, user_id) DO NOTHING
+            """
+            await conn.execute(query, broadcast_id, run_id, bot_tg_id or 0)
+
+        elif target_type == 'invite_link':
+            link_id = run['target_invite_link_id']
+            if not link_id:
+                return 0
+            query = """
+                INSERT INTO broadcast_recipients (broadcast_id, run_id, user_id, telegram_user_id)
+                SELECT $1, $2, u.id, u.telegram_user_id
+                FROM users u
+                JOIN invite_link_users ilu ON ilu.user_id = u.id
+                WHERE ilu.invite_link_id = $3 AND u.telegram_user_id != $4
+                ON CONFLICT (broadcast_id, run_id, user_id) DO NOTHING
+            """
+            await conn.execute(query, broadcast_id, run_id, link_id, bot_tg_id or 0)
+
+        elif target_type == 'funnel_stage':
+            funnel_id = run['target_funnel_id']
+            stage_key = run['target_stage_key']
+            if not funnel_id or not stage_key:
+                return 0
+            query = """
+                INSERT INTO broadcast_recipients (broadcast_id, run_id, user_id, telegram_user_id)
+                SELECT $1, $2, u.id, u.telegram_user_id
+                FROM users u
+                JOIN client_funnel_position cfp ON cfp.user_id = u.id
+                WHERE cfp.funnel_id = $3 AND cfp.stage_key = $4 AND u.telegram_user_id != $5
+                ON CONFLICT (broadcast_id, run_id, user_id) DO NOTHING
+            """
+            await conn.execute(query, broadcast_id, run_id, funnel_id, stage_key, bot_tg_id or 0)
+
+        elif target_type == 'manual':
+            user_ids = run['target_user_ids']
+            if not user_ids:
+                return 0
+            if isinstance(user_ids, str):
+                user_ids = json.loads(user_ids)
+            query = """
+                INSERT INTO broadcast_recipients (broadcast_id, run_id, user_id, telegram_user_id)
+                SELECT $1, $2, u.id, u.telegram_user_id
+                FROM users u
+                WHERE u.id = ANY($3::int[]) AND u.telegram_user_id != $4
+                ON CONFLICT (broadcast_id, run_id, user_id) DO NOTHING
+            """
+            await conn.execute(query, broadcast_id, run_id, user_ids, bot_tg_id or 0)
+
+        # Обновляем total_recipients на run
+        count_row = await conn.fetchrow(
+            "SELECT COUNT(*) AS cnt FROM broadcast_recipients WHERE run_id = $1",
+            run_id,
+        )
+        total = count_row['cnt'] if count_row else 0
+        await conn.execute(
+            "UPDATE broadcast_runs SET total_recipients = $1 WHERE id = $2",
+            total, run_id,
+        )
+
+    return total
+
+
+async def get_run_recipients(
+    run_id: int,
+    status_filter: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Получатели конкретного запуска."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        if status_filter:
+            rows = await conn.fetch(
+                """
+                SELECT br.*, u.username, u.first_name, u.last_name
+                FROM broadcast_recipients br
+                JOIN users u ON u.id = br.user_id
+                WHERE br.run_id = $1 AND br.status = $2
+                ORDER BY br.id
+                """,
+                run_id, status_filter,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT br.*, u.username, u.first_name, u.last_name
+                FROM broadcast_recipients br
+                JOIN users u ON u.id = br.user_id
+                WHERE br.run_id = $1
+                ORDER BY br.id
+                """,
+                run_id,
+            )
+    return [dict(row) for row in rows]
+
+
+async def get_button_click_stats_by_run(
+    broadcast_id: int,
+    run_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Статистика кликов по кнопкам с опциональным фильтром по run_id."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        if run_id:
+            rows = await conn.fetch(
+                """
+                SELECT option_key, button_text, COUNT(*) AS click_count
+                FROM broadcast_button_clicks
+                WHERE broadcast_id = $1 AND run_id = $2
+                GROUP BY option_key, button_text
+                ORDER BY option_key
+                """,
+                broadcast_id, run_id,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT option_key, button_text, COUNT(*) AS click_count
+                FROM broadcast_button_clicks
+                WHERE broadcast_id = $1
+                GROUP BY option_key, button_text
+                ORDER BY option_key
+                """,
+                broadcast_id,
+            )
+    return [dict(row) for row in rows]
+
+
+async def get_poll_answer_stats_by_run(
+    broadcast_id: int,
+    run_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Статистика ответов на опрос с опциональным фильтром по run_id."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        if run_id:
+            rows = await conn.fetch(
+                """
+                SELECT (opt#>>'{}')::int AS option_index, COUNT(*) AS answer_count
+                FROM broadcast_poll_answers,
+                     jsonb_array_elements(
+                         CASE jsonb_typeof(option_ids)
+                             WHEN 'array' THEN option_ids
+                             WHEN 'string' THEN (option_ids#>>'{}')::jsonb
+                             ELSE jsonb_build_array(option_ids)
+                         END
+                     ) AS opt
+                WHERE broadcast_id = $1 AND run_id = $2
+                GROUP BY (opt#>>'{}')::int
+                ORDER BY (opt#>>'{}')::int
+                """,
+                broadcast_id, run_id,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT (opt#>>'{}')::int AS option_index, COUNT(*) AS answer_count
+                FROM broadcast_poll_answers,
+                     jsonb_array_elements(
+                         CASE jsonb_typeof(option_ids)
+                             WHEN 'array' THEN option_ids
+                             WHEN 'string' THEN (option_ids#>>'{}')::jsonb
+                             ELSE jsonb_build_array(option_ids)
+                         END
+                     ) AS opt
+                WHERE broadcast_id = $1
+                GROUP BY (opt#>>'{}')::int
+                ORDER BY (opt#>>'{}')::int
+                """,
+                broadcast_id,
+            )
+    return [dict(row) for row in rows]
+
+
+async def get_button_click_users_by_run(
+    broadcast_id: int,
+    option_key: str,
+    run_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Список пользователей, нажавших кнопку, с опциональным фильтром по run."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        if run_id:
+            rows = await conn.fetch(
+                """
+                SELECT bbc.user_id, u.first_name, u.last_name, u.username,
+                       bbc.clicked_at, bbc.text_response, bbc.response_at
+                FROM broadcast_button_clicks bbc
+                JOIN users u ON u.id = bbc.user_id
+                WHERE bbc.broadcast_id = $1 AND bbc.option_key = $2 AND bbc.run_id = $3
+                ORDER BY bbc.clicked_at DESC
+                """,
+                broadcast_id, option_key, run_id,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT bbc.user_id, u.first_name, u.last_name, u.username,
+                       bbc.clicked_at, bbc.text_response, bbc.response_at
+                FROM broadcast_button_clicks bbc
+                JOIN users u ON u.id = bbc.user_id
+                WHERE bbc.broadcast_id = $1 AND bbc.option_key = $2
+                ORDER BY bbc.clicked_at DESC
+                """,
+                broadcast_id, option_key,
+            )
+    result = []
+    for row in rows:
+        d = dict(row)
+        if d.get('clicked_at'):
+            d['clicked_at'] = d['clicked_at'].isoformat()
+        if d.get('response_at'):
+            d['response_at'] = d['response_at'].isoformat()
+        result.append(d)
+    return result
+
+
+async def get_poll_answer_users_by_run(
+    broadcast_id: int,
+    option_index: int,
+    run_id: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    """Список пользователей, выбравших вариант опроса, с опциональным фильтром по run."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        if run_id:
+            rows = await conn.fetch(
+                """
+                SELECT bpa.user_id, u.first_name, u.last_name, u.username, bpa.answered_at
+                FROM broadcast_poll_answers bpa
+                JOIN users u ON u.id = bpa.user_id
+                WHERE bpa.broadcast_id = $1 AND bpa.option_ids @> $2::jsonb AND bpa.run_id = $3
+                ORDER BY bpa.answered_at DESC
+                """,
+                broadcast_id, json.dumps([option_index]), run_id,
+            )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT bpa.user_id, u.first_name, u.last_name, u.username, bpa.answered_at
+                FROM broadcast_poll_answers bpa
+                JOIN users u ON u.id = bpa.user_id
+                WHERE bpa.broadcast_id = $1 AND bpa.option_ids @> $2::jsonb
+                ORDER BY bpa.answered_at DESC
+                """,
+                broadcast_id, json.dumps([option_index]),
+            )
+    result = []
+    for row in rows:
+        d = dict(row)
+        if d.get('answered_at'):
+            d['answered_at'] = d['answered_at'].isoformat()
+        result.append(d)
+    return result
+
+
+async def resolve_run_id_from_recipient(broadcast_id: int, user_id: int) -> Optional[int]:
+    """Найти run_id по получателю (для маппинга button_click/poll_answer)."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT run_id FROM broadcast_recipients
+            WHERE broadcast_id = $1 AND user_id = $2
+            ORDER BY run_id DESC
+            LIMIT 1
+            """,
+            broadcast_id, user_id,
+        )
+    return row['run_id'] if row else None
+
+
+async def resolve_run_id_from_poll(telegram_poll_id: str) -> Optional[int]:
+    """Найти run_id по telegram poll_id."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT run_id FROM broadcast_recipients
+            WHERE telegram_poll_id = $1
+            LIMIT 1
+            """,
+            telegram_poll_id,
+        )
+    return row['run_id'] if row else None
 
 
 def _row_to_dict(row) -> Dict[str, Any]:

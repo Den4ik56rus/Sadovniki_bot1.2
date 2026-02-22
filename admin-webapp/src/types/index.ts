@@ -485,7 +485,16 @@ export interface FunnelClient {
   total_tokens: number
   total_cost_usd: number
   last_consultation_at: string | null
+  token_balance: number
+  subscription_plan_name: string | null
+  subscription_status: string | null
+  subscription_expires_at: string | null
 }
+
+export type FunnelSortOption =
+  | 'last_activity_desc' | 'last_activity_asc'
+  | 'entered_desc' | 'entered_asc'
+  | 'cost_desc' | 'cost_asc'
 
 export interface FunnelClientsResponse {
   clients: Record<string, FunnelClient[]>
@@ -1178,6 +1187,8 @@ export interface BroadcastButton {
   type: 'url' | 'quick_reply'
   url?: string
   option_key?: string
+  reply_text?: string
+  ask_for_response?: boolean
 }
 
 export interface Broadcast {
@@ -1284,8 +1295,49 @@ export interface StatUser {
   username: string | null
   clicked_at?: string
   answered_at?: string
+  text_response?: string | null
+  response_at?: string | null
 }
 
 export interface BroadcastStatsUsersResponse {
   users: StatUser[]
+}
+
+// Broadcast Runs (повторные запуски)
+export interface BroadcastRun {
+  id: number
+  broadcast_id: number
+  run_number: number
+  target_type: BroadcastTargetType
+  target_invite_link_id: number | null
+  target_funnel_id: string | null
+  target_stage_key: string | null
+  target_user_ids: number[] | null
+  status: string
+  total_recipients: number
+  sent_count: number
+  failed_count: number
+  started_at: string | null
+  completed_at: string | null
+  created_at: string
+}
+
+export interface BroadcastRunsResponse {
+  runs: BroadcastRun[]
+}
+
+// Funnel Stage Triggers
+export interface FunnelStageTrigger {
+  id: number
+  funnel_id: string
+  stage_key: string
+  broadcast_id: number
+  broadcast_title: string
+  broadcast_status: string
+  is_active: boolean
+  created_at: string
+}
+
+export interface FunnelTriggersResponse {
+  triggers: FunnelStageTrigger[]
 }

@@ -213,3 +213,64 @@
   border-color: var(--accent-primary);
   color: var(--accent-primary);
 }
+
+/* Reply text section for quick_reply buttons */
+.replySection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.replyToggle {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--accent-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: background 0.15s;
+  align-self: flex-start;
+}
+
+.replyToggle:hover {
+  background: var(--bg-secondary);
+}
+
+.replyEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.replyEditor :global(.tiptap) {
+  min-height: 80px !important;
+  max-height: 200px !important;
+  font-size: 13px;
+}
+
+.replyHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.askResponseLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+.askResponseLabel input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-primary);
+}

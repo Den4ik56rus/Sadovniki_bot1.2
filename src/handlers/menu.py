@@ -1076,12 +1076,22 @@ async def handle_share_referral(callback: CallbackQuery) -> None:
 @router.message(Command("support"))
 async def cmd_support(message: Message) -> None:
     """Команда /support — контакт поддержки."""
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+    from urllib.parse import quote
+
     user = message.from_user
     user_id = user.id if user else "неизвестен"
+
+    prefilled = f"Здравствуйте! Хотел бы обратиться в поддержку. Мой Telegram ID: {user_id}"
+    url = f"https://t.me/orenqueen56?text={quote(prefilled)}"
+
     text = (
         f"💬 <b>Обращение в поддержку</b>\n\n"
-        f"Ваш ID: <code>{user_id}</code>\n\n"
-        f"Перешлите это сообщение в поддержку:\n"
-        f"👉 <a href=\"https://t.me/orenqueen56\">@orenqueen56</a>"
+        f"Ваш Telegram ID: <code>{user_id}</code>\n\n"
+        f"Нажмите кнопку ниже — откроется чат с поддержкой "
+        f"с уже заполненным сообщением:"
     )
-    await message.answer(text, parse_mode="HTML")
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✉️ Написать в поддержку", url=url)]
+    ])
+    await message.answer(text, parse_mode="HTML", reply_markup=keyboard)

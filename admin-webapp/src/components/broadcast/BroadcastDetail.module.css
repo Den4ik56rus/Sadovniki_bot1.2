@@ -478,3 +478,83 @@
 .deleteBtn:hover {
   background: #FEE2E2;
 }
+
+/* Resend button */
+.resendBtn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  background: #EEF2FF;
+  color: #4338CA;
+  border: 1px solid #C7D2FE;
+}
+
+.resendBtn:hover {
+  background: #C7D2FE;
+}
+
+/* Runs section */
+.runsSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.runsTabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.runTab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 20px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.runTab:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.runTabActive {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+.runTabActive:hover {
+  color: white;
+  opacity: 0.9;
+}
+
+.runTabCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(0, 0, 0, 0.1);
+}
+
+.runTabActive .runTabCount {
+  background: rgba(255, 255, 255, 0.25);
+}

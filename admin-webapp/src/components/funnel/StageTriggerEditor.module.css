@@ -1,0 +1,220 @@
+/* Stage Trigger Editor */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Trigger card */
+.triggerCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  transition: all 0.15s;
+}
+
+.triggerCardDisabled {
+  opacity: 0.5;
+}
+
+.triggerInfo {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.triggerIcon {
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+.triggerText {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.triggerTitle {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.triggerStatus {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.triggerActions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+/* Toggle switch */
+.toggleBtn {
+  display: flex;
+  align-items: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.toggleTrack {
+  width: 28px;
+  height: 16px;
+  background: #D1D5DB;
+  border-radius: 8px;
+  position: relative;
+  transition: background 0.2s;
+}
+
+.toggleBtnActive .toggleTrack {
+  background: var(--accent-primary);
+}
+
+.toggleThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  background: white;
+  border-radius: 50%;
+  transition: transform 0.2s;
+}
+
+.toggleBtnActive .toggleThumb {
+  transform: translateX(12px);
+}
+
+/* Delete trigger button */
+.deleteTriggerBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 11px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
+}
+
+.deleteTriggerBtn:hover {
+  color: #EF4444;
+  background: #FEE2E2;
+}
+
+/* Add form */
+.addForm {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+}
+
+.selectBroadcast {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.selectBroadcast:focus {
+  border-color: var(--accent-primary);
+}
+
+.addFormActions {
+  display: flex;
+  gap: 6px;
+}
+
+.confirmAddBtn,
+.cancelAddBtn {
+  flex: 1;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.confirmAddBtn {
+  background: var(--accent-primary);
+  color: white;
+}
+
+.confirmAddBtn:hover:not(:disabled) {
+  opacity: 0.9;
+}
+
+.confirmAddBtn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.cancelAddBtn {
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+}
+
+.cancelAddBtn:hover {
+  background: var(--border-default);
+}
+
+.loadingText {
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+  padding: 8px;
+}
+
+/* Add trigger button (when not in add mode) */
+.addTriggerBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  background: var(--bg-card);
+  border: 1px dashed var(--border-default);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.addTriggerBtn:hover {
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+  background: var(--accent-primary-light);
+}

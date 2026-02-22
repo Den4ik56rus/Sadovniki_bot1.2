@@ -29,6 +29,9 @@ from src.handlers.payments import payments_router
 # Кнопки рассылок + PollAnswer
 from src.handlers.broadcast_callbacks import router as broadcast_cb_router
 
+# Текстовые ответы на кнопки рассылок
+from src.handlers.broadcast_responses import router as broadcast_responses_router
+
 
 def setup_routers(dp: Dispatcher) -> None:
     """
@@ -47,6 +50,9 @@ def setup_routers(dp: Dispatcher) -> None:
 
     # 2.5. Кнопки рассылок + PollAnswer (перед админкой и консультациями)
     dp.include_router(broadcast_cb_router)
+
+    # 2.6. Текстовые ответы на кнопки рассылок (перед админкой и консультациями)
+    dp.include_router(broadcast_responses_router)
 
     # 3. Админка (модерация /kb_pending и пр.) — ПЕРЕД консультациями!
     dp.include_router(moderation_handlers.router)

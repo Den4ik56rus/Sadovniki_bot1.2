@@ -6,14 +6,12 @@ import styles from './PollEditor.module.css'
 interface PollState {
   question?: string
   options?: string[]
-  isAnonymous?: boolean
   allowsMultiple?: boolean
 }
 
 interface Props {
   pollQuestion: string
   pollOptions: string[]
-  pollIsAnonymous: boolean
   pollAllowsMultiple: boolean
   onChange: (update: PollState) => void
 }
@@ -25,7 +23,6 @@ const MIN_OPTIONS = 2
 export function PollEditor({
   pollQuestion,
   pollOptions,
-  pollIsAnonymous,
   pollAllowsMultiple,
   onChange,
 }: Props) {
@@ -132,19 +129,6 @@ export function PollEditor({
 
           {/* Checkboxes */}
           <div className={styles.checkboxes}>
-            <label className={styles.checkboxLabel}>
-              <input
-                type="checkbox"
-                checked={pollIsAnonymous}
-                onChange={(e) => onChange({ isAnonymous: e.target.checked })}
-              />
-              <span>Анонимное голосование</span>
-            </label>
-            {pollIsAnonymous && (
-              <div className={styles.anonWarning}>
-                При анонимном опросе ответы клиентов не отслеживаются в CRM
-              </div>
-            )}
             <label className={styles.checkboxLabel}>
               <input
                 type="checkbox"

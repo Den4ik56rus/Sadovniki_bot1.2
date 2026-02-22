@@ -146,6 +146,13 @@ def setup_routes(app: web.Application) -> None:
     # Funnels: Воронки клиента
     app.router.add_get("/api/admin/clients/{uid}/funnels", funnels.get_client_funnels)
 
+    # Funnels: Триггеры этапов (автоматическая отправка рассылок)
+    app.router.add_get("/api/admin/funnels/{id}/triggers", funnels.get_funnel_triggers)
+    app.router.add_get("/api/admin/funnels/{id}/stages/{key}/triggers", funnels.get_stage_triggers)
+    app.router.add_post("/api/admin/funnels/{id}/stages/{key}/triggers", funnels.create_stage_trigger)
+    app.router.add_delete(r"/api/admin/funnels/triggers/{id:\d+}", funnels.delete_stage_trigger)
+    app.router.add_patch(r"/api/admin/funnels/triggers/{id:\d+}", funnels.toggle_stage_trigger)
+
     # Admin Articles API (статьи, сгенерированные админом)
     app.router.add_get("/api/admin/articles", articles.get_articles)
     app.router.add_get("/api/admin/articles/by-admin/{telegram_id}", articles.get_articles_by_admin)
@@ -250,17 +257,26 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/api/admin/broadcasts", broadcasts.create_broadcast)
     app.router.add_post("/api/admin/broadcasts/preview-count", broadcasts.preview_recipient_count)
     app.router.add_get("/api/admin/broadcasts/users", broadcasts.get_broadcast_users)
+    app.router.add_post("/api/admin/broadcasts/bulk-delete", broadcasts.delete_broadcasts_bulk)
     app.router.add_post("/api/admin/broadcasts/upload-photo", broadcasts.upload_broadcast_photo)
     app.router.add_get(r"/api/admin/broadcasts/photo/{filename}", broadcasts.get_broadcast_photo)
     app.router.add_get(r"/api/admin/broadcasts/{id:\d+}", broadcasts.get_broadcast)
     app.router.add_put(r"/api/admin/broadcasts/{id:\d+}", broadcasts.update_broadcast)
     app.router.add_delete(r"/api/admin/broadcasts/{id:\d+}", broadcasts.delete_broadcast)
     app.router.add_post(r"/api/admin/broadcasts/{id:\d+}/send", broadcasts.send_broadcast)
+    app.router.add_post(r"/api/admin/broadcasts/{id:\d+}/test-send", broadcasts.test_send_broadcast)
     app.router.add_post(r"/api/admin/broadcasts/{id:\d+}/schedule", broadcasts.schedule_broadcast)
     app.router.add_post(r"/api/admin/broadcasts/{id:\d+}/cancel", broadcasts.cancel_broadcast)
     app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/recipients", broadcasts.get_broadcast_recipients)
     app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/stats", broadcasts.get_broadcast_stats)
     app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/stats/users", broadcasts.get_broadcast_stat_users)
+
+    # Broadcasts: Повторные запуски (runs)
+    app.router.add_post(r"/api/admin/broadcasts/{id:\d+}/resend", broadcasts.resend_broadcast)
+    app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/runs", broadcasts.get_broadcast_runs)
+    app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/runs/{run_id:\d+}/stats", broadcasts.get_run_stats)
+    app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/runs/{run_id:\d+}/stats/users", broadcasts.get_run_stat_users)
+    app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/runs/{run_id:\d+}/recipients", broadcasts.get_run_recipients)
 
     # SSE: Broadcast progress
     app.router.add_get(r"/api/admin/events/broadcast/{broadcast_id:\d+}", sse.broadcast_stream)
@@ -282,6 +298,9 @@ def setup_routes(app: web.Application) -> None:
     # OpenAI Balance API (мониторинг расходов OpenAI)
     app.router.add_get("/api/admin/openai-balance", openai_balance.get_openai_balance)
     app.router.add_patch("/api/admin/openai-balance/budget", openai_balance.update_openai_budget)
+
+    # Broadcast URL redirect (публичный, для трекинга кликов по ссылкам)
+    app.router.add_get(r"/api/r/{broadcast_id:\d+}/{option_key}", broadcasts.redirect_broadcast_url)
 
     # Health check endpoint
     app.router.add_get("/api/health", health_check)

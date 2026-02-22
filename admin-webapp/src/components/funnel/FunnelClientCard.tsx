@@ -65,6 +65,11 @@ export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
     return `${cost.toFixed(0)} ₽`
   }
 
+  // Average cost per question
+  const avgCostRub = (client.total_consultations ?? 0) > 0
+    ? costRub / client.total_consultations
+    : 0
+
   // Get display name
   const displayName = client.first_name || client.username || `User ${client.telegram_user_id}`
 
@@ -73,6 +78,16 @@ export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
 
   // Source (placeholder - telegram by default)
   const source = 'Telegram'
+
+  // Token balance
+  const tokenBalance = client.token_balance ?? 0
+
+  // Subscription info
+  const hasSubscription = !!client.subscription_plan_name
+  const subIsActive = client.subscription_status === 'active'
+
+  // Show tokens+subscription row?
+  const showInfoRow = tokenBalance > 0 || hasSubscription
 
   return (
     <div
@@ -106,13 +121,30 @@ export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
         <span className={styles.date}>{formatDate(client.user_created_at)}</span>
       </div>
 
-      {/* Consultations info */}
+      {/* Consultations + average cost */}
       {(client.total_consultations ?? 0) > 0 && (
         <div className={styles.comment}>
           <span className={styles.commentIcon}>💬</span>
           <span className={styles.commentText}>
-            {client.total_consultations} консультаций
+            {client.total_consultations} конс.
+            {avgCostRub > 0 && (
+              <span className={styles.avgCost}> · ~{avgCostRub.toFixed(0)} ₽/вопр.</span>
+            )}
           </span>
+        </div>
+      )}
+
+      {/* Tokens + Subscription row */}
+      {showInfoRow && (
+        <div className={styles.statsRow}>
+          {tokenBalance > 0 && (
+            <span className={styles.tokenBadge}>🪙 {tokenBalance}</span>
+          )}
+          {hasSubscription && (
+            <span className={`${styles.subBadge} ${subIsActive ? styles.subActive : styles.subExpired}`}>
+              📋 {client.subscription_plan_name} {subIsActive ? '✓' : '✗'}
+            </span>
+          )}
         </div>
       )}
 
@@ -123,7 +155,7 @@ export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
             <span className={styles.cost}>{formatCost(costRub)}</span>
           )}
           {daysSinceActivity > 0 && (
-            <span className={styles.days}>{daysSinceActivity}дн •</span>
+            <span className={styles.days}>{daysSinceActivity}дн ·</span>
           )}
         </div>
         <button

@@ -304,7 +304,7 @@ async def create_subscription_payment(
             receipt_items=receipt_items if settings.YOOKASSA_SEND_RECEIPT else None,
             metadata=metadata,
             idempotence_key=idempotency_key,
-            save_payment_method=True,  # Сохранить способ оплаты для автоплатежей
+            save_payment_method=False,  # Рекуррентные платежи требуют отдельного разрешения от ЮКассы
         )
 
         # Сохранить в БД

@@ -84,7 +84,8 @@ async def create_broadcast(request: web.Request) -> web.Response:
     """
     try:
         raw_body = await request.read()
-        logger.info(f"[DEBUG] create_broadcast raw body: {raw_body[:500]}")
+        import sys
+        print(f"[DEBUG] create_broadcast body: {raw_body[:1000]}", file=sys.stderr, flush=True)
         import json as _json
         data = _json.loads(raw_body)
         title = data.get('title', '').strip()

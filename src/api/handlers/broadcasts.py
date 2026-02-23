@@ -646,13 +646,13 @@ def _validate_inline_buttons(buttons: list) -> None:
             raise web.HTTPBadRequest(text='Each button must be an object')
 
         btn_type = btn.get('type')
-        if btn_type not in ('url', 'quick_reply', 'payment'):
-            raise web.HTTPBadRequest(text='Button type must be "url", "quick_reply" or "payment"')
+        if btn_type not in ('url', 'quick_reply', 'payment', 'discount'):
+            raise web.HTTPBadRequest(text='Button type must be "url", "quick_reply", "payment" or "discount"')
 
         text = btn.get('text', '')
-        if btn_type != 'payment' and (not text or len(text) > 64):
+        if btn_type not in ('payment', 'discount') and (not text or len(text) > 64):
             raise web.HTTPBadRequest(text='Button text must be 1-64 characters')
-        if btn_type == 'payment' and len(text) > 64:
+        if btn_type in ('payment', 'discount') and len(text) > 64:
             raise web.HTTPBadRequest(text='Button text must be max 64 characters')
 
         if btn_type == 'url':
@@ -664,6 +664,14 @@ def _validate_inline_buttons(buttons: list) -> None:
             plan_id = btn.get('payment_plan_id')
             if not plan_id or not isinstance(plan_id, int):
                 raise web.HTTPBadRequest(text='Payment button requires payment_plan_id')
+
+        if btn_type == 'discount':
+            dp = btn.get('discount_percent')
+            dh = btn.get('discount_duration_hours')
+            if not dp or not isinstance(dp, int) or not (1 <= dp <= 99):
+                raise web.HTTPBadRequest(text='Discount button requires discount_percent (1-99)')
+            if not dh or not isinstance(dh, int) or dh < 1:
+                raise web.HTTPBadRequest(text='Discount button requires discount_duration_hours >= 1')
 
         reply_text = btn.get('reply_text')
         if reply_text is not None:

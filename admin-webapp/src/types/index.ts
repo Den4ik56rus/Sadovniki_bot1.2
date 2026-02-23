@@ -1184,7 +1184,7 @@ export type BroadcastTargetType = 'all' | 'invite_link' | 'funnel_stage' | 'manu
 export interface BroadcastButton {
   row: number
   text: string
-  type: 'url' | 'quick_reply' | 'payment'
+  type: 'url' | 'quick_reply' | 'payment' | 'discount'
   url?: string
   option_key?: string
   reply_text?: string
@@ -1195,6 +1195,10 @@ export interface BroadcastButton {
   payment_bonus_tokens?: number | null
   // payment button fields (token package)
   payment_package_id?: number | null
+  // discount button fields (all-plans discount)
+  discount_percent?: number | null
+  discount_bonus_tokens?: number | null
+  discount_duration_hours?: number | null
 }
 
 export interface Broadcast {

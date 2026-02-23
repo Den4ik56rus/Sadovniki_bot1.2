@@ -200,6 +200,18 @@ async def build_inline_keyboard(
                         ))
                 except Exception as e:
                     logger.warning(f"Failed to create token payment for broadcast button: {e}")
+            elif btn['type'] == 'discount':
+                option_key = btn.get('option_key', f"discount_{row_idx}")
+                callback_data = f"bcast_discount:{broadcast_id}:{option_key}"
+                btn_text = btn.get('text', '').strip()
+                if not btn_text:
+                    pct = btn.get('discount_percent', 0)
+                    hours = btn.get('discount_duration_hours', 24)
+                    btn_text = f"🏷️ Скидка {pct}% на {hours}ч"
+                row_buttons.append(InlineKeyboardButton(
+                    text=btn_text,
+                    callback_data=callback_data,
+                ))
         if row_buttons:
             keyboard.append(row_buttons)
 

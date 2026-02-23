@@ -53,6 +53,28 @@ function buildTokenButtonText(pkg: TokenPackage, customPrice: number | null | un
     : `🎁 ${pkg.tokens_amount} токенов — ${price}₽`
 }
 
+function buildDiscountButtonText(discountPercent: number | null | undefined, durationHours: number | null | undefined): string {
+  const pct = discountPercent ?? 0
+  const hours = durationHours ?? 24
+  return `🏷️ Скидка ${pct}% на ${hours}ч`
+}
+
+function buildDiscountMessageHtml(discountPercent: number | null | undefined, durationHours: number | null | undefined, bonusTokens: number | null | undefined): string {
+  const pct = discountPercent ?? 0
+  const hours = durationHours ?? 24
+  const timeStr = hours >= 24 ? `${Math.floor(hours / 24)} ${Math.floor(hours / 24) === 1 ? 'день' : Math.floor(hours / 24) < 5 ? 'дня' : 'дней'}` : `${hours} часов`
+  const bonusLine = bonusTokens && bonusTokens > 0
+    ? `<p>🎁 Бонус: +${bonusTokens} токенов при оформлении</p>`
+    : ''
+  return [
+    `<p>🔥 <strong>Персональная скидка ${pct}% на все тарифы</strong></p>`,
+    `<p>Действует ${timeStr} — только для вас.</p>`,
+    bonusLine,
+    `<p></p>`,
+    `<p>Нажмите кнопку ниже, чтобы выбрать тариф со скидкой.</p>`,
+  ].filter(Boolean).join('')
+}
+
 function buildTokenMessageHtml(pkg: TokenPackage, customPrice: number | null | undefined): string {
   const price = customPrice ?? pkg.price_rub
   const discount = customPrice && customPrice < pkg.price_rub
@@ -256,7 +278,7 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                           className={styles.typeSelect}
                           value={btn.type}
                           onChange={(e) => {
-                            const newType = e.target.value as 'url' | 'quick_reply' | 'payment'
+                            const newType = e.target.value as 'url' | 'quick_reply' | 'payment' | 'discount'
                             const optIdx = buttons.length
                             if (newType === 'payment') {
                               if (plans.length === 0) {
@@ -279,12 +301,16 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                               payment_custom_price: newType === 'payment' ? (btn.payment_custom_price ?? null) : undefined,
                               payment_bonus_tokens: newType === 'payment' ? (btn.payment_bonus_tokens ?? null) : undefined,
                               payment_package_id: newType === 'payment' ? (btn.payment_package_id ?? null) : undefined,
+                              discount_percent: newType === 'discount' ? (btn.discount_percent ?? null) : undefined,
+                              discount_bonus_tokens: newType === 'discount' ? (btn.discount_bonus_tokens ?? null) : undefined,
+                              discount_duration_hours: newType === 'discount' ? (btn.discount_duration_hours ?? null) : undefined,
                             })
                           }}
                         >
                           <option value="quick_reply">Ответ</option>
                           <option value="url">Ссылка</option>
                           <option value="payment">💳 Оплата</option>
+                          <option value="discount">🏷️ Скидка на все тарифы</option>
                         </select>
                         {btn.type === 'url' && (
                           <input
@@ -549,6 +575,83 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                             </div>
                           )
                         })()}
+                        {btn.type === 'discount' && (
+                          <div className={styles.paymentSection}>
+                            <div className={styles.paymentFields}>
+                              <div className={styles.paymentFieldGroup}>
+                                <label className={styles.paymentFieldLabel}>Скидка (%)</label>
+                                <input
+                                  className={styles.urlInput}
+                                  type="number"
+                                  placeholder="30"
+                                  value={btn.discount_percent ?? ''}
+                                  min={1}
+                                  max={99}
+                                  onChange={(e) => {
+                                    const pct = e.target.value ? Number(e.target.value) : null
+                                    const autoText = buildDiscountButtonText(pct, btn.discount_duration_hours)
+                                    updateButton(rowIdx, btnIdx, {
+                                      discount_percent: pct,
+                                      text: autoText,
+                                    })
+                                    if (onAutoFillMessage) {
+                                      onAutoFillMessage(buildDiscountMessageHtml(pct, btn.discount_duration_hours, btn.discount_bonus_tokens))
+                                    }
+                                  }}
+                                />
+                              </div>
+                              <div className={styles.paymentFieldGroup}>
+                                <label className={styles.paymentFieldLabel}>Срок (часов)</label>
+                                <input
+                                  className={styles.urlInput}
+                                  type="number"
+                                  placeholder="24"
+                                  value={btn.discount_duration_hours ?? ''}
+                                  min={1}
+                                  onChange={(e) => {
+                                    const hours = e.target.value ? Number(e.target.value) : null
+                                    const autoText = buildDiscountButtonText(btn.discount_percent, hours)
+                                    updateButton(rowIdx, btnIdx, {
+                                      discount_duration_hours: hours,
+                                      text: autoText,
+                                    })
+                                    if (onAutoFillMessage) {
+                                      onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, hours, btn.discount_bonus_tokens))
+                                    }
+                                  }}
+                                />
+                              </div>
+                              <div className={styles.paymentFieldGroup}>
+                                <label className={styles.paymentFieldLabel}>Бонус токенов</label>
+                                <input
+                                  className={styles.urlInput}
+                                  type="number"
+                                  placeholder="0"
+                                  value={btn.discount_bonus_tokens ?? ''}
+                                  min={0}
+                                  onChange={(e) => {
+                                    const bonus = e.target.value ? Number(e.target.value) : null
+                                    updateButton(rowIdx, btnIdx, {
+                                      discount_bonus_tokens: bonus,
+                                    })
+                                    if (onAutoFillMessage) {
+                                      onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, btn.discount_duration_hours, bonus))
+                                    }
+                                  }}
+                                />
+                              </div>
+                            </div>
+                            {btn.discount_percent && btn.discount_duration_hours && (
+                              <div className={styles.paymentHint}>
+                                При нажатии: откроется меню тарифов со скидкой <b>{btn.discount_percent}%</b> на <b>{btn.discount_duration_hours}ч</b>
+                                {btn.discount_bonus_tokens ? ` + ${btn.discount_bonus_tokens} бонус-токенов` : ''}
+                              </div>
+                            )}
+                            <div className={styles.urlHint}>
+                              Скидка действует на все тарифы. Пользователь провалится в специальное меню с зачёркнутыми ценами.
+                            </div>
+                          </div>
+                        )}
                       </div>
                       <button
                         className={styles.removeBtnBtn}

@@ -263,9 +263,25 @@ async def create_subscription_payment(
     if not plan["is_active"]:
         raise ValueError(f"Subscription plan {plan_id} is not active")
 
-    # Применить скидку по инвайт-ссылке
+    # Применить скидку — берём максимальную из инвайт-ссылки и рассылки
     original_price = Decimal(str(plan["price_rub"]))
-    final_price, discount_percent = await _apply_invite_discount(user_id, original_price)
+    _, invite_discount_pct = await _apply_invite_discount(user_id, original_price)
+
+    from src.services.db.discount_repo import get_user_active_broadcast_discount
+    broadcast_disc = await get_user_active_broadcast_discount(user_id)
+    broadcast_discount_pct = broadcast_disc['discount_percent'] if broadcast_disc else 0
+    broadcast_bonus_tokens = broadcast_disc['bonus_tokens'] if broadcast_disc else 0
+
+    best_pct = max(invite_discount_pct or 0, broadcast_discount_pct)
+    if best_pct > 0:
+        discount_amount = original_price * Decimal(best_pct) / Decimal(100)
+        final_price = original_price - discount_amount
+        if final_price < Decimal('1.00'):
+            final_price = Decimal('1.00')
+        discount_percent = best_pct
+    else:
+        final_price = original_price
+        discount_percent = None
 
     # Генерировать ключ идемпотентности
     idempotency_key = f"subscription_{user_id}_{plan_id}_{int(datetime.now().timestamp())}"
@@ -292,6 +308,9 @@ async def create_subscription_payment(
     if discount_percent:
         metadata["discount_percent"] = str(discount_percent)
         metadata["original_price_rub"] = str(original_price)
+    # Бонусные токены из скидки рассылки (начисляются в process_payment_success)
+    if broadcast_bonus_tokens and broadcast_bonus_tokens > 0:
+        metadata["bonus_tokens"] = str(broadcast_bonus_tokens)
 
     try:
         # Создать платеж в YooKassa с сохранением способа оплаты для автопродления

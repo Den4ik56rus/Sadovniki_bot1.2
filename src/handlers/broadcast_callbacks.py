@@ -124,6 +124,84 @@ async def handle_broadcast_button_click(callback: CallbackQuery) -> None:
         await callback.answer("Произошла ошибка")
 
 
+@router.callback_query(F.data.startswith("bcast_discount:"))
+async def handle_broadcast_discount_click(callback: CallbackQuery) -> None:
+    """Обработка клика по discount-кнопке рассылки. Сохраняет скидку и открывает меню тарифов."""
+    try:
+        parts = callback.data.split(":", 2)
+        if len(parts) != 3:
+            await callback.answer("Ошибка формата")
+            return
+
+        broadcast_id = int(parts[1])
+        option_key = parts[2]
+
+        # Резолвим user_id из БД
+        from src.services.db.pool import get_pool
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            user_row = await conn.fetchrow(
+                "SELECT id FROM users WHERE telegram_user_id = $1",
+                callback.from_user.id,
+            )
+
+        if not user_row:
+            await callback.answer("Пользователь не найден")
+            return
+
+        user_id = user_row['id']
+
+        # Получаем конфиг кнопки из broadcast.inline_buttons
+        broadcast = await get_broadcast(broadcast_id)
+        btn_config = None
+        button_text = option_key
+        if broadcast and broadcast.get('inline_buttons'):
+            buttons = broadcast['inline_buttons']
+            if isinstance(buttons, str):
+                buttons = json.loads(buttons)
+            for btn in buttons:
+                if btn.get('option_key') == option_key and btn.get('type') == 'discount':
+                    btn_config = btn
+                    button_text = btn.get('text', option_key)
+                    break
+
+        if not btn_config:
+            await callback.answer()
+            return
+
+        # Сохраняем скидку в БД
+        from src.services.db.discount_repo import upsert_broadcast_discount
+        await upsert_broadcast_discount(
+            user_id=user_id,
+            broadcast_id=broadcast_id,
+            option_key=option_key,
+            discount_percent=btn_config['discount_percent'],
+            bonus_tokens=btn_config.get('discount_bonus_tokens') or 0,
+            duration_hours=btn_config['discount_duration_hours'],
+        )
+
+        # Трекируем клик (та же инфраструктура что и у quick_reply)
+        run_id = await resolve_run_id_from_recipient(broadcast_id, user_id)
+        await record_button_click(
+            broadcast_id=broadcast_id,
+            user_id=user_id,
+            telegram_user_id=callback.from_user.id,
+            option_key=option_key,
+            button_text=button_text,
+            run_id=run_id,
+        )
+
+        await callback.answer()
+
+        # Показываем меню подписок со скидкой
+        from src.handlers.payments.discount_menu import show_discount_subscription_menu
+        await show_discount_subscription_menu(callback, user_id)
+
+    except Exception as e:
+        logger.error(f"Error handling broadcast discount click: {e}", exc_info=True)
+        await callback.answer("Произошла ошибка")
+
+
 @router.poll_answer()
 async def handle_poll_answer(poll_answer: PollAnswer) -> None:
     """Обработка ответа на неанонимный опрос рассылки."""

@@ -645,13 +645,15 @@ def _validate_inline_buttons(buttons: list) -> None:
         if not isinstance(btn, dict):
             raise web.HTTPBadRequest(text='Each button must be an object')
 
-        text = btn.get('text', '')
-        if not text or len(text) > 64:
-            raise web.HTTPBadRequest(text='Button text must be 1-64 characters')
-
         btn_type = btn.get('type')
         if btn_type not in ('url', 'quick_reply', 'payment'):
             raise web.HTTPBadRequest(text='Button type must be "url", "quick_reply" or "payment"')
+
+        text = btn.get('text', '')
+        if btn_type != 'payment' and (not text or len(text) > 64):
+            raise web.HTTPBadRequest(text='Button text must be 1-64 characters')
+        if btn_type == 'payment' and len(text) > 64:
+            raise web.HTTPBadRequest(text='Button text must be max 64 characters')
 
         if btn_type == 'url':
             url = btn.get('url', '')

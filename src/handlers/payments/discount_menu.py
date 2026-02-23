@@ -31,14 +31,14 @@ def _compute_time_left(expires_at: datetime) -> tuple[int, int]:
 
 async def show_discount_subscription_menu(callback: CallbackQuery, user_id: int) -> None:
     """
-    Показать меню тарифов со скидкой.
-    Если скидка истекла — показать обычное платёжное меню.
+    Показать меню тарифов со скидкой новым сообщением (не заменяя исходное).
+    Кнопка в исходном сообщении остаётся активной на всё время действия скидки.
     """
     discount = await get_user_active_broadcast_discount(user_id)
 
     if not discount:
-        # Скидка истекла — показываем обычное меню
-        await callback.message.edit_text(
+        # Скидка истекла — отправляем новое сообщение
+        await callback.message.answer(
             "⏰ Срок действия скидки истёк.\n\nВы можете оформить подписку по стандартным ценам:",
             reply_markup=InlineKeyboardMarkup(inline_keyboard=[
                 [InlineKeyboardButton(text="💳 Перейти к тарифам", callback_data="show_payment_menu")]
@@ -79,9 +79,9 @@ async def show_discount_subscription_menu(callback: CallbackQuery, user_id: int)
             text=f"{plan['name']} — {original}₽ → {discounted}₽",
             callback_data=f"buy_subscription_{plan['id']}"
         )])
-    buttons.append([InlineKeyboardButton(text="◀️ Назад", callback_data="show_payment_menu")])
 
-    await callback.message.edit_text(
+    # Отправляем новым сообщением — исходное сообщение рассылки не трогаем
+    await callback.message.answer(
         text,
         reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
         parse_mode="HTML",

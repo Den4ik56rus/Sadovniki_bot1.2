@@ -227,6 +227,27 @@ async def get_expired_pending() -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
+async def get_stale_pending_payments(min_age_minutes: int = 2) -> List[Dict[str, Any]]:
+    """
+    Возвращает pending платежи старше N минут для периодической сверки с YooKassa.
+    Исключает уже успешные и отменённые платежи.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT * FROM payments
+            WHERE status = 'pending'
+            AND paid = false
+            AND created_at < NOW() - ($1 || ' minutes')::interval
+            ORDER BY created_at ASC
+            LIMIT 50
+            """,
+            str(min_age_minutes),
+        )
+        return [dict(row) for row in rows]
+
+
 async def log_payment_error(
     user_id: int,
     payment_id: Optional[str],

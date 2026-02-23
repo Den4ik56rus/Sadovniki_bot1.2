@@ -71,7 +71,7 @@ export function RightPanel({
     try {
       const data = await api.getClientActivity(clientId, {
         types: activeFilters.length === ALL_EVENT_TYPES.length ? undefined : activeFilters,
-        limit: 500,
+        limit: 200,
       })
       // Reverse to show oldest first, newest at bottom
       setActivity(data.reverse())
@@ -88,7 +88,7 @@ export function RightPanel({
     try {
       const data = await api.getClientActivity(clientId, {
         types: activeFilters.length === ALL_EVENT_TYPES.length ? undefined : activeFilters,
-        limit: 500,
+        limit: 200,
       })
       setActivity(data.reverse())
       // Auto-scroll to bottom after new data
@@ -103,12 +103,13 @@ export function RightPanel({
   }, [fetchActivity])
 
   // SSE: debounced activity refetch when sseRefreshKey changes
+  // Увеличен debounce до 2 сек — SSE может прийти несколько событий подряд
   useEffect(() => {
     if (sseRefreshKey && sseRefreshKey > 0) {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         silentRefetchActivity()
-      }, 500)
+      }, 2000)
     }
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)

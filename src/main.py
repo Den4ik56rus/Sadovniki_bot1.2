@@ -21,6 +21,8 @@ from src.keyboards.main.bot_commands import set_main_menu_commands
 # API сервер
 from src.api import create_api_app
 from src.config import settings
+from src.api.handlers.webhooks import set_webhook_queue, webhook_consumer
+from src.services.payments.payment_reconciliation import payment_reconciliation_loop
 
 
 async def _trigger_scheduler_loop(process_fn) -> None:
@@ -108,6 +110,12 @@ async def main() -> None:
     await run_startup_recovery(bot)
     print("Восстановление завершено.")
 
+    # Создаём очередь вебхуков и регистрируем её в handler
+    webhook_queue = asyncio.Queue(maxsize=100)
+    set_webhook_queue(webhook_queue)
+    webhook_consumer_task = asyncio.create_task(webhook_consumer(webhook_queue))
+    print("Webhook consumer запущен.")
+
     # Запускаем фоновую задачу для автопродления подписок
     background_task = asyncio.create_task(_subscription_renewal_task())
     print("Фоновая задача автопродления подписок запущена.")
@@ -116,6 +124,10 @@ async def main() -> None:
     from src.services.broadcast_scheduler import broadcast_scheduler_loop
     broadcast_task = asyncio.create_task(broadcast_scheduler_loop())
     print("Фоновая задача рассылок запущена.")
+
+    # Запускаем фоновую задачу сверки платежей
+    reconciliation_task = asyncio.create_task(payment_reconciliation_loop())
+    print("Фоновая задача сверки платежей запущена.")
 
     # Запускаем фоновую задачу для отложенных триггеров воронки
     from src.services.funnel_trigger_sender import process_pending_triggers as _process_pending_triggers
@@ -132,9 +144,15 @@ async def main() -> None:
         print("Останавливаю бота...")
 
         # Останавливаем фоновые задачи
+        webhook_consumer_task.cancel()
         background_task.cancel()
         broadcast_task.cancel()
         trigger_task.cancel()
+        reconciliation_task.cancel()
+        try:
+            await webhook_consumer_task
+        except asyncio.CancelledError:
+            print("Webhook consumer остановлен.")
         try:
             await background_task
         except asyncio.CancelledError:
@@ -147,6 +165,10 @@ async def main() -> None:
             await trigger_task
         except asyncio.CancelledError:
             print("Фоновая задача триггеров воронки остановлена.")
+        try:
+            await reconciliation_task
+        except asyncio.CancelledError:
+            print("Фоновая задача сверки платежей остановлена.")
 
         # Закрываем SSE соединения перед остановкой API сервера
         from src.api.sse_manager import sse_manager

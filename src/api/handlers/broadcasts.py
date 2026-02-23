@@ -83,11 +83,7 @@ async def create_broadcast(request: web.Request) -> web.Response:
     }
     """
     try:
-        raw_body = await request.read()
-        import sys
-        print(f"[DEBUG] create_broadcast body: {raw_body[:1000]}", file=sys.stderr, flush=True)
-        import json as _json
-        data = _json.loads(raw_body)
+        data = await request.json()
         title = data.get('title', '').strip()
         if not title:
             raise web.HTTPBadRequest(text='Title is required')

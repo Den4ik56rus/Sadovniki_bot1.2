@@ -35,7 +35,7 @@ import styles from './FunnelKanban.module.css'
 // Sortable wrapper for column in settings mode
 interface SortableColumnWrapperProps {
   id: string
-  children: React.ReactNode
+  children: (dragHandleListeners: Record<string, unknown> | undefined) => React.ReactNode
   disabled: boolean
 }
 
@@ -68,9 +68,8 @@ function SortableColumnWrapper({ id, children, disabled }: SortableColumnWrapper
       style={style}
       className={!disabled ? styles.sortableColumn : undefined}
       {...attributes}
-      {...listeners}
     >
-      {children}
+      {children(disabled ? undefined : listeners)}
     </div>
   )
 }
@@ -452,15 +451,18 @@ export function FunnelKanban({ funnelId }: FunnelKanbanProps) {
                 id={stage.stage_key}
                 disabled={!isSettingsMode}
               >
-                <FunnelColumn
-                  stageKey={stage.stage_key}
-                  title={stage.title}
-                  color={stage.color}
-                  clients={sortClients(filterClients(clients[stage.stage_key] || []))}
-                  count={stats[stage.stage_key] || 0}
-                  totalValue={(clients[stage.stage_key] || []).reduce((sum, c) => sum + c.total_cost_usd * usdRate, 0)}
-                  onClientClick={(clientId) => setSelectedClientId(clientId)}
-                />
+                {(dragHandleListeners) => (
+                  <FunnelColumn
+                    stageKey={stage.stage_key}
+                    title={stage.title}
+                    color={stage.color}
+                    clients={sortClients(filterClients(clients[stage.stage_key] || []))}
+                    count={stats[stage.stage_key] || 0}
+                    totalValue={(clients[stage.stage_key] || []).reduce((sum, c) => sum + c.total_cost_usd * usdRate, 0)}
+                    onClientClick={(clientId) => setSelectedClientId(clientId)}
+                    dragHandleListeners={dragHandleListeners}
+                  />
+                )}
               </SortableColumnWrapper>
             ))}
           </div>

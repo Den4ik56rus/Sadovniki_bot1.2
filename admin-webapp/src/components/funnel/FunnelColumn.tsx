@@ -16,6 +16,7 @@ interface FunnelColumnProps {
   count: number
   totalValue: number
   onClientClick: (clientId: number) => void
+  dragHandleListeners?: Record<string, unknown>
 }
 
 const COLOR_OPTIONS = [
@@ -37,6 +38,7 @@ export function FunnelColumn({
   count,
   totalValue,
   onClientClick,
+  dragHandleListeners,
 }: FunnelColumnProps) {
   const {
     isSettingsMode,
@@ -292,7 +294,11 @@ export function FunnelColumn({
               >
                 +
               </button>
-              <div className={styles.colorBarDragHandle} title="Перетащите для перемещения">
+              <div
+                className={styles.colorBarDragHandle}
+                title="Перетащите для перемещения"
+                {...(dragHandleListeners as React.HTMLAttributes<HTMLDivElement>)}
+              >
                 ⋮⋮
               </div>
             </div>

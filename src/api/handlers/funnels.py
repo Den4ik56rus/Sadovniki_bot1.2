@@ -512,7 +512,15 @@ async def create_stage_trigger(request: web.Request) -> web.Response:
     POST /api/admin/funnels/{id}/stages/{key}/triggers
     Создать триггер: привязать рассылку к этапу.
 
-    Body: { "broadcast_id": 123 }
+    Body: {
+        "broadcast_id": 123,
+        "delay_minutes": 0,          // опционально, по умолчанию 0
+        "payment_config": {          // опционально, null = обычная рассылка
+            "plan_id": 1,
+            "custom_price": 483,     // опционально
+            "bonus_tokens": 5        // опционально
+        }
+    }
     """
     funnel_id = request.match_info.get("id")
     stage_key = request.match_info.get("key")
@@ -522,8 +530,15 @@ async def create_stage_trigger(request: web.Request) -> web.Response:
         if not broadcast_id:
             return web.json_response({"error": "broadcast_id is required"}, status=400)
 
+        delay_minutes = int(data.get("delay_minutes", 0) or 0)
+        payment_config = data.get("payment_config") or None
+
         from src.services.db import funnel_trigger_repo
-        trigger = await funnel_trigger_repo.create_trigger(funnel_id, stage_key, int(broadcast_id))
+        trigger = await funnel_trigger_repo.create_trigger(
+            funnel_id, stage_key, int(broadcast_id),
+            delay_minutes=delay_minutes,
+            payment_config=payment_config,
+        )
         if not trigger:
             return web.json_response(
                 {"error": "Failed to create trigger (stage or broadcast not found, or duplicate)"},
@@ -555,22 +570,42 @@ async def delete_stage_trigger(request: web.Request) -> web.Response:
 async def toggle_stage_trigger(request: web.Request) -> web.Response:
     """
     PATCH /api/admin/funnels/triggers/{id}
-    Включить/выключить триггер.
+    Обновить параметры триггера.
 
-    Body: { "is_active": true/false }
+    Body: {
+        "is_active": true/false,     // опционально
+        "delay_minutes": 0,          // опционально
+        "payment_config": {...},     // опционально (null = очистить)
+        "clear_payment_config": true // опционально — явно очистить payment_config
+    }
     """
     try:
         trigger_id = int(request.match_info.get("id"))
         data = await request.json()
+
         is_active = data.get("is_active")
-        if is_active is None:
-            return web.json_response({"error": "is_active is required"}, status=400)
+        delay_minutes = data.get("delay_minutes")
+        payment_config = data.get("payment_config")
+        clear_payment_config = bool(data.get("clear_payment_config", False))
+
+        # Если явно передали null — очищаем
+        if "payment_config" in data and payment_config is None:
+            clear_payment_config = True
+
+        if delay_minutes is not None:
+            delay_minutes = int(delay_minutes)
 
         from src.services.db import funnel_trigger_repo
-        trigger = await funnel_trigger_repo.toggle_trigger(trigger_id, bool(is_active))
+        trigger = await funnel_trigger_repo.update_trigger(
+            trigger_id,
+            is_active=is_active if is_active is not None else None,
+            delay_minutes=delay_minutes,
+            payment_config=payment_config,
+            clear_payment_config=clear_payment_config,
+        )
         if not trigger:
             return web.json_response({"error": "Trigger not found"}, status=404)
         return web.json_response({"trigger": trigger})
     except Exception as e:
-        logger.error(f"Error toggling trigger: {e}")
+        logger.error(f"Error updating trigger: {e}")
         return web.json_response({"error": str(e)}, status=500)

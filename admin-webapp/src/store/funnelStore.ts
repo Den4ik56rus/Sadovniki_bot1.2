@@ -60,7 +60,7 @@ interface FunnelStore {
 
   // Triggers
   fetchTriggers: (funnelId: string) => Promise<void>
-  createTrigger: (funnelId: string, stageKey: string, broadcastId: number) => Promise<boolean>
+  createTrigger: (funnelId: string, stageKey: string, broadcastId: number, delayMinutes?: number, paymentConfig?: import('@/types').TriggerPaymentConfig | null) => Promise<boolean>
   deleteTrigger: (triggerId: number) => Promise<boolean>
   toggleTrigger: (triggerId: number, isActive: boolean) => Promise<boolean>
 
@@ -469,9 +469,9 @@ export const useFunnelStore = create<FunnelStore>()(
         }
       },
 
-      createTrigger: async (funnelId: string, stageKey: string, broadcastId: number) => {
+      createTrigger: async (funnelId: string, stageKey: string, broadcastId: number, delayMinutes?: number, paymentConfig?: import('@/types').TriggerPaymentConfig | null) => {
         try {
-          await api.createStageTrigger(funnelId, stageKey, broadcastId)
+          await api.createStageTrigger(funnelId, stageKey, broadcastId, delayMinutes, paymentConfig)
           await get().fetchTriggers(funnelId)
           return true
         } catch (e) {

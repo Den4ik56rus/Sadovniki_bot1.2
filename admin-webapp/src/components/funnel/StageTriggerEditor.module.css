@@ -258,8 +258,15 @@
   white-space: nowrap;
 }
 
-.selectDelay {
+.delayInputRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   flex: 1;
+}
+
+.delayValueInput {
+  width: 64px;
   padding: 5px 8px;
   font-size: 12px;
   border: 1px solid var(--border-default);
@@ -269,8 +276,19 @@
   outline: none;
 }
 
-.selectDelay:focus {
+.delayValueInput:focus {
   border-color: var(--accent-primary);
+}
+
+.delayUnitLabel {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.delayPreview {
+  font-size: 11px;
+  color: var(--text-muted);
+  white-space: nowrap;
 }
 
 /* Checkbox row */

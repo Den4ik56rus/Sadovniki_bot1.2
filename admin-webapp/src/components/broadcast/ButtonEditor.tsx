@@ -11,20 +11,95 @@ interface SubscriptionPlan {
   name: string
   price_rub: number
   tokens_included: number
+  duration_days: number
+  is_active: boolean
+}
+
+interface TokenPackage {
+  id: number
+  name: string
+  description: string | null
+  price_rub: number
+  tokens_amount: number
   is_active: boolean
 }
 
 interface Props {
   buttons: BroadcastButton[]
   onChange: (buttons: BroadcastButton[]) => void
+  onAutoFillMessage?: (html: string) => void
 }
 
 const MAX_ROWS = 5
 const MAX_BUTTONS_PER_ROW = 2
 
-export function ButtonEditor({ buttons, onChange }: Props) {
+function buildPaymentButtonText(plan: SubscriptionPlan, customPrice: number | null | undefined): string {
+  const price = customPrice ?? plan.price_rub
+  const discount = customPrice && customPrice < plan.price_rub
+    ? Math.round((1 - customPrice / plan.price_rub) * 100)
+    : 0
+  return discount > 0
+    ? `💳 ${plan.name} — ${price}₽ (скидка ${discount}%)`
+    : `💳 ${plan.name} — ${price}₽`
+}
+
+function buildTokenButtonText(pkg: TokenPackage, customPrice: number | null | undefined): string {
+  const price = customPrice ?? pkg.price_rub
+  const discount = customPrice && customPrice < pkg.price_rub
+    ? Math.round((1 - customPrice / pkg.price_rub) * 100)
+    : 0
+  return discount > 0
+    ? `🎁 ${pkg.tokens_amount} токенов — ${price}₽ (скидка ${discount}%)`
+    : `🎁 ${pkg.tokens_amount} токенов — ${price}₽`
+}
+
+function buildTokenMessageHtml(pkg: TokenPackage, customPrice: number | null | undefined): string {
+  const price = customPrice ?? pkg.price_rub
+  const discount = customPrice && customPrice < pkg.price_rub
+    ? Math.round((1 - customPrice / pkg.price_rub) * 100)
+    : 0
+  const priceLine = discount > 0
+    ? `💰 Цена: <s>${pkg.price_rub}₽</s> → <strong>${price}₽</strong> (скидка ${discount}%)`
+    : `💰 Цена: <strong>${price}₽</strong>`
+  return [
+    `🎁 Дополнительные токены: <strong>${pkg.tokens_amount} шт.</strong>`,
+    priceLine,
+    ``,
+    `Нажмите кнопку ниже для оплаты.`,
+    `После успешной оплаты токены будут начислены автоматически.`,
+  ].map(line => `<p>${line}</p>`).join('')
+}
+
+function buildPaymentMessageHtml(plan: SubscriptionPlan, customPrice: number | null | undefined, bonusTokens: number | null | undefined): string {
+  const price = customPrice ?? plan.price_rub
+  const tokens = plan.tokens_included + (bonusTokens ?? 0)
+  const discount = customPrice && customPrice < plan.price_rub
+    ? Math.round((1 - customPrice / plan.price_rub) * 100)
+    : 0
+
+  const priceLine = discount > 0
+    ? `💰 Цена: <s>${plan.price_rub}₽</s> → <strong>${price}₽</strong>/мес (скидка ${discount}%)`
+    : `💰 Цена: <strong>${price}₽</strong>/мес`
+
+  const tokensLine = bonusTokens
+    ? `🎁 Лимит: ${tokens} токенов в месяц (+${bonusTokens} бонус)`
+    : `🎁 Лимит: ${tokens} токенов в месяц`
+
+  return [
+    `📅 Подписка: <strong>${plan.name}</strong>`,
+    priceLine,
+    `⏱️ Срок: ${plan.duration_days} дней`,
+    tokensLine,
+    ``,
+    `Нажмите кнопку ниже для оплаты.`,
+    `После успешной оплаты подписка будет активирована автоматически.`,
+  ].map(line => `<p>${line}</p>`).join('')
+}
+
+export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
   const [enabled, setEnabled] = useState(buttons.length > 0)
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
+  const [tokenPackages, setTokenPackages] = useState<TokenPackage[]>([])
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(() => {
     const initial = new Set<string>()
     const rowsMap: Record<number, BroadcastButton[]> = {}
@@ -46,12 +121,19 @@ export function ButtonEditor({ buttons, onChange }: Props) {
   const hasPaymentButton = buttons.some((b) => b.type === 'payment')
 
   useEffect(() => {
-    if (hasPaymentButton && plans.length === 0) {
-      api.getSubscriptionPlans().then((data) => {
-        setPlans((data.plans as SubscriptionPlan[]).filter((p) => p.is_active))
-      }).catch(() => {})
+    if (hasPaymentButton) {
+      if (plans.length === 0) {
+        api.getSubscriptionPlans().then((data) => {
+          setPlans((data.plans as SubscriptionPlan[]).filter((p) => p.is_active))
+        }).catch(() => {})
+      }
+      if (tokenPackages.length === 0) {
+        api.getTokenPackages().then((data) => {
+          setTokenPackages((data.packages as TokenPackage[]).filter((p) => p.is_active))
+        }).catch(() => {})
+      }
     }
-  }, [hasPaymentButton, plans.length])
+  }, [hasPaymentButton, plans.length, tokenPackages.length])
 
   const handleToggle = () => {
     const next = !enabled
@@ -176,10 +258,17 @@ export function ButtonEditor({ buttons, onChange }: Props) {
                           onChange={(e) => {
                             const newType = e.target.value as 'url' | 'quick_reply' | 'payment'
                             const optIdx = buttons.length
-                            if (newType === 'payment' && plans.length === 0) {
-                              api.getSubscriptionPlans().then((data) => {
-                                setPlans((data.plans as SubscriptionPlan[]).filter((p) => p.is_active))
-                              }).catch(() => {})
+                            if (newType === 'payment') {
+                              if (plans.length === 0) {
+                                api.getSubscriptionPlans().then((data) => {
+                                  setPlans((data.plans as SubscriptionPlan[]).filter((p) => p.is_active))
+                                }).catch(() => {})
+                              }
+                              if (tokenPackages.length === 0) {
+                                api.getTokenPackages().then((data) => {
+                                  setTokenPackages((data.packages as TokenPackage[]).filter((p) => p.is_active))
+                                }).catch(() => {})
+                              }
                             }
                             updateButton(rowIdx, btnIdx, {
                               type: newType,
@@ -189,6 +278,7 @@ export function ButtonEditor({ buttons, onChange }: Props) {
                               payment_plan_id: newType === 'payment' ? (btn.payment_plan_id ?? null) : undefined,
                               payment_custom_price: newType === 'payment' ? (btn.payment_custom_price ?? null) : undefined,
                               payment_bonus_tokens: newType === 'payment' ? (btn.payment_bonus_tokens ?? null) : undefined,
+                              payment_package_id: newType === 'payment' ? (btn.payment_package_id ?? null) : undefined,
                             })
                           }}
                         >
@@ -254,71 +344,211 @@ export function ButtonEditor({ buttons, onChange }: Props) {
                             )}
                           </div>
                         )}
-                        {btn.type === 'payment' && (
-                          <div className={styles.paymentSection}>
-                            <select
-                              className={styles.typeSelect}
-                              value={btn.payment_plan_id ?? ''}
-                              onChange={(e) => updateButton(rowIdx, btnIdx, {
-                                payment_plan_id: e.target.value ? Number(e.target.value) : null
-                              })}
-                            >
-                              <option value="">Выберите тариф</option>
-                              {plans.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.name} — {p.price_rub}₽/мес
-                                </option>
-                              ))}
-                            </select>
-                            <div className={styles.paymentFields}>
-                              <input
-                                className={styles.urlInput}
-                                type="number"
-                                placeholder={
-                                  btn.payment_plan_id
-                                    ? String(plans.find((p) => p.id === btn.payment_plan_id)?.price_rub ?? 'цена')
-                                    : 'Цена (₽)'
-                                }
-                                value={btn.payment_custom_price ?? ''}
-                                min={1}
-                                onChange={(e) => updateButton(rowIdx, btnIdx, {
-                                  payment_custom_price: e.target.value ? Number(e.target.value) : null
-                                })}
-                              />
-                              <input
-                                className={styles.urlInput}
-                                type="number"
-                                placeholder="Бонус токенов"
-                                value={btn.payment_bonus_tokens ?? ''}
-                                min={0}
-                                onChange={(e) => updateButton(rowIdx, btnIdx, {
-                                  payment_bonus_tokens: e.target.value ? Number(e.target.value) : null
-                                })}
-                              />
+                        {btn.type === 'payment' && (() => {
+                          // Определяем режим: подписка или токены
+                          // payment_package_id >= 0 (включая 0 как sentinel) = режим токенов
+                          const paymentMode = btn.payment_package_id != null ? 'tokens' : 'subscription'
+
+                          const selectedPlan = plans.find((p) => p.id === btn.payment_plan_id)
+                          // Ищем только если package_id > 0 (0 = режим токенов, пакет ещё не выбран)
+                          const selectedPkg = btn.payment_package_id && btn.payment_package_id > 0
+                            ? tokenPackages.find((p) => p.id === btn.payment_package_id)
+                            : undefined
+
+                          // Subscription preview
+                          const subPrice = selectedPlan ? (btn.payment_custom_price ?? selectedPlan.price_rub) : null
+                          const subTokens = selectedPlan ? (selectedPlan.tokens_included + (btn.payment_bonus_tokens ?? 0)) : null
+                          const subDiscount = selectedPlan && btn.payment_custom_price && btn.payment_custom_price < selectedPlan.price_rub
+                            ? Math.round((1 - btn.payment_custom_price / selectedPlan.price_rub) * 100)
+                            : 0
+
+                          // Token preview
+                          const pkgPrice = selectedPkg ? (btn.payment_custom_price ?? selectedPkg.price_rub) : null
+                          const pkgDiscount = selectedPkg && btn.payment_custom_price && btn.payment_custom_price < selectedPkg.price_rub
+                            ? Math.round((1 - btn.payment_custom_price / selectedPkg.price_rub) * 100)
+                            : 0
+
+                          return (
+                            <div className={styles.paymentSection}>
+                              {/* Выбор типа платежа */}
+                              <div className={styles.paymentModeRow}>
+                                <label className={styles.paymentModeOption}>
+                                  <input
+                                    type="radio"
+                                    name={`paymentMode_${rowIdx}_${btnIdx}`}
+                                    value="subscription"
+                                    checked={paymentMode === 'subscription'}
+                                    onChange={() => updateButton(rowIdx, btnIdx, {
+                                      payment_package_id: null,
+                                      payment_plan_id: btn.payment_plan_id ?? null,
+                                    })}
+                                  />
+                                  <span>Подписка</span>
+                                </label>
+                                <label className={styles.paymentModeOption}>
+                                  <input
+                                    type="radio"
+                                    name={`paymentMode_${rowIdx}_${btnIdx}`}
+                                    value="tokens"
+                                    checked={paymentMode === 'tokens'}
+                                    onChange={() => updateButton(rowIdx, btnIdx, {
+                                      payment_plan_id: null,
+                                      payment_bonus_tokens: null,
+                                      // 0 = sentinel: режим токенов, но пакет ещё не выбран
+                                      payment_package_id: btn.payment_package_id ?? 0,
+                                    })}
+                                  />
+                                  <span>Доп. токены</span>
+                                </label>
+                              </div>
+
+                              {paymentMode === 'subscription' && (
+                                <>
+                                  <select
+                                    className={styles.typeSelect}
+                                    value={btn.payment_plan_id ?? ''}
+                                    onChange={(e) => {
+                                      const planId = e.target.value ? Number(e.target.value) : null
+                                      const plan = plans.find((p) => p.id === planId)
+                                      const autoText = plan ? buildPaymentButtonText(plan, btn.payment_custom_price) : ''
+                                      updateButton(rowIdx, btnIdx, {
+                                        payment_plan_id: planId,
+                                        text: autoText,
+                                      })
+                                      if (plan && onAutoFillMessage) {
+                                        onAutoFillMessage(buildPaymentMessageHtml(plan, btn.payment_custom_price, btn.payment_bonus_tokens))
+                                      }
+                                    }}
+                                  >
+                                    <option value="">Выберите тариф</option>
+                                    {plans.map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.name} — {p.price_rub}₽/мес
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {selectedPlan && (
+                                    <div className={styles.paymentFields}>
+                                      <div className={styles.paymentFieldGroup}>
+                                        <label className={styles.paymentFieldLabel}>Скидочная цена (₽)</label>
+                                        <input
+                                          className={styles.urlInput}
+                                          type="number"
+                                          placeholder={String(selectedPlan.price_rub)}
+                                          value={btn.payment_custom_price ?? ''}
+                                          min={1}
+                                          onChange={(e) => {
+                                            const customPrice = e.target.value ? Number(e.target.value) : null
+                                            const autoText = buildPaymentButtonText(selectedPlan, customPrice)
+                                            updateButton(rowIdx, btnIdx, {
+                                              payment_custom_price: customPrice,
+                                              text: autoText,
+                                            })
+                                            if (onAutoFillMessage) {
+                                              onAutoFillMessage(buildPaymentMessageHtml(selectedPlan, customPrice, btn.payment_bonus_tokens))
+                                            }
+                                          }}
+                                        />
+                                      </div>
+                                      <div className={styles.paymentFieldGroup}>
+                                        <label className={styles.paymentFieldLabel}>Бонус токенов</label>
+                                        <input
+                                          className={styles.urlInput}
+                                          type="number"
+                                          placeholder="0"
+                                          value={btn.payment_bonus_tokens ?? ''}
+                                          min={0}
+                                          onChange={(e) => {
+                                            const bonusTokens = e.target.value ? Number(e.target.value) : null
+                                            updateButton(rowIdx, btnIdx, {
+                                              payment_bonus_tokens: bonusTokens,
+                                            })
+                                            if (onAutoFillMessage) {
+                                              onAutoFillMessage(buildPaymentMessageHtml(selectedPlan, btn.payment_custom_price, bonusTokens))
+                                            }
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                  {selectedPlan && subPrice !== null && (
+                                    <div className={styles.paymentHint}>
+                                      {subDiscount > 0
+                                        ? <><s>{selectedPlan.price_rub}₽</s> → <b>{subPrice}₽</b>/мес (скидка {subDiscount}%) · {subTokens} токенов</>
+                                        : <><b>{subPrice}₽</b>/мес · {subTokens} токенов</>
+                                      }
+                                    </div>
+                                  )}
+                                </>
+                              )}
+
+                              {paymentMode === 'tokens' && (
+                                <>
+                                  <select
+                                    className={styles.typeSelect}
+                                    value={btn.payment_package_id && btn.payment_package_id > 0 ? btn.payment_package_id : ''}
+                                    onChange={(e) => {
+                                      const pkgId = e.target.value ? Number(e.target.value) : 0
+                                      const pkg = tokenPackages.find((p) => p.id === pkgId)
+                                      const autoText = pkg ? buildTokenButtonText(pkg, btn.payment_custom_price) : ''
+                                      updateButton(rowIdx, btnIdx, {
+                                        payment_package_id: pkgId,
+                                        text: autoText,
+                                      })
+                                      if (pkg && onAutoFillMessage) {
+                                        onAutoFillMessage(buildTokenMessageHtml(pkg, btn.payment_custom_price))
+                                      }
+                                    }}
+                                  >
+                                    <option value="">Выберите пакет токенов</option>
+                                    {tokenPackages.map((p) => (
+                                      <option key={p.id} value={p.id}>
+                                        {p.tokens_amount} токенов — {p.price_rub}₽
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {selectedPkg && (
+                                    <div className={styles.paymentFields}>
+                                      <div className={styles.paymentFieldGroup}>
+                                        <label className={styles.paymentFieldLabel}>Скидочная цена (₽)</label>
+                                        <input
+                                          className={styles.urlInput}
+                                          type="number"
+                                          placeholder={String(selectedPkg.price_rub)}
+                                          value={btn.payment_custom_price ?? ''}
+                                          min={1}
+                                          onChange={(e) => {
+                                            const customPrice = e.target.value ? Number(e.target.value) : null
+                                            const autoText = buildTokenButtonText(selectedPkg, customPrice)
+                                            updateButton(rowIdx, btnIdx, {
+                                              payment_custom_price: customPrice,
+                                              text: autoText,
+                                            })
+                                            if (onAutoFillMessage) {
+                                              onAutoFillMessage(buildTokenMessageHtml(selectedPkg, customPrice))
+                                            }
+                                          }}
+                                        />
+                                      </div>
+                                    </div>
+                                  )}
+                                  {selectedPkg && pkgPrice !== null && (
+                                    <div className={styles.paymentHint}>
+                                      {pkgDiscount > 0
+                                        ? <><s>{selectedPkg.price_rub}₽</s> → <b>{pkgPrice}₽</b> (скидка {pkgDiscount}%) · {selectedPkg.tokens_amount} токенов</>
+                                        : <><b>{pkgPrice}₽</b> · {selectedPkg.tokens_amount} токенов</>
+                                      }
+                                    </div>
+                                  )}
+                                </>
+                              )}
+
+                              <div className={styles.urlHint}>
+                                Пользователь получит персональную ссылку оплаты на YooKassa
+                              </div>
                             </div>
-                            {btn.payment_plan_id && (() => {
-                              const plan = plans.find((p) => p.id === btn.payment_plan_id)
-                              if (!plan) return null
-                              const price = btn.payment_custom_price ?? plan.price_rub
-                              const tokens = plan.tokens_included + (btn.payment_bonus_tokens ?? 0)
-                              const discount = btn.payment_custom_price && btn.payment_custom_price < plan.price_rub
-                                ? Math.round((1 - btn.payment_custom_price / plan.price_rub) * 100)
-                                : 0
-                              return (
-                                <div className={styles.paymentHint}>
-                                  {discount > 0
-                                    ? <><s>{plan.price_rub}₽</s> → <b>{price}₽</b>/мес (скидка {discount}%)</>
-                                    : <><b>{price}₽</b>/мес</>
-                                  }
-                                  {' · '}{tokens} токенов/мес
-                                </div>
-                              )
-                            })()}
-                            <div className={styles.urlHint}>
-                              Пользователь получит персональную ссылку оплаты на YooKassa
-                            </div>
-                          </div>
-                        )}
+                          )
+                        })()}
                       </div>
                       <button
                         className={styles.removeBtnBtn}

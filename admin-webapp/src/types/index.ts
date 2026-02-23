@@ -91,7 +91,7 @@ export interface KeyboardMeta {
 
 export interface Message {
   id: number
-  direction: 'user' | 'bot'
+  direction: 'user' | 'bot' | 'system'
   text: string
   created_at: string | null
   topic_id?: number | null
@@ -1189,10 +1189,12 @@ export interface BroadcastButton {
   option_key?: string
   reply_text?: string
   ask_for_response?: boolean
-  // payment button fields
+  // payment button fields (subscription)
   payment_plan_id?: number | null
   payment_custom_price?: number | null
   payment_bonus_tokens?: number | null
+  // payment button fields (token package)
+  payment_package_id?: number | null
 }
 
 export interface Broadcast {

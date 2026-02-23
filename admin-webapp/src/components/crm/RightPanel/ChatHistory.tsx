@@ -93,6 +93,7 @@ export function ChatHistory({ clientId, onTopicClick, sseNewMessages }: ChatHist
       | { type: 'message'; data: Message }
       | { type: 'topic_start'; topicId: number; topic: ChatHistoryTopic }
       | { type: 'date'; date: string }
+      | { type: 'system_event'; data: Message }
     > = []
 
     let currentTopicId: number | null | undefined = undefined
@@ -104,6 +105,12 @@ export function ChatHistory({ clientId, onTopicClick, sseNewMessages }: ChatHist
       if (msgDate && msgDate !== currentDate) {
         currentDate = msgDate
         items.push({ type: 'date', date: msgDate })
+      }
+
+      // System events (token deductions etc.) — render as badge, skip topic logic
+      if (msg.direction === 'system') {
+        items.push({ type: 'system_event', data: msg })
+        continue
       }
 
       // Topic divider when topic changes
@@ -146,6 +153,19 @@ export function ChatHistory({ clientId, onTopicClick, sseNewMessages }: ChatHist
                 <div className={styles.dateSeparatorLine} />
                 <span>{item.date}</span>
                 <div className={styles.dateSeparatorLine} />
+              </div>
+            )
+          }
+
+          if (item.type === 'system_event') {
+            const msg = item.data
+            return (
+              <div key={`sys-${msg.id}`} className={styles.tokenEventBadge}>
+                <span className={styles.tokenEventIcon}>🪙</span>
+                <span className={styles.tokenEventText}>{msg.text}</span>
+                {msg.created_at && (
+                  <span className={styles.tokenEventTime}>{formatTime(msg.created_at)}</span>
+                )}
               </div>
             )
           }

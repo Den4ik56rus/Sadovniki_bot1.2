@@ -80,7 +80,7 @@ async def create_payment_activity_event(user_id: int, payment_id: int):
             'paid_at': payment['paid_at'].isoformat() if payment['paid_at'] else None,
         }
 
-        await client_crm_repo.create_activity_event(
+        await client_crm_repo.log_activity(
             user_id=user_id,
             event_type='payment',
             event_data=event_data,
@@ -341,6 +341,221 @@ async def create_subscription_payment(
 
     except Exception as e:
         logger.error(f"Failed to create subscription payment: {e}", exc_info=True)
+        await payment_repo.log_payment_error(
+            user_id=user_id,
+            payment_id=None,
+            error_code="payment_creation_failed",
+            error_message=str(e),
+        )
+        raise
+
+
+async def create_subscription_payment_custom(
+    user_id: int,
+    telegram_user_id: int,
+    plan_id: int,
+    custom_price: Optional[int] = None,
+    bonus_tokens: Optional[int] = None,
+    return_url: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Создать платёж для подписки с кастомной ценой/бонусными токенами (для триггеров воронки).
+
+    Аналог create_subscription_payment, но цена/токены переопределяются из параметров.
+    Бонусные токены сохраняются в metadata и начисляются на активации.
+
+    Args:
+        custom_price: Переопределённая цена в рублях (None = цена плана)
+        bonus_tokens: Доп. токены сверх плана (None = без бонуса)
+    """
+    plan = await subscription_plan_repo.get_by_id(plan_id)
+    if not plan:
+        raise ValueError(f"Subscription plan {plan_id} not found")
+    if not plan["is_active"]:
+        raise ValueError(f"Subscription plan {plan_id} is not active")
+
+    original_price = Decimal(str(plan["price_rub"]))
+    final_price = Decimal(str(custom_price)) if custom_price else original_price
+    discount_percent = 0
+    if custom_price and final_price < original_price:
+        discount_percent = round((1 - float(final_price) / float(original_price)) * 100)
+
+    idempotency_key = f"subscription_custom_{user_id}_{plan_id}_{int(datetime.now().timestamp())}"
+
+    description_text = f"Подписка {plan['name']} ({plan['duration_days']} дней)"
+    if discount_percent:
+        description_text = f"{description_text} (скидка {discount_percent}%)"
+
+    receipt_items = yookassa_client.create_receipt_items(
+        description=description_text,
+        amount_rub=final_price,
+        quantity=1,
+    )
+
+    metadata: Dict[str, Any] = {
+        "user_id": str(user_id),
+        "telegram_user_id": str(telegram_user_id),
+        "payment_type": "subscription",
+        "plan_id": str(plan_id),
+    }
+    if discount_percent:
+        metadata["discount_percent"] = str(discount_percent)
+        metadata["original_price_rub"] = str(original_price)
+    if bonus_tokens:
+        metadata["bonus_tokens"] = str(bonus_tokens)
+
+    try:
+        yookassa_payment = await yookassa_client.create_payment(
+            amount_rub=final_price,
+            description=f"Подписка {plan['name']}",
+            return_url=return_url or settings.YOOKASSA_RETURN_URL,
+            user_telegram_id=telegram_user_id,
+            user_email=user_email,
+            receipt_items=receipt_items if settings.YOOKASSA_SEND_RECEIPT else None,
+            metadata=metadata,
+            idempotence_key=idempotency_key,
+            save_payment_method=False,
+        )
+
+        payment = await payment_repo.create_payment(
+            user_id=user_id,
+            yookassa_payment_id=yookassa_payment["id"],
+            idempotency_key=idempotency_key,
+            payment_type="subscription",
+            amount_rub=float(final_price),
+            description=f"Подписка {plan['name']}",
+            confirmation_url=yookassa_payment["confirmation"]["confirmation_url"],
+            subscription_plan_id=plan_id,
+            metadata=metadata,
+        )
+
+        await create_payment_activity_event(user_id, payment["id"])
+
+        logger.info(
+            f"Custom subscription payment created: payment_id={payment['id']}, "
+            f"user={user_id}, plan={plan_id}, price={final_price}"
+            f"{f', bonus_tokens={bonus_tokens}' if bonus_tokens else ''}"
+        )
+
+        return {
+            "payment_id": payment["id"],
+            "yookassa_payment_id": yookassa_payment["id"],
+            "confirmation_url": yookassa_payment["confirmation"]["confirmation_url"],
+            "amount": float(final_price),
+            "original_amount": float(original_price),
+            "discount_percent": discount_percent,
+            "description": f"Подписка {plan['name']}",
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to create custom subscription payment: {e}", exc_info=True)
+        await payment_repo.log_payment_error(
+            user_id=user_id,
+            payment_id=None,
+            error_code="payment_creation_failed",
+            error_message=str(e),
+        )
+        raise
+
+
+async def create_token_payment_custom(
+    user_id: int,
+    telegram_user_id: int,
+    package_id: int,
+    custom_price: Optional[int] = None,
+    return_url: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Создать платёж для покупки доп. токенов с кастомной ценой (для рассылок/воронок).
+
+    Аналог create_token_payment, но цена переопределяется из параметров.
+    Не требует активной подписки (для рассылок — оплата из письма).
+
+    Args:
+        custom_price: Переопределённая цена в рублях (None = цена пакета)
+    """
+    from src.services.db import token_package_repo
+    package = await token_package_repo.get_by_id(package_id)
+    if not package:
+        raise ValueError(f"Token package {package_id} not found")
+    if not package["is_active"]:
+        raise ValueError(f"Token package {package_id} is not active")
+
+    original_price = Decimal(str(package["price_rub"]))
+    final_price = Decimal(str(custom_price)) if custom_price else original_price
+    discount_percent = 0
+    if custom_price and final_price < original_price:
+        discount_percent = round((1 - float(final_price) / float(original_price)) * 100)
+
+    idempotency_key = f"tokens_custom_{user_id}_{package_id}_{int(datetime.now().timestamp())}"
+
+    description_text = f"Токены: {package['tokens_amount']} шт."
+    if discount_percent:
+        description_text = f"{description_text} (скидка {discount_percent}%)"
+
+    receipt_items = yookassa_client.create_receipt_items(
+        description=description_text,
+        amount_rub=final_price,
+        quantity=1,
+    )
+
+    metadata: Dict[str, Any] = {
+        "user_id": str(user_id),
+        "telegram_user_id": str(telegram_user_id),
+        "payment_type": "tokens",
+        "package_id": str(package_id),
+    }
+    if discount_percent:
+        metadata["discount_percent"] = str(discount_percent)
+        metadata["original_price_rub"] = str(original_price)
+
+    try:
+        yookassa_payment = await yookassa_client.create_payment(
+            amount_rub=final_price,
+            description=f"Покупка: {package['name']}",
+            return_url=return_url or settings.YOOKASSA_RETURN_URL,
+            user_telegram_id=telegram_user_id,
+            user_email=user_email,
+            receipt_items=receipt_items if settings.YOOKASSA_SEND_RECEIPT else None,
+            metadata=metadata,
+            idempotence_key=idempotency_key,
+        )
+
+        payment = await payment_repo.create_payment(
+            user_id=user_id,
+            yookassa_payment_id=yookassa_payment["id"],
+            idempotency_key=idempotency_key,
+            payment_type="tokens",
+            amount_rub=float(final_price),
+            description=f"Покупка: {package['name']}",
+            confirmation_url=yookassa_payment["confirmation"]["confirmation_url"],
+            token_package_id=package_id,
+            metadata=metadata,
+        )
+
+        await create_payment_activity_event(user_id, payment["id"])
+
+        logger.info(
+            f"Custom token payment created: payment_id={payment['id']}, "
+            f"user={user_id}, package={package_id}, price={final_price}"
+            f"{f', discount={discount_percent}%' if discount_percent else ''}"
+        )
+
+        return {
+            "payment_id": payment["id"],
+            "yookassa_payment_id": yookassa_payment["id"],
+            "confirmation_url": yookassa_payment["confirmation"]["confirmation_url"],
+            "amount": float(final_price),
+            "original_amount": float(original_price),
+            "discount_percent": discount_percent,
+            "tokens_amount": package["tokens_amount"],
+            "description": package["name"],
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to create custom token payment: {e}", exc_info=True)
         await payment_repo.log_payment_error(
             user_id=user_id,
             payment_id=None,
@@ -727,11 +942,21 @@ async def _process_subscription_payment_success(
     if "payment_method" in yookassa_payment and yookassa_payment["payment_method"]:
         payment_method_id = yookassa_payment["payment_method"].get("id")
 
+    # Читаем bonus_tokens из metadata (устанавливается create_subscription_payment_custom)
+    metadata = payment.get("metadata", {})
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except Exception:
+            metadata = {}
+    bonus_tokens = int(metadata.get("bonus_tokens", 0)) if metadata.get("bonus_tokens") else 0
+
     await activate_subscription(
         user_id=payment["user_id"],
         plan_id=payment["subscription_plan_id"],
         payment_id=payment["id"],
-        payment_method_id=payment_method_id,  # Передать для сохранения
+        payment_method_id=payment_method_id,
+        bonus_tokens=bonus_tokens if bonus_tokens else None,
     )
 
 

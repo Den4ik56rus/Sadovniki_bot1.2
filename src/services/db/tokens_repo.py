@@ -20,9 +20,12 @@ Split-balance система:
     - reset_subscription_tokens_with_carryover — обновить подписочные при продлении
 """
 
+import logging
 from typing import Optional, Dict, Any
 
 from src.services.db.pool import get_pool
+
+logger = logging.getLogger(__name__)
 
 
 async def get_token_balance(user_id: int) -> int:
@@ -108,6 +111,9 @@ async def deduct_tokens(
         True если списание успешно, False если недостаточно токенов
     """
     pool = get_pool()
+    from_sub = 0
+    from_pur = 0
+
     async with pool.acquire() as conn:
         async with conn.transaction():
             row = await conn.fetchrow(
@@ -155,7 +161,38 @@ async def deduct_tokens(
                 user_id, -amount, operation_type, description,
             )
 
-            return True
+    # Логируем системное сообщение в ленту чата (вне транзакции)
+    try:
+        from src.services.db.messages_repo import log_system_message
+
+        token_word = "токена" if 2 <= amount <= 4 else "токенов" if amount >= 5 else "токен"
+        parts = []
+        if from_sub > 0:
+            parts.append(f"{from_sub} подписочных")
+        if from_pur > 0:
+            parts.append(f"{from_pur} купленных")
+        balance_detail = " + ".join(parts) if parts else str(amount)
+
+        msg_text = f"Списано {amount} {token_word} ({balance_detail})"
+        if description:
+            msg_text += f" — {description}"
+
+        await log_system_message(
+            user_id=user_id,
+            text=msg_text,
+            meta={
+                "type": "token_deduction",
+                "amount": amount,
+                "from_sub": from_sub,
+                "from_pur": from_pur,
+                "operation_type": operation_type,
+                "description": description,
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log token deduction system message: {e}")
+
+    return True
 
 
 async def add_tokens(
@@ -198,6 +235,7 @@ async def add_subscription_tokens(
         Новый суммарный баланс
     """
     pool = get_pool()
+    new_balance = 0
     async with pool.acquire() as conn:
         async with conn.transaction():
             row = await conn.fetchrow(
@@ -220,7 +258,38 @@ async def add_subscription_tokens(
                 user_id, amount, operation_type, description,
             )
 
-            return row["token_balance"] if row else 0
+            new_balance = row["token_balance"] if row else 0
+
+    # Системное сообщение в ленту чата
+    try:
+        from src.services.db.messages_repo import log_system_message
+        token_word = "токена" if 2 <= amount <= 4 else "токенов" if amount >= 5 else "токен"
+        op_labels = {
+            "subscription_activation": "Активация подписки",
+            "admin_credit": "Начисление администратором",
+            "referral_bonus": "Реферальный бонус",
+            "trial_grant": "Пробный доступ",
+            "invite_bonus": "Бонус по приглашению",
+            "refund": "Возврат токенов",
+        }
+        op_label = op_labels.get(operation_type, operation_type)
+        msg_text = f"Начислено {amount} {token_word} (подписочные) — {description or op_label}"
+        await log_system_message(
+            user_id=user_id,
+            text=msg_text,
+            meta={
+                "type": "token_credit",
+                "amount": amount,
+                "token_type": "subscription",
+                "operation_type": operation_type,
+                "description": description,
+                "new_balance": new_balance,
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log token credit system message: {e}")
+
+    return new_balance
 
 
 async def add_purchased_tokens(
@@ -242,6 +311,7 @@ async def add_purchased_tokens(
         Новый суммарный баланс
     """
     pool = get_pool()
+    new_balance = 0
     async with pool.acquire() as conn:
         async with conn.transaction():
             row = await conn.fetchrow(
@@ -264,7 +334,38 @@ async def add_purchased_tokens(
                 user_id, amount, operation_type, description,
             )
 
-            return row["token_balance"] if row else 0
+            new_balance = row["token_balance"] if row else 0
+
+    # Системное сообщение в ленту чата
+    try:
+        from src.services.db.messages_repo import log_system_message
+        token_word = "токена" if 2 <= amount <= 4 else "токенов" if amount >= 5 else "токен"
+        op_labels = {
+            "admin_credit": "Начисление администратором",
+            "payment_yookassa": "Покупка токенов",
+            "referral_bonus": "Реферальный бонус",
+            "trial_grant": "Пробный доступ",
+            "invite_bonus": "Бонус по приглашению",
+            "refund": "Возврат токенов",
+        }
+        op_label = op_labels.get(operation_type, operation_type)
+        msg_text = f"Начислено {amount} {token_word} (купленные) — {description or op_label}"
+        await log_system_message(
+            user_id=user_id,
+            text=msg_text,
+            meta={
+                "type": "token_credit",
+                "amount": amount,
+                "token_type": "purchased",
+                "operation_type": operation_type,
+                "description": description,
+                "new_balance": new_balance,
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log token credit system message: {e}")
+
+    return new_balance
 
 
 async def reset_subscription_tokens_with_carryover(
@@ -343,7 +444,29 @@ async def reset_subscription_tokens_with_carryover(
                     f"Перенос {carryover} из {old_sub} неиспользованных (макс. {max_carryover})",
                 )
 
-            return {
+    # Системное сообщение в ленту чата
+    try:
+        from src.services.db.messages_repo import log_system_message
+        token_word = "токена" if 2 <= new_amount <= 4 else "токенов" if new_amount >= 5 else "токен"
+        msg_text = f"Активация подписки: +{new_amount} {token_word}"
+        if carryover > 0:
+            msg_text += f" + перенос {carryover}"
+        msg_text += f" (итого {new_sub_balance} подписочных)"
+        await log_system_message(
+            user_id=user_id,
+            text=msg_text,
+            meta={
+                "type": "subscription_activation",
+                "new_amount": new_amount,
+                "carryover": carryover,
+                "new_sub_balance": new_sub_balance,
+                "total_balance": new_total,
+            },
+        )
+    except Exception as e:
+        logger.warning(f"Failed to log subscription activation system message: {e}")
+
+    return {
                 "carryover": carryover,
                 "new_subscription_balance": new_sub_balance,
                 "total_balance": new_total,

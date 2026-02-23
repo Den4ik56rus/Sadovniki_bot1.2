@@ -1500,11 +1500,21 @@ export const api = {
     return fetchApi<FunnelTriggersResponse>(`/funnels/${funnelId}/stages/${stageKey}/triggers`)
   },
 
-  async createStageTrigger(funnelId: string, stageKey: string, broadcastId: number): Promise<{ trigger: FunnelStageTrigger }> {
+  async createStageTrigger(
+    funnelId: string,
+    stageKey: string,
+    broadcastId: number,
+    delayMinutes?: number,
+    paymentConfig?: import('@/types').TriggerPaymentConfig | null,
+  ): Promise<{ trigger: FunnelStageTrigger }> {
     return fetchApi(`/funnels/${funnelId}/stages/${stageKey}/triggers`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ broadcast_id: broadcastId }),
+      body: JSON.stringify({
+        broadcast_id: broadcastId,
+        delay_minutes: delayMinutes ?? 0,
+        payment_config: paymentConfig ?? null,
+      }),
     })
   },
 
@@ -1519,6 +1529,21 @@ export const api = {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ is_active: isActive }),
+    })
+  },
+
+  async updateStageTrigger(
+    triggerId: number,
+    updates: {
+      is_active?: boolean
+      delay_minutes?: number
+      payment_config?: import('@/types').TriggerPaymentConfig | null
+    },
+  ): Promise<{ trigger: FunnelStageTrigger }> {
+    return fetchApi(`/funnels/triggers/${triggerId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates),
     })
   },
 }

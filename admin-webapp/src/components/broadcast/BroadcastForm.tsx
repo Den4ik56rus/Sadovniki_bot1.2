@@ -1,6 +1,6 @@
 // Broadcast Form — создание / редактирование рассылки
 
-import { useState, useCallback, useEffect } from 'react'
+import { useState, useCallback, useEffect, useRef } from 'react'
 import { useBroadcastStore } from '@/store/broadcastStore'
 import type { Broadcast, BroadcastButton, BroadcastTargetType } from '@/types'
 import { RecipientSelector } from './RecipientSelector'
@@ -44,6 +44,9 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
 
   // Inline buttons
   const [inlineButtons, setInlineButtons] = useState<BroadcastButton[]>(broadcast?.inline_buttons || [])
+  // Последний авто-заполненный текст — если messageText совпадает с ним, разрешаем авто-обновление
+  const lastAutoFilledRef = useRef<string>('')
+  const [messageForceRefresh, setMessageForceRefresh] = useState(0)
 
   // Schedule
   const [scheduleEnabled, setScheduleEnabled] = useState(!!broadcast?.scheduled_at)
@@ -212,6 +215,7 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
         <label className={styles.label}>Сообщение</label>
         <MessageEditor
           value={messageText}
+          forceRefresh={messageForceRefresh}
           onChange={setMessageText}
         />
       </div>
@@ -244,6 +248,19 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
         <ButtonEditor
           buttons={inlineButtons}
           onChange={setInlineButtons}
+          onAutoFillMessage={(html) => {
+            // Обновляем если: пусто, или текст совпадает с предыдущим авто-заполнением
+            const isEmpty = !messageText || messageText === '<p></p>' || messageText.trim() === ''
+            // TipTap добавляет <br class="ProseMirror-trailingBreak"> в пустые параграфы —
+            // нормализуем для сравнения
+            const normalize = (s: string) => s.replace(/<br[^>]*>/g, '').replace(/\s+/g, ' ').trim()
+            const isAutoFilled = normalize(messageText) === normalize(lastAutoFilledRef.current)
+            if (isEmpty || isAutoFilled) {
+              lastAutoFilledRef.current = html
+              setMessageText(html)
+              setMessageForceRefresh((k) => k + 1)
+            }
+          }}
         />
       </div>
 

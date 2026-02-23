@@ -774,7 +774,6 @@ async def auto_move_client_in_crm(user_id: int, target_stage_key: str) -> bool:
 
     Отличия от move_client_to_stage():
       - НЕ ставит manual_override=true (чтобы будущие авто-переходы работали)
-      - Проверяет manual_override: если true — пропускает
       - Двигает только вперёд (по CRM_STAGE_ORDER)
       - Создаёт запись в client_funnel_position если её нет
 
@@ -791,7 +790,7 @@ async def auto_move_client_in_crm(user_id: int, target_stage_key: str) -> bool:
         # Получаем текущую позицию
         row = await conn.fetchrow(
             """
-            SELECT stage_key, manual_override
+            SELECT stage_key
             FROM client_funnel_position
             WHERE user_id = $1 AND funnel_id = 'crm'
             """,
@@ -809,15 +808,8 @@ async def auto_move_client_in_crm(user_id: int, target_stage_key: str) -> bool:
                 user_id,
             )
             current_stage = 'new'
-            manual_override = False
         else:
             current_stage = row['stage_key']
-            manual_override = row['manual_override']
-
-        # Админ вручную переместил — не трогаем
-        if manual_override:
-            logger.debug(f"auto_move skip user {user_id}: manual_override=true")
-            return False
 
         # Уже на этой стадии или дальше — не трогаем
         current_order = CRM_STAGE_ORDER.get(current_stage, -1)
@@ -831,11 +823,10 @@ async def auto_move_client_in_crm(user_id: int, target_stage_key: str) -> bool:
         await conn.execute(
             """
             UPDATE client_funnel_position
-            SET stage_key = $3, updated_at = NOW()
+            SET stage_key = $2, updated_at = NOW()
             WHERE user_id = $1 AND funnel_id = 'crm'
             """,
             user_id,
-            'crm',
             target_stage_key,
         )
 

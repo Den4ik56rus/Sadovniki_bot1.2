@@ -283,6 +283,27 @@
   margin-top: 4px;
 }
 
+.paymentModeRow {
+  display: flex;
+  gap: 12px;
+}
+
+.paymentModeOption {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+
+.paymentModeOption input[type="radio"] {
+  width: 13px;
+  height: 13px;
+  accent-color: var(--accent-primary);
+  cursor: pointer;
+}
+
 .paymentFields {
   display: flex;
   gap: 6px;
@@ -290,6 +311,24 @@
 
 .paymentFields .urlInput {
   flex: 1;
+}
+
+.paymentFieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+}
+
+.paymentFieldLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.paymentFieldGroup .urlInput {
+  width: 100%;
 }
 
 .paymentHint {

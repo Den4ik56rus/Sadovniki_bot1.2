@@ -24,6 +24,7 @@ async def activate_subscription(
     plan_id: int,
     payment_id: int,
     payment_method_id: Optional[str] = None,
+    bonus_tokens: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     Активирует подписку после успешной оплаты.
@@ -86,11 +87,12 @@ async def activate_subscription(
             # Начислить токены сразу только если подписка стартует сейчас
             # Если started_at в будущем (продление при активной подписке) — токены начислятся позже
             is_deferred = started_at > datetime.now()
+            total_tokens = plan["tokens_included"] + (bonus_tokens or 0)
             if not is_deferred:
                 max_carryover = plan.get("max_carryover", 0)
                 carryover_result = await reset_subscription_tokens_with_carryover(
                     user_id=user_id,
-                    new_amount=plan["tokens_included"],
+                    new_amount=total_tokens,
                     max_carryover=max_carryover,
                 )
             else:
@@ -99,7 +101,8 @@ async def activate_subscription(
             logger.info(
                 f"Subscription activated: user={user_id}, plan={plan['name']}, "
                 f"starts={started_at}, expires={expires_at}, "
-                f"deferred={is_deferred}, tokens={plan['tokens_included']}, "
+                f"deferred={is_deferred}, tokens={total_tokens}"
+                f"{f' (bonus={bonus_tokens})' if bonus_tokens else ''}, "
                 f"carryover={carryover_result['carryover']}, "
                 f"new_balance={carryover_result['total_balance']}"
             )
@@ -358,11 +361,12 @@ async def _send_subscription_notification(
                 "Спасибо за вашу поддержку! 🌱"
             )
         else:
+            total_tokens_display = plan['tokens_included'] + (subscription.get('_bonus_tokens', 0) or 0)
             message_text = (
                 "🎉 <b>Подписка активирована!</b>\n\n"
                 f"📅 План: {plan['name']}\n"
                 f"⏱ Действует до: {expires_str}\n"
-                f"🎁 Начислено токенов: {plan['tokens_included']}"
+                f"🎁 Начислено токенов: {carryover_result.get('total_balance', plan['tokens_included'])}"
                 f"{carryover_line}\n\n"
                 "Спасибо за вашу поддержку! 🌱"
             )

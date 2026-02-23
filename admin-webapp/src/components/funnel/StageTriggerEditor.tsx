@@ -22,24 +22,12 @@ interface Props {
   triggers: FunnelStageTrigger[]
 }
 
-const DELAY_OPTIONS = [
-  { label: 'Сразу', value: 0 },
-  { label: '30 мин', value: 30 },
-  { label: '1 час', value: 60 },
-  { label: '3 часа', value: 180 },
-  { label: '24 часа', value: 1440 },
-  { label: '2 дня', value: 2880 },
-  { label: '3 дня', value: 4320 },
-  { label: '7 дней', value: 10080 },
-]
-
 function formatDelay(minutes: number): string {
   if (!minutes) return ''
-  const opt = DELAY_OPTIONS.find((o) => o.value === minutes)
-  if (opt) return opt.label
   if (minutes < 60) return `${minutes} мин`
-  if (minutes < 1440) return `${Math.round(minutes / 60)} ч`
-  return `${Math.round(minutes / 1440)} дн`
+  if (minutes % 1440 === 0) return `${minutes / 1440} дн`
+  if (minutes % 60 === 0) return `${minutes / 60} ч`
+  return `${minutes} мин`
 }
 
 export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
@@ -48,7 +36,9 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
   const [loading, setLoading] = useState(false)
   const [selectedBroadcastId, setSelectedBroadcastId] = useState<number | null>(null)
-  const [delayMinutes, setDelayMinutes] = useState<number>(0)
+  const [delayHours, setDelayHours] = useState<string>('0')
+  const [delayMins, setDelayMins] = useState<string>('0')
+  const delayMinutes = Math.round(Number(delayHours) * 60) + Math.round(Number(delayMins))
   const [enablePayment, setEnablePayment] = useState(false)
   const [paymentPlanId, setPaymentPlanId] = useState<number | null>(null)
   const [customPrice, setCustomPrice] = useState<string>('')
@@ -76,7 +66,8 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
 
   const resetForm = () => {
     setSelectedBroadcastId(null)
-    setDelayMinutes(0)
+    setDelayHours('0')
+    setDelayMins('0')
     setEnablePayment(false)
     setPaymentPlanId(null)
     setCustomPrice('')
@@ -192,15 +183,30 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
               {/* Delay selector */}
               <div className={styles.formRow}>
                 <label className={styles.formLabel}>⏱ Задержка</label>
-                <select
-                  className={styles.selectDelay}
-                  value={delayMinutes}
-                  onChange={(e) => setDelayMinutes(Number(e.target.value))}
-                >
-                  {DELAY_OPTIONS.map((opt) => (
-                    <option key={opt.value} value={opt.value}>{opt.label}</option>
-                  ))}
-                </select>
+                <div className={styles.delayInputRow}>
+                  <input
+                    className={styles.delayValueInput}
+                    type="number"
+                    min={0}
+                    value={delayHours}
+                    onChange={(e) => setDelayHours(e.target.value)}
+                    placeholder="0"
+                  />
+                  <span className={styles.delayUnitLabel}>ч</span>
+                  <input
+                    className={styles.delayValueInput}
+                    type="number"
+                    min={0}
+                    max={59}
+                    value={delayMins}
+                    onChange={(e) => setDelayMins(e.target.value)}
+                    placeholder="0"
+                  />
+                  <span className={styles.delayUnitLabel}>мин</span>
+                  {delayMinutes > 0 && (
+                    <span className={styles.delayPreview}>= {formatDelay(delayMinutes)}</span>
+                  )}
+                </div>
               </div>
 
               {/* Payment button toggle */}

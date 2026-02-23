@@ -468,6 +468,28 @@ async def update_client_billing(request: web.Request) -> web.Response:
                         user_id, int(pur_tokens)
                     )
 
+            # Системные сообщения о ручной корректировке токенов (вне транзакции)
+            if sub_tokens is not None or pur_tokens is not None:
+                try:
+                    from src.services.db.messages_repo import log_system_message
+                    parts = []
+                    if sub_tokens is not None:
+                        parts.append(f"{int(sub_tokens)} подписочных")
+                    if pur_tokens is not None:
+                        parts.append(f"{int(pur_tokens)} купленных")
+                    msg_text = f"Токены изменены администратором: {', '.join(parts)}"
+                    await log_system_message(
+                        user_id=user_id,
+                        text=msg_text,
+                        meta={
+                            "type": "admin_token_edit",
+                            "subscription_token_balance": int(sub_tokens) if sub_tokens is not None else None,
+                            "purchased_token_balance": int(pur_tokens) if pur_tokens is not None else None,
+                        },
+                    )
+                except Exception as log_err:
+                    logger.warning(f"Failed to log admin token edit system message: {log_err}")
+
         return web.json_response({"success": True})
 
     except ValueError as e:

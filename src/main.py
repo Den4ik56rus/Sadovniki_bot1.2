@@ -23,6 +23,23 @@ from src.api import create_api_app
 from src.config import settings
 
 
+async def _trigger_scheduler_loop(process_fn) -> None:
+    """
+    Фоновая задача для отложенных триггеров воронки.
+    Проверяет каждые 30 секунд pending-триггеры и отправляет те, чьё время пришло.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    while True:
+        try:
+            processed = await process_fn()
+            if processed > 0:
+                logger.info(f"Trigger scheduler: processed {processed} pending triggers")
+        except Exception as e:
+            logger.error(f"Error in trigger scheduler: {e}", exc_info=True)
+        await asyncio.sleep(30)
+
+
 async def _subscription_renewal_task() -> None:
     """
     Фоновая задача для автоматического продления подписок.
@@ -100,6 +117,11 @@ async def main() -> None:
     broadcast_task = asyncio.create_task(broadcast_scheduler_loop())
     print("Фоновая задача рассылок запущена.")
 
+    # Запускаем фоновую задачу для отложенных триггеров воронки
+    from src.services.funnel_trigger_sender import process_pending_triggers as _process_pending_triggers
+    trigger_task = asyncio.create_task(_trigger_scheduler_loop(_process_pending_triggers))
+    print("Фоновая задача триггеров воронки запущена.")
+
     print("Бот запущен. Нажмите Ctrl+C, чтобы остановить его.")
 
     try:
@@ -112,6 +134,7 @@ async def main() -> None:
         # Останавливаем фоновые задачи
         background_task.cancel()
         broadcast_task.cancel()
+        trigger_task.cancel()
         try:
             await background_task
         except asyncio.CancelledError:
@@ -120,6 +143,10 @@ async def main() -> None:
             await broadcast_task
         except asyncio.CancelledError:
             print("Фоновая задача рассылок остановлена.")
+        try:
+            await trigger_task
+        except asyncio.CancelledError:
+            print("Фоновая задача триггеров воронки остановлена.")
 
         # Закрываем SSE соединения перед остановкой API сервера
         from src.api.sse_manager import sse_manager

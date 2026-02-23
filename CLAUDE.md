@@ -11,11 +11,11 @@ Before making ANY changes:
 2. Read `session-summary.md` — contains latest session changes
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
-**Current Project State (2026-02-21):**
-- Version: 1.5.2
-- Phase: Broadcast system + user experience
-- Latest changes: Full broadcast system (mass messaging from admin panel), CRM activity feed broadcast events, .env.local support for test bot
-- CRITICAL: DB schemas 62-63 NOT YET APPLIED ON PRODUCTION — must apply before using broadcasts
+**Current Project State (2026-02-22):**
+- Version: 1.5.4
+- Phase: Broadcasts v2 + funnel stage triggers + production hardening
+- Latest changes: Broadcast resend (broadcast_runs), text responses on buttons, funnel stage triggers, HTTPS/SSL for proagro56.ru, YooKassa save_payment_method disabled
+- CRITICAL: DB schemas 62-66 NOT YET APPLIED ON PRODUCTION — must apply all five before using broadcasts or funnel triggers
 - See: `session-summary.md` for details
 
 ## Collaboration Rules

@@ -343,3 +343,55 @@ async def get_user_chat_history(user_id: int, limit: int = 500) -> Dict[str, Any
             })
 
         return {"messages": messages, "topics": topics}
+
+
+async def log_system_message(
+    user_id: int,
+    text: str,
+    meta: Optional[Dict[str, Any]] = None,
+    topic_id: Optional[int] = None,
+) -> int:
+    """
+    Записывает системное сообщение (direction='system') в ленту чата клиента.
+    Используется для отображения технических событий (списание токенов и т.д.)
+    в ChatHistory в admin panel.
+    Возвращает messages.id.
+    """
+    pool = get_pool()
+
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO messages (user_id, direction, text, session_id, topic_id, meta)
+            VALUES ($1, 'system', $2, 'system', $3, $4)
+            RETURNING id, created_at
+            """,
+            user_id,
+            text,
+            topic_id,
+            meta,
+        )
+
+        msg_id = row["id"]
+        created_at = row["created_at"]
+
+    # SSE broadcast для карточки клиента — client-level (ChatHistory)
+    try:
+        from src.api.sse_manager import sse_manager
+        await sse_manager.broadcast(
+            event_type='new_message',
+            data={
+                "id": msg_id,
+                "direction": "system",
+                "text": text,
+                "created_at": created_at.isoformat() if created_at else None,
+                "meta": meta,
+                "topic_id": topic_id,
+            },
+            endpoint_type='client',
+            entity_id=user_id,
+        )
+    except Exception as e:
+        logger.warning(f"Failed to broadcast SSE system message event: {e}")
+
+    return msg_id

@@ -10,9 +10,10 @@ import styles from './MessageEditor.module.css'
 interface Props {
   value: string
   onChange: (html: string) => void
+  forceRefresh?: number
 }
 
-export function MessageEditor({ value, onChange }: Props) {
+export function MessageEditor({ value, onChange, forceRefresh }: Props) {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
@@ -49,6 +50,14 @@ export function MessageEditor({ value, onChange }: Props) {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value])
+
+  // Force refresh — принудительно обновить контент (например при авто-заполнении)
+  useEffect(() => {
+    if (editor && forceRefresh) {
+      editor.commands.setContent(value || '')
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [forceRefresh])
 
   const setLink = useCallback(() => {
     if (!editor) return

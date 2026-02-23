@@ -1,8 +1,8 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2026-02-21
-**Project:** Sadovniki-bot v1.5.2
-**Status:** Active development — broadcast system added, DB migrations 62-63 pending on production
+**Last Updated:** 2026-02-22
+**Project:** Sadovniki-bot v1.5.4
+**Status:** Active development — broadcasts v2 + funnel triggers + HTTPS/SSL; DB migrations 62-66 pending on production
 
 ## Quick Navigation
 
@@ -167,7 +167,8 @@ User Question
 | Invite Links | ✅ Production | - | Campaign tracking with revenue stats |
 | Full Message Logging | ✅ Production | - | All bot/user messages + buttons logged |
 | CRM ChatHistory | ✅ Production | - | Full conversation timeline per client |
-| Broadcasts | ⏳ Implemented, DB migrations pending | [BROADCASTS.md](features/BROADCASTS.md) | Mass messaging with photos/polls/buttons |
+| Broadcasts | ⏳ Implemented v2, DB migrations 62-66 pending | [BROADCASTS.md](features/BROADCASTS.md) | Mass messaging with photos/polls/buttons; resend runs; text responses |
+| Funnel Stage Triggers | ⏳ Implemented, DB migrations pending | - | Auto-send broadcast when client moves to kanban stage |
 | Article Writing Mode | ✅ Production | - | Admin feature, needs docs |
 | Document Upload | ✅ Production | [DOCUMENT_PIPELINE.md](features/DOCUMENT_PIPELINE.md) | PDF/TXT/MD/DOCX |
 | CRM Deals Kanban | ✅ Production | - | Sales funnel management, needs docs |
@@ -209,26 +210,26 @@ User Question
 
 ## Active Context
 
-### Current Phase: Broadcast System + User Experience
+### Current Phase: Broadcasts v2 + Funnel Triggers + Production Hardening
 
 **Focus Areas:**
-1. Broadcast system — mass messaging from admin panel
-2. CRM activity feed — broadcast events per client
-3. .env.local support for test bot development
+1. Broadcast resend (broadcast_runs architecture)
+2. Text response collection on quick_reply buttons
+3. Funnel stage triggers — auto-send broadcast when client moves to kanban stage
+4. HTTPS/SSL for proagro56.ru production domain
+5. YooKassa payment method safety (recurring payments approval pending)
 
-**Last Session Changes (2026-02-21):**
-- Full broadcast system: create/edit/delete/send/schedule/cancel broadcasts
-- Content types: text (TipTap editor), photo, Telegram poll, inline buttons (URL + quick_reply)
-- Targeting: all users, invite_link, funnel_stage, manual user selection
-- Real-time delivery progress via SSE (broadcast_stream endpoint)
-- Stats: delivery report, button click distribution, poll answer distribution
-- BroadcastPage replaces Messages placeholder in admin panel
-- Bot callbacks: quick_reply button tracking + PollAnswer recording
-- Broadcast scheduler: background loop, checks every 60s for scheduled broadcasts
-- CRM activity feed: broadcast_sent / broadcast_button_click / broadcast_poll_answer events
-- .env.local detection in config.py (takes priority over .env for test bot)
-- DB constraint fix in schema_61 (PostgreSQL < 15 compatibility)
-- DB migrations 62-63 MUST be applied before using broadcast system on production
+**Last Session Changes (2026-02-22 — v1.5.3 + v1.5.4):**
+- Broadcast resend: `broadcast_runs` table, each send is a separate run with own stats
+- Button click uniqueness changed: one click per (broadcast, run, user, option_key) — allows clicking multiple different buttons
+- Text responses: quick_reply buttons can have `ask_for_response=true` — captures next text message from user
+- Funnel stage triggers: attach any broadcast to a funnel stage; fires automatically on client stage change (one-per-user via `funnel_trigger_log`)
+- ResendDialog UI in admin panel for resending broadcasts
+- StageTriggerEditor UI in funnel kanban
+- HTTPS/SSL: nginx reconfigured for proagro56.ru with Let's Encrypt certificates
+- node_modules removed from git tracking (.gitignore updated)
+- YooKassa: `save_payment_method=False` until recurring payment approval granted
+- DB migrations 62-66 MUST be applied on production before using broadcast or funnel trigger features
 
 ### Constraints & Invariants
 

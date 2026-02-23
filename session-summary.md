@@ -1,10 +1,10 @@
-# Session Summary — 2026-02-21
+# Session Summary — 2026-02-22
 
 ## Project Context
 
 **Sadovniki-bot** — Telegram-bot for professional consultations on berry crops with RAG system (PostgreSQL + pgvector) and OpenAI GPT.
 
-**Current Stage:** Production system (v1.5.1) with broadcast system, admin panel improvements, and CRM activity feed enhancements.
+**Current Stage:** Production system (v1.5.4) with enhanced broadcast system, funnel stage triggers, HTTPS/SSL on production domain, and YooKassa payment method fix.
 
 **Tech Stack:**
 - Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
@@ -16,298 +16,343 @@
 
 ## Session Goal
 
-**Primary Goal:** Implement a full broadcast (mass messaging) system — create/schedule/send broadcasts from the admin panel with support for photos, polls, and interactive inline buttons. Also: integrate broadcast activity into the CRM activity feed per client, and add .env.local support for test bot configuration.
+**Primary Goal (v1.5.3):** Enhance the broadcast system (resend dialog, multi-button clicks, text responses to buttons), add funnel stage triggers (auto-send broadcast when client moves to a kanban stage), improve CRM activity feed and kanban client cards, configure HTTPS/SSL for proagro56.ru domain, and clean up node_modules from git tracking.
+
+**Secondary Goal (v1.5.4):** Disable `save_payment_method` in YooKassa subscription payments until recurring payment permission is granted by YooKassa.
 
 ---
 
 ## Accomplishments
 
-### 1. Broadcast System — Full Stack
+### v1.5.3 — Broadcasts v2, Funnels, CRM, HTTPS/SSL
 
-**Database (2 new migrations):**
+#### Broadcast System Enhancements
 
-`db/schema_62_broadcasts.sql`:
-- `broadcasts` table — title, message_text, photo_path, poll settings, target (all/invite_link/funnel_stage/manual), scheduled_at, status (draft/scheduled/sending/completed/failed/cancelled), counters (total_recipients, sent_count, failed_count)
-- `broadcast_recipients` table — per-user delivery status tracking with unique constraint on (broadcast_id, user_id)
+**New DB migrations:**
 
-`db/schema_63_broadcast_buttons_and_stats.sql`:
-- `inline_buttons JSONB` column added to broadcasts — stores array of `{row, text, type, url?, option_key?}`
-- `broadcast_button_clicks` table — records quick_reply button clicks (unique per user)
-- `broadcast_poll_answers` table — records Telegram PollAnswer responses (supports anonymous=false only)
-- `telegram_poll_id` column added to `broadcast_recipients` — enables mapping Telegram polls to broadcasts
+`db/schema_64_broadcast_runs_and_triggers.sql`:
+- `broadcast_runs` table — each broadcast can now be sent multiple times (resend). Tracks run_number, target_type, per-run counters (total_recipients, sent_count, failed_count), and timestamps per run.
+- `broadcast_recipients` extended with `run_id` FK — unique constraint changed from (broadcast_id, user_id) to (broadcast_id, run_id, user_id) — allows same user to receive different runs.
+- `funnel_stage_triggers` table — links a funnel stage to a broadcast; when a client is moved to that stage, the broadcast is sent automatically.
+- `funnel_trigger_log` table — one-per-user deduplication: each trigger is only sent once per user.
 
-**Backend services:**
+`db/schema_65_button_clicks_multi.sql`:
+- Changed UNIQUE constraint on `broadcast_button_clicks` from (broadcast_id, run_id, user_id) to (broadcast_id, run_id, user_id, option_key) — allows a user to click multiple different buttons in one broadcast, but not the same button twice.
 
-`src/services/db/broadcast_repo.py` (new):
-- CRUD: `get_broadcasts`, `create_broadcast`, `get_broadcast`, `update_broadcast`, `delete_broadcast`
-- Targeting: `get_broadcast_recipients_users` (respects target_type), `create_broadcast_recipients`
-- Delivery: `update_broadcast_status`, `increment_broadcast_counters`, `save_recipient_result`, `save_recipient_poll_id`
-- Interaction: `record_button_click`, `record_poll_answer`, `resolve_broadcast_from_poll_id`
-- Stats: `get_broadcast_stats` (button click counts + poll answer distribution)
+`db/schema_66_broadcast_text_responses.sql`:
+- Added `text_response TEXT` and `response_at TIMESTAMPTZ` columns to `broadcast_button_clicks` — stores the user's free-text response when a button has `ask_for_response=true`.
 
-`src/services/broadcast_sender.py` (new):
-- `execute_broadcast(broadcast_id)` — full async sender
-- Rate limit: 0.05s delay between messages (~20 msg/sec)
-- SSE progress: broadcasts `broadcast_progress` event every 5 sends via `sse_manager`
-- Supports: text-only, photo+caption, native Telegram poll, inline buttons (URL + quick_reply)
-- HTML sanitizer: `sanitize_html_for_telegram()` — converts TipTap HTML to Telegram-compatible HTML
+**New backend files:**
 
-`src/services/broadcast_scheduler.py` (new):
-- Background task `broadcast_scheduler_loop()` — checks every 60 seconds for `scheduled` broadcasts
-- Auto-executes when `scheduled_at <= now`
+`src/handlers/broadcast_responses.py`:
+- Router that catches the next text message from a user who is in `waiting_broadcast_response` state (set by broadcast_callbacks when a quick_reply button with `ask_for_response=true` is clicked).
+- Saves the response text via `broadcast_repo.save_button_text_response`.
+- Clears the state after saving.
 
-`src/handlers/broadcast_callbacks.py` (new):
-- `@router.callback_query(F.data.startswith("bcast:"))` — handles quick_reply button clicks
-- `@router.poll_answer()` — handles PollAnswer events (non-anonymous polls only)
-- Records interactions via `broadcast_repo.record_button_click` / `record_poll_answer`
+`src/services/db/funnel_trigger_repo.py`:
+- `get_active_triggers_for_stage(funnel_id, stage_key)` — returns active triggers for a stage.
+- `has_trigger_been_sent(trigger_id, user_id)` — deduplication check.
+- `log_trigger_sent(trigger_id, user_id, status, error_message)` — records delivery attempt.
 
-`src/api/handlers/broadcasts.py` (new):
-- Full REST API: GET list, POST create, GET one, PUT update, DELETE, POST send, POST schedule, POST cancel
-- `POST /broadcasts/preview-count` — preview recipient count before sending
-- `GET /broadcasts/users` — all users for manual targeting
-- `POST /broadcasts/upload-photo` — multipart upload, saved to `data/broadcast_photos/`
-- `GET /broadcasts/photo/{filename}` — serve uploaded photos
-- `GET /broadcasts/{id}/recipients` — delivery list with per-user status
-- `GET /broadcasts/{id}/stats` — click/answer statistics
-- `GET /broadcasts/{id}/stats/users` — list of users who clicked button or answered poll
+`src/services/funnel_trigger_sender.py`:
+- `execute_stage_triggers(user_id, telegram_user_id, funnel_id, stage_key)` — called when a client is moved to a funnel stage; checks all active triggers for that stage, skips already-sent ones, and sends the broadcast content (text/photo/poll/buttons) to the user.
 
-**API routes registered** in `src/api/routes.py`:
-- 15 new routes for broadcasts REST + SSE
-- `GET /api/admin/events/broadcast/{broadcast_id}` — SSE stream for real-time delivery progress
+**Modified backend files:**
 
-**SSE handler** in `src/api/handlers/sse.py`:
-- `broadcast_stream()` — new SSE endpoint for delivery progress
-- Uses `sse_manager` with `endpoint_type='broadcast'` and `entity_id=broadcast_id`
-- Emits: `broadcast_progress` (counters update), `broadcast_completed`
+`src/services/broadcast_sender.py`:
+- Reworked to support `broadcast_runs`: each call to `execute_broadcast` creates a new `broadcast_run` record.
+- SSE progress events now include `run_id`.
 
-**Bot integration:**
-- `src/handlers/__init__.py` — `broadcast_cb_router` registered before admin/consultation routers
-- `src/main.py` — `broadcast_scheduler_loop` launched as background task at startup, cancelled gracefully on shutdown
+`src/services/db/broadcast_repo.py`:
+- New functions: `create_broadcast_run`, `update_broadcast_run_status`, `increment_run_counters`, `save_button_text_response`.
+- Existing functions updated to work with run_id.
 
-**Config changes** (`src/config.py`):
-- `.env.local` detection: if file exists in project root, it is used instead of `.env`
-- Startup log prints which env file was loaded and the bot username
+`src/handlers/broadcast_callbacks.py`:
+- Added handling for `ask_for_response=true` buttons: sets `CONSULTATION_STATE[user_id] = "waiting_broadcast_response"` and stores `broadcast_id` + `option_key` in `CONSULTATION_CONTEXT`.
 
-**DB constraint fix** (`db/schema_61_token_balance_constraints.sql`):
-- Changed `IF NOT EXISTS` to PL/pgSQL `DO ... EXCEPTION WHEN duplicate_object THEN NULL` pattern (compatible with PostgreSQL < 15)
+`src/api/handlers/broadcasts.py`:
+- New endpoints for resend: `POST /broadcasts/{id}/resend` — creates a new run.
+- New endpoint: `GET /broadcasts/{id}/runs` — list of all runs with per-run stats.
 
-### 2. Frontend — BroadcastPage (full feature UI)
+`src/api/handlers/funnels.py`:
+- New endpoints for stage triggers: CRUD for `funnel_stage_triggers`.
 
-**New directory:** `admin-webapp/src/components/broadcast/`
+`src/handlers/__init__.py`:
+- `broadcast_responses_router` registered (before consultation routers, after broadcast_callbacks).
 
-Components:
-- `BroadcastPage.tsx` + `BroadcastPage.module.css` — main view (list + detail split layout)
-- `BroadcastList.tsx` + `BroadcastList.module.css` — scrollable list of broadcasts with status badges
-- `BroadcastDetail.tsx` + `BroadcastDetail.module.css` — detail/form view switching: shows form for draft/scheduled, shows stats for completed
-- `BroadcastForm.tsx` + `BroadcastForm.module.css` — full form: title, message (TipTap editor), photo upload, poll editor, recipient selector, schedule picker, button editor
-- `MessageEditor.tsx` + `MessageEditor.module.css` — TipTap rich text editor (bold/italic/link/placeholder)
-- `PhotoUploader.tsx` — drag-and-drop photo upload with preview
-- `PollEditor.tsx` + `PollEditor.module.css` — poll question + options editor (2-10 options, anonymous/multiple settings)
-- `ButtonEditor.tsx` + `ButtonEditor.module.css` — inline button builder (rows, URL/quick_reply types)
-- `RecipientSelector.tsx` + `RecipientSelector.module.css` — target selector (all/invite_link/funnel_stage/manual with live count preview)
-- `ManualUserPicker.tsx` + `ManualUserPicker.module.css` — searchable user picker for manual targeting
-- `BroadcastProgress.tsx` — real-time delivery progress bar via SSE
-- `BroadcastStats.tsx` + `BroadcastStats.module.css` — delivery stats + button click breakdown + poll answer distribution
-- `index.ts` — exports
+`src/handlers/consultation/entry.py`:
+- On client funnel stage change, calls `execute_stage_triggers` to fire any configured trigger broadcasts.
 
-**State management:**
-- `admin-webapp/src/store/broadcastStore.ts` — Zustand store (broadcasts list, selected broadcast, loading states)
+`src/handlers/menu.py`:
+- Minor update (related to state management or CRM integration).
 
-**App.tsx integration:**
-- `'messages'` view now shows `BroadcastPage` instead of placeholder
-- Sidebar label and AppLayout title updated from "Сообщения" to "Рассылки"
+`src/main.py`:
+- No new background tasks; `broadcast_responses_router` lifecycle handled by registration.
 
-**New packages installed** (`admin-webapp/package.json`):
-- `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-link`, `@tiptap/extension-placeholder` — rich text editor for message composition
+`src/api/routes.py`:
+- New routes for resend and trigger management.
 
-**Types** (`admin-webapp/src/types/index.ts`):
-- Added `broadcast_sent | broadcast_button_click | broadcast_poll_answer` to `ActivityEventType`
-- New types: `BroadcastStatus`, `BroadcastTargetType`, `BroadcastButton`, `Broadcast`, `BroadcastsResponse`, `BroadcastRecipient`, `BroadcastRecipientsResponse`, `BroadcastUser`, `BroadcastUsersResponse`, `CreateBroadcastDto`, `ButtonClickStat`, `PollAnswerStat`, `BroadcastStats`, `StatUser`, `BroadcastStatsUsersResponse`
+`src/api/middleware.py`:
+- Minor update (likely for new routes or CORS).
 
-**API client** (`admin-webapp/src/services/api.ts`):
-- 13 new API methods: `getBroadcasts`, `createBroadcast`, `getBroadcast`, `updateBroadcast`, `deleteBroadcast`, `sendBroadcast`, `scheduleBroadcast`, `cancelBroadcast`, `getBroadcastRecipients`, `previewBroadcastCount`, `getBroadcastUsers`, `uploadBroadcastPhoto`, `getBroadcastStats`, `getBroadcastStatUsers`
+`src/config.py`:
+- Minor update.
 
-### 3. CRM Activity Feed — Broadcast Events
+#### Funnel System Improvements
 
-**`client_crm_repo.get_client_activity_with_consultations()`** extended with 3 new sub-queries:
-- `broadcasts_query` — `broadcast_sent` events: joins broadcast_recipients with broadcasts
-- `button_clicks_query` — `broadcast_button_click` events: joins broadcast_button_clicks with broadcasts
-- `poll_answers_query` — `broadcast_poll_answer` events: joins broadcast_poll_answers with broadcasts, includes option_ids and poll_options for rendering
+`admin-webapp/src/components/funnel/StageTriggerEditor.tsx` (NEW):
+- UI component for editing stage triggers: select a broadcast to attach to a funnel stage.
+- Shows attached broadcast name, allows adding/removing triggers.
 
-**`ActivityItem.tsx`** — 3 new event renderers:
-- `broadcast_sent` — shows broadcast title, message preview, photo/poll badges
-- `broadcast_button_click` — shows which button the user clicked and which broadcast
-- `broadcast_poll_answer` — shows poll question, resolves option_ids to option_text array
+`admin-webapp/src/components/funnel/FunnelClientCard.tsx`:
+- Enhanced client card display in kanban.
 
-**`ActivityFilters.tsx`** — broadcast event types added to `_FILTER_LABELS` (not yet in visible filter buttons, but registered)
+`admin-webapp/src/components/funnel/FunnelColumn.tsx`:
+- Updated to integrate StageTriggerEditor.
+
+`admin-webapp/src/components/funnel/FunnelKanban.tsx`:
+- Updated kanban layout/interactions.
+
+`admin-webapp/src/store/funnelStore.ts`:
+- Added trigger management state: `fetchStageTriggers`, `addStageTrigger`, `removeStageTrigger`.
+
+#### Broadcast UI Enhancements
+
+`admin-webapp/src/components/broadcast/ResendDialog.tsx` (NEW):
+- Modal dialog for resending a broadcast: select target (same/different) and confirm.
+
+`admin-webapp/src/components/broadcast/BroadcastDetail.tsx`:
+- Added "Отправить ещё раз" button for completed broadcasts (opens ResendDialog).
+- Shows per-run stats (list of runs).
+
+`admin-webapp/src/components/broadcast/BroadcastForm.tsx`:
+- Improvements to form UX.
+
+`admin-webapp/src/components/broadcast/BroadcastList.tsx`:
+- Status badge improvements.
+
+`admin-webapp/src/components/broadcast/BroadcastPage.tsx`:
+- Layout updates.
+
+`admin-webapp/src/components/broadcast/BroadcastStats.tsx`:
+- Stats now display per-run breakdown.
+
+`admin-webapp/src/components/broadcast/ButtonEditor.tsx`:
+- Added `ask_for_response` toggle for quick_reply buttons (enables text response collection).
+
+`admin-webapp/src/components/broadcast/PollEditor.tsx`:
+- Minor improvements.
+
+`admin-webapp/src/store/broadcastStore.ts`:
+- Added `resendBroadcast`, `getBroadcastRuns` actions.
+
+`admin-webapp/src/services/api.ts`:
+- Added: `resendBroadcast`, `getBroadcastRuns`, `getStageTriggers`, `addStageTrigger`, `removeStageTrigger`.
+
+`admin-webapp/src/types/index.ts`:
+- New types: `BroadcastRun`, `BroadcastRunsResponse`, `FunnelStageTrigger`, `StageTriggerCreate`.
+
+#### CRM Activity Feed
+
+`admin-webapp/src/components/crm/RightPanel/ActivityItem.tsx`:
+- Updated broadcast event renderers (avatar support, improved layout).
+
+#### Infrastructure — HTTPS/SSL
+
+`nginx/nginx.conf`:
+- Domain-specific config for `proagro56.ru` and `www.proagro56.ru`.
+- HTTP (port 80) redirects to HTTPS.
+- HTTPS (port 443) with Let's Encrypt certificates (`/etc/letsencrypt/live/proagro56.ru/`).
+- TLS protocols: TLSv1.2 + TLSv1.3.
+
+`docker-compose.yml`:
+- Updated for HTTPS (likely volume mount for `/etc/letsencrypt`).
+
+`.env.production.example`:
+- Updated with new environment variable examples.
+
+`.gitignore`:
+- `admin-webapp/node_modules/` added — previously was accidentally tracked.
+
+---
+
+### v1.5.4 — Disable save_payment_method
+
+`src/services/payments/payment_service.py`:
+- `create_subscription_payment()`: changed `save_payment_method=True` to `save_payment_method=False`.
+- Reason: YooKassa requires a separate "recurring payments" approval from the merchant. Enabling `save_payment_method` without approval causes payment errors.
+- Comment updated: "Рекуррентные платежи требуют отдельного разрешения от ЮКассы".
 
 ---
 
 ## Key Decisions
 
-### 1. TipTap for Message Editor
+### 1. Broadcast Runs — Resend Architecture
 
-**Decision:** Use TipTap (ProseMirror-based) for rich text editing in broadcast form.
-
-**Rationale:**
-- Provides real WYSIWYG with bold/italic/link/placeholder extensions
-- Outputs HTML that `sanitize_html_for_telegram()` converts to Telegram-compatible format
-- Installed packages: `@tiptap/react`, `@tiptap/starter-kit`, `@tiptap/extension-link`, `@tiptap/extension-placeholder`
-
-### 2. Inline Buttons as JSONB Array
-
-**Decision:** Store inline buttons as `JSONB` column on `broadcasts`, not as a separate table.
+**Decision:** Each broadcast send is a `broadcast_run`, not a state change on the broadcast itself.
 
 **Rationale:**
-- Buttons are tightly coupled to a specific broadcast version — no reuse across broadcasts
-- JSONB allows flexible row layout: `[{row:0, text:"Yes", type:"quick_reply"}, {row:0, text:"No", type:"quick_reply"}, {row:1, text:"More", type:"url", url:"https://..."}]`
-- Simpler schema, no extra join for every broadcast read
+- A completed broadcast can be resent to a new or different audience — both send histories must be preserved.
+- Unique constraint shifted from (broadcast_id, user_id) to (broadcast_id, run_id, user_id) — same user can be in different runs.
+- Stats are aggregated per run and also across all runs.
 
-### 3. quick_reply Button Tracking
+### 2. ask_for_response on Buttons
 
-**Decision:** Track quick_reply button clicks in `broadcast_button_clicks` with UNIQUE(broadcast_id, user_id) — one response per user.
-
-**Rationale:**
-- Prevents click spamming
-- Matches typical survey semantics
-- Stats: count per `option_key`, percentage of total recipients
-
-### 4. .env.local Priority Over .env
-
-**Decision:** Config checks for `.env.local` at project root; if it exists, it takes priority over `.env`.
+**Decision:** Quick_reply buttons can have `ask_for_response=true` — clicking them puts the user in a `waiting_broadcast_response` state, next text message is captured as the button response.
 
 **Rationale:**
-- Developer can run test bot locally using `.env.local` without touching production `.env`
-- Both files can coexist — production deploys have only `.env`, dev machine can have `.env.local`
-- Startup log clearly shows which env was loaded and which bot username was picked
+- Enables surveys/qualification flows where user needs to elaborate.
+- Text response stored in `broadcast_button_clicks.text_response` — co-located with the click record.
+- Deduplication: same option_key can only be answered once per run per user (schema_65 constraint).
 
-### 5. Broadcast Scheduler as Background Loop
+### 3. Funnel Stage Triggers
 
-**Decision:** Simple `while True` loop with `asyncio.sleep(60)` polling, not a cron/celery scheduler.
+**Decision:** Attach broadcasts to funnel stages as triggers — when a CRM client is moved to that stage, the broadcast content is sent automatically, but only once per user.
 
 **Rationale:**
-- Minimal complexity — no new infrastructure
-- 1-minute precision is sufficient for broadcast scheduling
-- Lifecycle: started in `main.py` alongside subscription renewal task, cancelled gracefully on shutdown
+- Enables automated nurturing sequences tied to sales pipeline position.
+- `funnel_trigger_log` prevents re-sending if admin accidentally moves client back and forth.
+- Uses same broadcast content/format as manual broadcasts — no new message format needed.
+
+### 4. Disable save_payment_method (YooKassa)
+
+**Decision:** `save_payment_method=False` until YooKassa grants recurring payment permission.
+
+**Rationale:**
+- YooKassa merchant account requires explicit approval for recurring payments (separate application process).
+- Without approval, `save_payment_method=True` causes payment creation errors.
+- This is a temporary fix; when approval is granted, revert to `True` and test autopayments.
+
+### 5. HTTPS/SSL via Let's Encrypt for proagro56.ru
+
+**Decision:** Configure nginx with Let's Encrypt certificates; HTTP redirects to HTTPS.
+
+**Rationale:**
+- Production bot webhook requires HTTPS (Telegram requirement).
+- Let's Encrypt is free, auto-renewable.
+- Certificates mounted into nginx container via Docker volume.
 
 ---
 
 ## Problems & Limitations
 
-### Active Issues
+### Active Issues — CRITICAL
 
-1. **DB migrations 62-63 not applied to production:**
-   - `schema_62_broadcasts.sql` and `schema_63_broadcast_buttons_and_stats.sql` must be applied before using broadcast system.
-   - Priority: CRITICAL
+1. **DB migrations 62-66 status on production is unclear:**
+   - Schemas 62-63 were from v1.5.2 (first broadcast commit) — unknown if applied.
+   - Schemas 64-66 from v1.5.3 — almost certainly NOT applied on production.
+   - Must apply all sequentially before using broadcast system or funnel triggers.
+   - Order: `schema_62` → `schema_63` → `schema_64` → `schema_65` → `schema_66`.
 
-2. **Poll answers require non-anonymous polls:**
-   - Telegram only sends `PollAnswer` updates for polls where `is_anonymous=False`
-   - Anonymous polls (default in Telegram) do NOT trigger the update — no stats available
-   - Admin panel currently shows `poll_is_anonymous` toggle — default should be false for trackable polls
+2. **save_payment_method disabled permanently until YooKassa approves:**
+   - Autopayments (recurring subscriptions) will NOT work until approval.
+   - Users can still manually renew subscriptions.
+   - Pending action: apply for YooKassa recurring payment permission.
 
-3. **Photo serving in production:**
-   - Broadcast photos saved to `data/broadcast_photos/` — must be mounted/accessible in Docker container
-   - Path: `/api/admin/broadcasts/photo/{filename}` served by aiohttp static
+### Active Issues — Medium Priority
 
-4. **Broadcast cancellation mid-send:**
-   - `cancel_broadcast` endpoint sets status to `cancelled` but doesn't interrupt an in-progress `execute_broadcast` task
-   - The sender checks `broadcast.status` before each batch but only once at the top of the loop — could send some messages after cancel
-   - Priority: LOW (acceptable for now, rare case)
+3. **Funnel stage triggers not yet end-to-end tested:**
+   - `execute_stage_triggers` is called from `entry.py` on stage change — needs manual verification that the trigger fires and the message is delivered in Telegram.
 
-5. **ActivityFilters — broadcast filters not shown:**
-   - `broadcast_sent`, `broadcast_button_click`, `broadcast_poll_answer` are registered in `_FILTER_LABELS` but not added to `VISIBLE_FILTERS` array in `ActivityFilters.tsx`
-   - Result: broadcast events appear in "Все" but have no individual filter button
-   - Priority: LOW
+4. **Broadcast cancellation mid-send still not interrupt-safe:**
+   - Setting status to `cancelled` does not stop an in-progress `execute_broadcast` task.
+   - The sender checks status only once per batch.
+
+5. **ActivityFilters broadcast filter buttons still not shown:**
+   - `broadcast_sent`, `broadcast_button_click`, `broadcast_poll_answer` appear in "Все" but have no individual filter button in `ActivityFilters.tsx`.
 
 ### Technical Debt
 
-1. **sanitize_html_for_telegram():** Currently in `broadcast_sender.py` — should be moved to `src/utils/formatting.py` alongside `markdown_to_telegram_html()`
-2. **BroadcastPage error handling:** Currently uses `console.error` and alert dialogs — should use a toast notification system
-3. **No pagination in BroadcastList:** Fetches all broadcasts at once — acceptable for now, needs pagination if >100 broadcasts
+1. `sanitize_html_for_telegram()` still in `broadcast_sender.py` — should move to `src/utils/formatting.py`.
+2. BroadcastPage error handling uses `console.error` + alert dialogs — needs toast notification system.
+3. No pagination in BroadcastList (fetches all broadcasts).
+4. `@remirror/` packages may still exist in `admin-webapp/node_modules` (leftover from earlier install) — node_modules is no longer tracked in git, so this is only a local concern.
 
 ---
 
 ## Rejected Ideas
 
-### Why Not Use Telegram Bot API Scheduled Messages?
+### Resend by Cloning Broadcast
 
-- **Proposal:** Use Telegram's built-in scheduling instead of a custom scheduler
-- **Rejected:** Telegram Bot API does not support scheduled messages for bots — only channel posts via specific API
-- **Chosen:** Custom scheduler loop in Python
+- **Proposal:** Resending creates a new broadcast record (a copy).
+- **Rejected:** Would lose the connection to the original broadcast's stats; makes it harder to compare performance across multiple sends of the same content.
+- **Chosen:** `broadcast_runs` concept — one broadcast, multiple runs.
 
-### Why Not Remirror for Rich Text Editor?
+### Separate Message Format for Funnel Triggers
 
-- **Proposal:** Use `@remirror/react` (was installed but not integrated)
-- **Rejected:** TipTap has better TypeScript support, simpler API, and smaller learning curve
-- **Chosen:** TipTap — `@tiptap/react` + `@tiptap/starter-kit`
-- **Note:** `@remirror/` packages are still in `node_modules` from an earlier install attempt — can be removed
+- **Proposal:** Funnel triggers use a separate simpler message format (just text).
+- **Rejected:** Unnecessary duplication of message sending logic.
+- **Chosen:** Reuse broadcast content format exactly — attach any existing broadcast to a stage trigger.
 
 ---
 
 ## Current Code State
 
-### New Files Created
+### New Files Created (v1.5.3)
 
 **Backend:**
-- `src/api/handlers/broadcasts.py` — REST API (15 endpoints)
-- `src/handlers/broadcast_callbacks.py` — Telegram button/poll callbacks
-- `src/services/broadcast_sender.py` — async sender with rate limiting + SSE
-- `src/services/broadcast_scheduler.py` — background scheduler loop
-- `src/services/db/broadcast_repo.py` — database repository
+- `src/handlers/broadcast_responses.py` — text response capture handler
+- `src/services/db/funnel_trigger_repo.py` — funnel trigger DB operations
+- `src/services/funnel_trigger_sender.py` — stage trigger execution logic
 
 **Database Migrations:**
-- `db/schema_62_broadcasts.sql` — broadcasts + broadcast_recipients tables
-- `db/schema_63_broadcast_buttons_and_stats.sql` — inline_buttons column + stats tables
+- `db/schema_64_broadcast_runs_and_triggers.sql` — broadcast_runs + funnel_stage_triggers + funnel_trigger_log
+- `db/schema_65_button_clicks_multi.sql` — allow multiple button clicks per user per broadcast (per option_key)
+- `db/schema_66_broadcast_text_responses.sql` — text_response + response_at on broadcast_button_clicks
 
 **Frontend:**
-- `admin-webapp/src/components/broadcast/` — 22 files (components + CSS)
-- `admin-webapp/src/store/broadcastStore.ts` — Zustand state management
+- `admin-webapp/src/components/broadcast/ResendDialog.tsx` — resend broadcast modal
+- `admin-webapp/src/components/funnel/StageTriggerEditor.tsx` — funnel stage trigger UI
 
-### Modified Files
+### Modified Files (v1.5.3)
 
 **Backend:**
-- `src/api/handlers/sse.py` — new `broadcast_stream()` endpoint (+82 lines)
-- `src/api/routes.py` — 15 new routes + SSE broadcast endpoint (+22 lines)
-- `src/config.py` — `.env.local` detection logic (+14 lines)
-- `src/handlers/__init__.py` — register `broadcast_cb_router` (+6 lines)
-- `src/main.py` — launch/cancel `broadcast_scheduler_loop` (+12 lines)
-- `src/services/db/client_crm_repo.py` — 3 new sub-queries for broadcast events (+62 lines)
-- `db/schema_61_token_balance_constraints.sql` — PG compatibility fix (DO...EXCEPTION pattern)
+- `src/services/broadcast_sender.py` — run-based architecture
+- `src/services/db/broadcast_repo.py` — run-aware CRUD
+- `src/handlers/broadcast_callbacks.py` — ask_for_response state handling
+- `src/handlers/__init__.py` — broadcast_responses_router registered
+- `src/handlers/consultation/entry.py` — fires stage triggers on kanban move
+- `src/api/handlers/broadcasts.py` — resend + runs endpoints
+- `src/api/handlers/funnels.py` — trigger CRUD endpoints
+- `src/api/routes.py` — new routes
+- `src/services/db/client_crm_repo.py` — activity feed updates
+- `src/services/db/funnel_repo.py` — kanban updates
+- `nginx/nginx.conf` — HTTPS/SSL for proagro56.ru
+- `docker-compose.yml` — Let's Encrypt volume
+- `.gitignore` — node_modules excluded
 
 **Frontend:**
-- `admin-webapp/src/App.tsx` — BroadcastPage replaces placeholder (+11 lines)
-- `admin-webapp/src/components/layout/AppLayout.tsx` — title updated
-- `admin-webapp/src/components/layout/Sidebar.tsx` — label updated
-- `admin-webapp/src/components/crm/RightPanel/ActivityItem.tsx` — 3 new event renderers (+70 lines)
-- `admin-webapp/src/components/crm/RightPanel/ActivityItem.module.css` — broadcast styles (+113 lines)
-- `admin-webapp/src/components/crm/RightPanel/ActivityFilters.tsx` — broadcast types registered (+3 lines)
-- `admin-webapp/src/components/crm/RightPanel/index.tsx` — minor update (+5 lines)
-- `admin-webapp/src/services/api.ts` — 13 new API methods (+109 lines)
-- `admin-webapp/src/types/index.ts` — broadcast types + ActivityEventType extension (+127 lines)
-- `admin-webapp/package.json` — TipTap packages added (+5 lines)
+- `admin-webapp/src/components/broadcast/` — BroadcastDetail, BroadcastForm, BroadcastList, BroadcastPage, BroadcastStats, ButtonEditor, PollEditor updated
+- `admin-webapp/src/components/funnel/FunnelClientCard.tsx`, `FunnelColumn.tsx`, `FunnelKanban.tsx`
+- `admin-webapp/src/components/crm/RightPanel/ActivityItem.tsx`
+- `admin-webapp/src/store/broadcastStore.ts`, `funnelStore.ts`
+- `admin-webapp/src/services/api.ts`
+- `admin-webapp/src/types/index.ts`
+
+### Modified Files (v1.5.4)
+
+- `src/services/payments/payment_service.py` — `save_payment_method=False`
 
 ### What's Working
 
-1. **BroadcastPage UI** — full CRUD: create/edit/delete broadcasts in admin panel
-2. **Message editor** — TipTap rich text with bold/italic/links
-3. **Photo upload** — drag-drop upload, preview, stored in `data/broadcast_photos/`
-4. **Poll editor** — question + options, anonymous/multiple settings
-5. **Button editor** — row-based inline button builder (URL + quick_reply)
-6. **Recipient selector** — all/invite_link/funnel_stage/manual with live count preview
-7. **Send now / schedule** — immediate send or schedule with datetime picker
-8. **Real-time progress** — SSE stream shows sent_count/failed_count during delivery
-9. **Stats view** — delivery report, button click breakdown, poll answer distribution
-10. **Bot callback handler** — records quick_reply clicks and poll answers
-11. **Broadcast scheduler** — auto-sends scheduled broadcasts every 60s
-12. **CRM activity feed** — broadcast_sent / broadcast_button_click / broadcast_poll_answer events shown per client
+1. Broadcast CRUD — create/edit/delete/send/schedule/cancel
+2. Broadcast resend — create a new run for any broadcast
+3. Resend dialog in admin panel UI
+4. Text response collection via quick_reply buttons with `ask_for_response=true`
+5. Button click uniqueness per option_key (schema_65)
+6. Funnel stage trigger CRUD in admin panel (StageTriggerEditor)
+7. Funnel stage trigger execution on client stage change
+8. HTTPS/SSL on proagro56.ru (nginx + Let's Encrypt)
+9. Subscription payments without `save_payment_method` (YooKassa-safe)
 
 ### What Needs Testing
 
-1. Full send flow end-to-end: create → send → verify Telegram messages delivered
-2. Poll answer recording (requires non-anonymous poll)
-3. Scheduled broadcast auto-send
-4. SSE progress updates during large send
-5. CRM activity feed showing broadcast events for a specific user
+1. Full broadcast resend flow: create → send → resend → verify two runs in DB
+2. Text response collection: click button with `ask_for_response` → type text → verify saved
+3. Funnel stage trigger: move client to stage with trigger → verify Telegram message sent
+4. Trigger deduplication: move client back and forth → verify no duplicate sends
+5. HTTPS: verify SSL certificate works on proagro56.ru production
+6. YooKassa payment creation with `save_payment_method=False`
 
 ---
 
@@ -315,65 +360,75 @@ Components:
 
 ### Critical (Before Production Use)
 
-1. **Apply DB migrations 62-63:**
+1. **Apply DB migrations 62-66 on production server:**
    ```bash
    psql -h localhost -U bot_user -d garden_bot -f db/schema_62_broadcasts.sql
    psql -h localhost -U bot_user -d garden_bot -f db/schema_63_broadcast_buttons_and_stats.sql
+   psql -h localhost -U bot_user -d garden_bot -f db/schema_64_broadcast_runs_and_triggers.sql
+   psql -h localhost -U bot_user -d garden_bot -f db/schema_65_button_clicks_multi.sql
+   psql -h localhost -U bot_user -d garden_bot -f db/schema_66_broadcast_text_responses.sql
    ```
 
-2. **Verify Docker volume mounts:**
-   - `data/broadcast_photos/` must be mounted in the container
-   - Check `docker-compose.yml` volume section
+2. **Verify Docker volume for Let's Encrypt certs:**
+   - Check that `/etc/letsencrypt` is mounted in nginx container in `docker-compose.yml`.
+   - Verify cert renewal cron job exists on server (or certbot auto-renew).
+
+3. **Apply for YooKassa recurring payment permission:**
+   - Log into YooKassa merchant panel → apply for recurring payments.
+   - When approved: set `save_payment_method=True` in `payment_service.py` and re-enable autopayments.
 
 ### High Priority
 
-3. **End-to-end test broadcast send:**
-   - Create broadcast with text + button
-   - Target: manual (select test user)
-   - Click "Отправить сейчас"
-   - Verify Telegram message delivered + button recorded in DB
+4. **End-to-end test broadcast resend:**
+   - Create broadcast, send once, then resend — verify two `broadcast_runs` records and messages in Telegram.
 
-4. **Test scheduled broadcast:**
-   - Create broadcast scheduled 2 minutes in the future
-   - Verify `broadcast_scheduler_loop` picks it up and sends it
+5. **Test ask_for_response flow:**
+   - Create broadcast with a button (type=quick_reply, ask_for_response=true).
+   - Send to self → click button → type text → verify `text_response` saved in `broadcast_button_clicks`.
 
-5. **Test poll answer recording:**
-   - Create poll with `is_anonymous=False`
-   - Answer poll in Telegram
-   - Verify `broadcast_poll_answers` record created
+6. **Test funnel stage triggers:**
+   - Attach a broadcast to a funnel stage in admin panel.
+   - Move a test client to that stage.
+   - Verify: message received in Telegram, `funnel_trigger_log` record created, no duplicate on second move.
 
 ### Medium Priority
 
-6. **Add broadcast filter buttons to ActivityFilters:**
-   - Add visible filter entries for `broadcast_sent`, `broadcast_button_click`, `broadcast_poll_answer` in `VISIBLE_FILTERS` array in `ActivityFilters.tsx`
+7. **Add broadcast filter buttons to ActivityFilters:**
+   - Add visible entries for `broadcast_sent`, `broadcast_button_click`, `broadcast_poll_answer` in `VISIBLE_FILTERS` array in `admin-webapp/src/components/crm/RightPanel/ActivityFilters.tsx`.
 
-7. **Move `sanitize_html_for_telegram()` to utils:**
-   - Move from `broadcast_sender.py` to `src/utils/formatting.py`
+8. **Move `sanitize_html_for_telegram()` to utils:**
+   - Move from `src/services/broadcast_sender.py` to `src/utils/formatting.py`.
 
-8. **Clean up node_modules:**
-   - `@remirror/` packages in `admin-webapp/node_modules` can be removed (unused, leftover from earlier install)
-
-9. **Deploy to server:**
-   - Push → git pull on server → `docker compose up -d --build bot`
-   - Then apply DB migrations 62-63 on production
-   - Then rebuild nginx/admin-webapp: `docker compose up -d --build nginx`
+9. **Deploy v1.5.4 to production:**
+   ```bash
+   ssh root@72.56.121.98
+   cd /root/Sadovniki_bot1.2 && git pull
+   docker compose up -d --build bot
+   # Then apply DB migrations
+   # Then rebuild nginx:
+   nohup bash -c 'docker compose up -d --build nginx > /tmp/nginx_build.log 2>&1' &
+   ```
 
 ---
 
 ## Session Statistics
 
-- **Files Modified:** 15 tracked files
-- **Files Created (new):** ~35 new files (22 broadcast components + 5 backend + 2 DB + 1 store + index)
-- **Lines Added:** ~2,346 insertions (excluding node_modules)
-- **Lines Deleted:** ~4,574 (mostly node_modules vite cache rebuilds)
-- **DB Migrations:** 2 new schemas (62-63)
-- **New Features:** 1 major (full broadcast system, end-to-end)
-- **Session Date:** 2026-02-21
+**Sessions covered:** 2026-02-22 (two commits: v1.5.3 and v1.5.4)
+
+**v1.5.3:**
+- Files Modified: ~20 backend + frontend files
+- Files Created: 5 new files (3 backend, 2 frontend)
+- DB Migrations: 3 new schemas (64-66)
+- New Features: Broadcast resend, text responses on buttons, funnel stage triggers, HTTPS/SSL
+
+**v1.5.4:**
+- Files Modified: 1 file (`payment_service.py`)
+- Bug Fix: Disable `save_payment_method` (YooKassa approval required)
 
 ---
 
-**Session completed:** 2026-02-21
-**Version:** 1.5.2 (bumped +0.1 from 1.5.1 after this commit)
-**Status:** Broadcast system fully implemented, migrations pending on production
-**Breaking Changes:** None (additive)
-**Migration Required:** YES — schemas 62-63 must be applied on production before using broadcasts
+**Session completed:** 2026-02-22
+**Version:** 1.5.4
+**Status:** Production ready (pending DB migrations 62-66 on server and HTTPS verification)
+**Breaking Changes:** None (all additive; schema changes are backward-compatible via `ADD COLUMN IF NOT EXISTS` and `ALTER TABLE`)
+**Migration Required:** YES — schemas 62-66 must be applied before using broadcast features or funnel triggers

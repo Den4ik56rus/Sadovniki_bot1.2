@@ -159,12 +159,47 @@ async def build_inline_keyboard(
                     )
                     payment_url = payment_result.get('confirmation_url')
                     if payment_url:
+                        btn_text = btn.get('text', '').strip()
+                        if not btn_text:
+                            price = int(payment_result.get('amount', 0))
+                            discount = payment_result.get('discount_percent', 0)
+                            plan_name = payment_result.get('description', 'Подписка').replace('Подписка ', '')
+                            if discount:
+                                btn_text = f"💳 {plan_name} — {price}₽ (скидка {discount}%)"
+                            else:
+                                btn_text = f"💳 {plan_name} — {price}₽"
                         row_buttons.append(InlineKeyboardButton(
-                            text=btn['text'] or '💳 Оплатить',
+                            text=btn_text,
                             url=payment_url,
                         ))
                 except Exception as e:
-                    logger.warning(f"Failed to create payment for broadcast button: {e}")
+                    logger.warning(f"Failed to create subscription payment for broadcast button: {e}")
+            elif btn['type'] == 'payment' and btn.get('payment_package_id') and int(btn.get('payment_package_id', 0)) > 0 and user_id and telegram_user_id:
+                try:
+                    from src.services.payments.payment_service import create_token_payment_custom
+                    payment_result = await create_token_payment_custom(
+                        user_id=user_id,
+                        telegram_user_id=telegram_user_id,
+                        package_id=btn['payment_package_id'],
+                        custom_price=btn.get('payment_custom_price'),
+                    )
+                    payment_url = payment_result.get('confirmation_url')
+                    if payment_url:
+                        btn_text = btn.get('text', '').strip()
+                        if not btn_text:
+                            price = int(payment_result.get('amount', 0))
+                            discount = payment_result.get('discount_percent', 0)
+                            tokens = payment_result.get('tokens_amount', 0)
+                            if discount:
+                                btn_text = f"🎁 {tokens} токенов — {price}₽ (скидка {discount}%)"
+                            else:
+                                btn_text = f"🎁 {tokens} токенов — {price}₽"
+                        row_buttons.append(InlineKeyboardButton(
+                            text=btn_text,
+                            url=payment_url,
+                        ))
+                except Exception as e:
+                    logger.warning(f"Failed to create token payment for broadcast button: {e}")
         if row_buttons:
             keyboard.append(row_buttons)
 

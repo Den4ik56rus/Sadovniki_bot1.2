@@ -260,6 +260,38 @@
   background: var(--border-default);
 }
 
+/* Token deduction event badge */
+.tokenEventBadge {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin: 4px auto;
+  padding: 3px 10px;
+  background: rgba(180, 130, 0, 0.08);
+  border: 1px solid rgba(180, 130, 0, 0.2);
+  border-radius: 12px;
+  max-width: fit-content;
+  font-size: 0.6875rem;
+  color: var(--text-secondary, #888);
+  animation: fadeIn 0.15s ease;
+}
+
+.tokenEventIcon {
+  font-size: 0.75rem;
+  flex-shrink: 0;
+}
+
+.tokenEventText {
+  white-space: nowrap;
+}
+
+.tokenEventTime {
+  opacity: 0.6;
+  font-size: 0.625rem;
+  margin-left: 3px;
+  flex-shrink: 0;
+}
+
 /* Scrollbar */
 .messages::-webkit-scrollbar {
   width: 5px;

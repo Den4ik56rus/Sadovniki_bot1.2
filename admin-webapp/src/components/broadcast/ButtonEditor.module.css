@@ -274,3 +274,28 @@
   height: 14px;
   accent-color: var(--accent-primary);
 }
+
+/* Payment button section */
+.paymentSection {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.paymentFields {
+  display: flex;
+  gap: 6px;
+}
+
+.paymentFields .urlInput {
+  flex: 1;
+}
+
+.paymentHint {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 4px 6px;
+  background: var(--bg-secondary);
+  border-radius: var(--radius-sm);
+}

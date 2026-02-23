@@ -1184,11 +1184,15 @@ export type BroadcastTargetType = 'all' | 'invite_link' | 'funnel_stage' | 'manu
 export interface BroadcastButton {
   row: number
   text: string
-  type: 'url' | 'quick_reply'
+  type: 'url' | 'quick_reply' | 'payment'
   url?: string
   option_key?: string
   reply_text?: string
   ask_for_response?: boolean
+  // payment button fields
+  payment_plan_id?: number | null
+  payment_custom_price?: number | null
+  payment_bonus_tokens?: number | null
 }
 
 export interface Broadcast {
@@ -1327,6 +1331,12 @@ export interface BroadcastRunsResponse {
 }
 
 // Funnel Stage Triggers
+export interface TriggerPaymentConfig {
+  plan_id: number
+  custom_price?: number | null
+  bonus_tokens?: number | null
+}
+
 export interface FunnelStageTrigger {
   id: number
   funnel_id: string
@@ -1335,6 +1345,8 @@ export interface FunnelStageTrigger {
   broadcast_title: string
   broadcast_status: string
   is_active: boolean
+  delay_minutes: number
+  payment_config: TriggerPaymentConfig | null
   created_at: string
 }
 

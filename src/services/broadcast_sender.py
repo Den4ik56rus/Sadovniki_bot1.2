@@ -93,10 +93,11 @@ def _normalize_buttons(buttons_json) -> list:
     return buttons_json
 
 
-def build_inline_keyboard(
+async def build_inline_keyboard(
     broadcast_id: int,
     buttons: list,
     telegram_user_id: int = 0,
+    user_id: int = 0,
 ) -> Optional[InlineKeyboardMarkup]:
     """
     Построить InlineKeyboardMarkup из нормализованного массива кнопок.
@@ -104,6 +105,7 @@ def build_inline_keyboard(
 
     URL-кнопки идут через redirect-трекер /api/r/{broadcast_id}/{option_key}?u={tg_id}
     для записи кликов. Если api_base_url не настроен — прямая ссылка без трекинга.
+    Payment-кнопки генерируют персональную ссылку YooKassa для каждого получателя.
     """
     if not buttons:
         return None
@@ -145,6 +147,24 @@ def build_inline_keyboard(
                     text=btn['text'],
                     callback_data=callback_data,
                 ))
+            elif btn['type'] == 'payment' and btn.get('payment_plan_id') and user_id and telegram_user_id:
+                try:
+                    from src.services.payments.payment_service import create_subscription_payment_custom
+                    payment_result = await create_subscription_payment_custom(
+                        user_id=user_id,
+                        telegram_user_id=telegram_user_id,
+                        plan_id=btn['payment_plan_id'],
+                        custom_price=btn.get('payment_custom_price'),
+                        bonus_tokens=btn.get('payment_bonus_tokens'),
+                    )
+                    payment_url = payment_result.get('confirmation_url')
+                    if payment_url:
+                        row_buttons.append(InlineKeyboardButton(
+                            text=btn['text'] or '💳 Оплатить',
+                            url=payment_url,
+                        ))
+                except Exception as e:
+                    logger.warning(f"Failed to create payment for broadcast button: {e}")
         if row_buttons:
             keyboard.append(row_buttons)
 
@@ -224,13 +244,13 @@ async def execute_broadcast(broadcast_id: int, run_id: Optional[int] = None) -> 
                 json.dumps(inline_buttons), broadcast_id,
             )
 
-    # Есть ли URL-кнопки (нужен персональный reply_markup для каждого получателя)
-    has_url_buttons = any(b.get('type') == 'url' for b in inline_buttons)
+    # Есть ли кнопки требующие персонализации (URL-трекер или payment URL)
+    has_personal_buttons = any(b.get('type') in ('url', 'payment') for b in inline_buttons)
 
-    # Если нет URL-кнопок — строим reply_markup один раз
+    # Если нет персональных кнопок — строим reply_markup один раз
     shared_reply_markup = None
-    if not has_url_buttons:
-        shared_reply_markup = build_inline_keyboard(broadcast_id, inline_buttons)
+    if not has_personal_buttons:
+        shared_reply_markup = await build_inline_keyboard(broadcast_id, inline_buttons)
 
     batch_sent = 0
     batch_failed = 0
@@ -249,10 +269,10 @@ async def execute_broadcast(broadcast_id: int, run_id: Optional[int] = None) -> 
         tg_id = recipient['telegram_user_id']
         user_id = recipient['user_id']
 
-        # Персональный reply_markup для URL-кнопок (с telegram_user_id для трекинга)
+        # Персональный reply_markup для URL/payment кнопок
         reply_markup = shared_reply_markup
-        if has_url_buttons:
-            reply_markup = build_inline_keyboard(broadcast_id, inline_buttons, telegram_user_id=tg_id)
+        if has_personal_buttons:
+            reply_markup = await build_inline_keyboard(broadcast_id, inline_buttons, telegram_user_id=tg_id, user_id=user_id)
 
         try:
             # Отправляем контент
@@ -389,7 +409,7 @@ async def send_to_single_user(broadcast_id: int, user_id: int, telegram_user_id:
         poll_options = json.loads(poll_options)
 
     inline_buttons = _normalize_buttons(broadcast.get('inline_buttons'))
-    reply_markup = build_inline_keyboard(broadcast_id, inline_buttons, telegram_user_id=telegram_user_id)
+    reply_markup = await build_inline_keyboard(broadcast_id, inline_buttons, telegram_user_id=telegram_user_id, user_id=user_id)
 
     try:
         if photo_path:

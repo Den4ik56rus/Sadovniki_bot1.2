@@ -218,3 +218,208 @@
   color: var(--accent-primary);
   background: var(--accent-primary-light);
 }
+
+/* Trigger meta (badges row) */
+.triggerMeta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 10px;
+  background: var(--bg-tertiary);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-default);
+  white-space: nowrap;
+}
+
+.badgePayment {
+  background: #FEF3C7;
+  color: #92400E;
+  border-color: #FCD34D;
+}
+
+/* Form row (label + select inline) */
+.formRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.formLabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.selectDelay {
+  flex: 1;
+  padding: 5px 8px;
+  font-size: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.selectDelay:focus {
+  border-color: var(--accent-primary);
+}
+
+/* Checkbox row */
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkboxRow input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--accent-primary);
+}
+
+/* Payment config block */
+.paymentConfig {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+}
+
+.paymentFields {
+  display: flex;
+  gap: 8px;
+}
+
+.paymentField {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.fieldLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.fieldInput {
+  width: 100%;
+  padding: 5px 7px;
+  font-size: 12px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  outline: none;
+  box-sizing: border-box;
+}
+
+.fieldInput:focus {
+  border-color: var(--accent-primary);
+}
+
+/* Payment preview */
+.paymentPreview {
+  background: var(--bg-card);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  padding: 7px 9px;
+}
+
+.previewText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+/* Create broadcast button */
+.createBroadcastBtn {
+  width: 100%;
+  padding: 5px 8px;
+  font-size: 11px;
+  color: var(--accent-primary);
+  background: var(--accent-primary-light, #f0fdf4);
+  border: 1px dashed var(--accent-primary);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+
+.createBroadcastBtn:hover {
+  background: var(--accent-primary);
+  color: white;
+}
+
+/* Modal */
+.modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 40px;
+}
+
+.modalPanel {
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  width: 680px;
+  max-width: calc(100vw - 40px);
+  max-height: calc(100vh - 80px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.modalHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border-default);
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.modalCloseBtn {
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.modalCloseBtn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.modalBody {
+  overflow-y: auto;
+  flex: 1;
+  padding: 16px;
+}

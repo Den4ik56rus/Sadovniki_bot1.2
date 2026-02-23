@@ -650,13 +650,18 @@ def _validate_inline_buttons(buttons: list) -> None:
             raise web.HTTPBadRequest(text='Button text must be 1-64 characters')
 
         btn_type = btn.get('type')
-        if btn_type not in ('url', 'quick_reply'):
-            raise web.HTTPBadRequest(text='Button type must be "url" or "quick_reply"')
+        if btn_type not in ('url', 'quick_reply', 'payment'):
+            raise web.HTTPBadRequest(text='Button type must be "url", "quick_reply" or "payment"')
 
         if btn_type == 'url':
             url = btn.get('url', '')
             if not url or not url.startswith(('http://', 'https://')):
                 raise web.HTTPBadRequest(text='URL button requires a valid URL')
+
+        if btn_type == 'payment':
+            plan_id = btn.get('payment_plan_id')
+            if not plan_id or not isinstance(plan_id, int):
+                raise web.HTTPBadRequest(text='Payment button requires payment_plan_id')
 
         reply_text = btn.get('reply_text')
         if reply_text is not None:

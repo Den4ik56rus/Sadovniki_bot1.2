@@ -157,6 +157,7 @@ async def _get_subscription_info(user_id: int) -> tuple:
 
 
 @router.message(Command("buy"))
+@router.message(Command("subscription"))
 @router.message(F.text == "💰 Пополнить баланс")
 async def show_payment_menu(message: Message):
     """Показать меню покупок."""

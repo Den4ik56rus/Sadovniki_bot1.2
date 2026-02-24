@@ -75,6 +75,7 @@ from src.keyboards.consultation.common import (
     get_next_phase_keyboard,
     get_phase_select_keyboard,
     get_topic_select_keyboard,
+    get_topup_keyboard,
 )
 
 # Утилита для session_id и управление состоянием
@@ -225,15 +226,16 @@ async def _send_insufficient_tokens_error(
         f"Ваш баланс: {pluralize_questions(balance)}\n\n"
         f"Для пополнения перейдите в «Мой профиль» → «Пополнить баланс»."
     )
+    topup_kb = get_topup_keyboard()
     if is_callback:
         cb = target
         await cb.answer("Недостаточно токенов")
         if cb.message:
-            await cb.message.answer(insuf_text)
+            await cb.message.answer(insuf_text, reply_markup=topup_kb)
             await _log_bot_msg(insuf_text, telegram_user_id=telegram_user_id)
     else:
         msg = target
-        await msg.answer(insuf_text)
+        await msg.answer(insuf_text, reply_markup=topup_kb)
         await _log_bot_msg(
             insuf_text,
             user_id=user_id,
@@ -945,7 +947,7 @@ async def run_consultation_pipeline(
             f"Ваш баланс: {pluralize_questions(balance)}\n\n"
             f"Для пополнения перейдите в «Мой профиль» → «Пополнить баланс»."
         )
-        await message.answer(insufficient_text)
+        await message.answer(insufficient_text, reply_markup=get_topup_keyboard())
         await _log_bot_msg(insufficient_text, user_id=internal_user_id, session_id=f"tg:{telegram_user_id}", telegram_user_id=telegram_user_id)
         # Авто-переход в CRM: * → trial_ended (токены кончились)
         try:
@@ -997,7 +999,7 @@ async def run_consultation_pipeline(
             f"Ваш баланс: {pluralize_questions(balance)}\n\n"
             f"Для пополнения перейдите в «Мой профиль» → «Пополнить баланс»."
         )
-        await message.answer(insufficient_text2)
+        await message.answer(insufficient_text2, reply_markup=get_topup_keyboard())
         await _log_bot_msg(insufficient_text2, user_id=internal_user_id, session_id=f"tg:{telegram_user_id}", telegram_user_id=telegram_user_id)
         await clear_consultation_state(telegram_user_id)
         return

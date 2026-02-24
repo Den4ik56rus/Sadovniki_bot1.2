@@ -133,6 +133,18 @@ def get_simple_question_choice_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+# ==== Клавиатура «Пополнить баланс» (при нехватке токенов) ====
+
+def get_topup_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура с кнопкой перехода в меню подписок."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="💳 Пополнить баланс",
+            callback_data="show_payment_menu",
+        )],
+    ])
+
+
 # ==== Клавиатура подтверждения стоимости (complexity-based) ====
 
 def get_complexity_confirm_keyboard(
@@ -163,6 +175,15 @@ def get_complexity_confirm_keyboard(
             InlineKeyboardButton(
                 text=plan_text,
                 callback_data="complexity_confirm:long",
+            ),
+        ])
+
+    # Кнопка "Пополнить баланс" — для long_answer_insufficient
+    if tier == "long_answer_insufficient":
+        buttons.append([
+            InlineKeyboardButton(
+                text="💳 Пополнить баланс",
+                callback_data="show_payment_menu",
             ),
         ])
 

@@ -313,14 +313,13 @@ async def delete_pending_triggers_for_stage(
               AND ftl.user_id = $1
               AND fst.funnel_id = $2
               AND fst.stage_key = $3
-              AND ftl.status = 'pending'
             """,
             user_id, funnel_id, stage_key,
         )
         count = int(result.split()[-1]) if result else 0
         if count > 0:
             logger.info(
-                f"Deleted {count} pending triggers for user {user_id} "
+                f"Deleted {count} trigger log entries for user {user_id} "
                 f"leaving stage {funnel_id}/{stage_key}"
             )
         return count
@@ -331,7 +330,7 @@ async def delete_all_pending_triggers_for_funnel(
     funnel_id: str,
 ) -> int:
     """
-    Удалить ВСЕ pending-триггеры пользователя во всей воронке.
+    Удалить ВСЕ записи триггеров пользователя во всей воронке.
 
     Вызывается при удалении клиента из воронки (transfer_client, remove_client_from_funnel).
     """
@@ -344,14 +343,13 @@ async def delete_all_pending_triggers_for_funnel(
             WHERE ftl.trigger_id = fst.id
               AND ftl.user_id = $1
               AND fst.funnel_id = $2
-              AND ftl.status = 'pending'
             """,
             user_id, funnel_id,
         )
         count = int(result.split()[-1]) if result else 0
         if count > 0:
             logger.info(
-                f"Deleted {count} pending triggers for user {user_id} "
+                f"Deleted {count} trigger log entries for user {user_id} "
                 f"leaving funnel {funnel_id}"
             )
         return count
@@ -363,7 +361,7 @@ async def delete_pending_triggers_for_deleted_stage(
     conn=None,
 ) -> int:
     """
-    Удалить все pending-триггеры для удаляемого этапа (для всех пользователей).
+    Удалить все записи триггеров для удаляемого этапа (для всех пользователей).
 
     Принимает опциональный conn для использования внутри транзакции.
     """
@@ -381,14 +379,13 @@ async def delete_pending_triggers_for_deleted_stage(
             WHERE ftl.trigger_id = fst.id
               AND fst.funnel_id = $1
               AND fst.stage_key = $2
-              AND ftl.status = 'pending'
             """,
             funnel_id, stage_key,
         )
         count = int(result.split()[-1]) if result else 0
         if count > 0:
             logger.info(
-                f"Deleted {count} pending triggers for deleted stage {funnel_id}/{stage_key}"
+                f"Deleted {count} trigger log entries for deleted stage {funnel_id}/{stage_key}"
             )
         return count
     finally:

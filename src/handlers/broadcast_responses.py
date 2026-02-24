@@ -25,14 +25,15 @@ logger = logging.getLogger(__name__)
 router = Router(name="broadcast_responses")
 
 
-@router.message(F.text)
+@router.message(
+    F.text,
+    lambda m: m.from_user is not None
+    and CONSULTATION_STATE.get(m.from_user.id) == "waiting_broadcast_response",
+)
 async def handle_broadcast_text_response(message: Message) -> None:
     """Сбор текстового ответа на кнопку рассылки."""
     telegram_user_id = message.from_user.id
     state = CONSULTATION_STATE.get(telegram_user_id)
-
-    if state != "waiting_broadcast_response":
-        return  # не наше — пропускаем дальше
 
     context = CONSULTATION_CONTEXT.get(telegram_user_id, {})
     broadcast_id = context.get("broadcast_id")

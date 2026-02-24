@@ -157,7 +157,6 @@ async def _get_subscription_info(user_id: int) -> tuple:
 
 
 @router.message(Command("buy"))
-@router.message(Command("subscription"))
 @router.message(F.text == "💰 Пополнить баланс")
 async def show_payment_menu(message: Message):
     """Показать меню покупок."""
@@ -422,6 +421,45 @@ async def back_to_main_menu(callback: CallbackQuery):
         first_name=callback.from_user.first_name,
         last_name=callback.from_user.last_name,
     )
+
+
+@router.message(Command("subscription"))
+async def subscription_command(message: Message):
+    """Команда /subscription — экран подтверждения отмены автопродления."""
+    from src.services.db.users_repo import get_or_create_user
+    user_id = await get_or_create_user(
+        telegram_user_id=message.from_user.id,
+        username=message.from_user.username,
+        first_name=message.from_user.first_name,
+        last_name=message.from_user.last_name,
+    )
+
+    has_subscription, _, active_sub = await _get_subscription_info(user_id)
+    auto_renew = active_sub.get("auto_renew", False) if active_sub else False
+
+    if has_subscription and auto_renew:
+        confirm_text = (
+            "⚠️ <b>Вы уверены, что хотите отменить автопродление?</b>\n\n"
+            "После отмены подписка будет действовать до конца оплаченного периода, "
+            "но автоматически не продлится."
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Да, отменить", callback_data="confirm_cancel_auto_renew")],
+            [InlineKeyboardButton(text="◀️ Нет, вернуться", callback_data="main_menu")],
+        ])
+        await message.answer(confirm_text, reply_markup=keyboard, parse_mode="HTML")
+    elif has_subscription and not auto_renew:
+        await message.answer(
+            "ℹ️ Автопродление уже отключено.\n"
+            "Подписка действует до конца оплаченного периода.",
+            parse_mode="HTML",
+        )
+    else:
+        await message.answer(
+            "ℹ️ У вас нет активной подписки.\n"
+            "Оформить подписку можно в разделе 💰 Пополнить баланс.",
+            parse_mode="HTML",
+        )
 
 
 @router.callback_query(F.data == "cancel_auto_renew")

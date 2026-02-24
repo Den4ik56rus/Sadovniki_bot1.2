@@ -816,6 +816,11 @@ async def render_and_send_profile(
             callback_data="show_payment_menu"
         )],
     ]
+    if subscription and subscription.get("auto_renew", False):
+        kb_buttons.append([InlineKeyboardButton(
+            text="❌ Отменить автопродление",
+            callback_data="cancel_auto_renew"
+        )])
     if pending_sub:
         kb_buttons.append([InlineKeyboardButton(
             text="⚡️ Активировать сейчас",

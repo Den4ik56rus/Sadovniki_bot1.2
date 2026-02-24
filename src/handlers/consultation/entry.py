@@ -24,6 +24,8 @@ import os
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, ReplyKeyboardMarkup
 
+from src.shutdown import shutdown_coordinator
+
 # Репозитории БД
 from src.services.db.users_repo import get_or_create_user
 from src.services.db.topics_repo import (
@@ -927,6 +929,14 @@ async def run_consultation_pipeline(
     # Используется recovery при рестарте бота.
     await mark_message_processing(question_msg_id)
 
+    # Graceful shutdown: регистрируем задачу + ранний выход если бот останавливается
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
+    if shutdown_coordinator.is_shutting_down:
+        logger.info(f"[shutdown] Пропускаем LLM для user {telegram_user_id} — бот останавливается, recovery подберёт")
+        return
+
     # Быстрая проверка баланса (минимум 1 токен) — без LLM-вызова
     if not await has_sufficient_tokens(internal_user_id, 1):
         balance = await get_token_balance(internal_user_id)
@@ -1412,6 +1422,11 @@ async def handle_variety_clarification(message: Message) -> None:
     Сохраняем ответ в clarifications и переопределяем культуру.
     Затем вызываем _process_culture_and_respond для финального ответа.
     """
+    # Graceful shutdown: регистрируем задачу
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
+
     user = message.from_user
     if user is None:
         return
@@ -1492,6 +1507,11 @@ async def handle_clarification_answer(message: Message) -> None:
     Сохраняем ответ в clarifications, переопределяем культуру и вызываем
     _process_culture_and_respond для дальнейшей обработки.
     """
+    # Graceful shutdown: регистрируем задачу
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
+
     user = message.from_user
     if user is None:
         return
@@ -1599,6 +1619,10 @@ async def process_followup_question_logic(message: Message) -> None:
     3. CASE 1: Культура неясна → уточняющие вопросы БЕЗ RAG
     4. CASE 3: Культура конкретна → финальный ответ С RAG
     """
+    # Graceful shutdown: регистрируем задачу
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
 
     print("DEBUG: process_followup_question_logic получил сообщение:", message.text)
 

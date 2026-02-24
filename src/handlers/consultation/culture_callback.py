@@ -4,9 +4,12 @@
 Обработчик callback-запросов для выбора культуры пользователем.
 """
 
+import asyncio
+
 from aiogram import Router, F
 from aiogram.types import CallbackQuery
 
+from src.shutdown import shutdown_coordinator
 from src.services.db.topics_repo import get_or_create_open_topic, set_topic_culture
 from src.services.db.users_repo import get_or_create_user
 from src.services.db.messages_repo import log_message, get_last_messages
@@ -28,6 +31,11 @@ async def handle_culture_selection(callback: CallbackQuery) -> None:
     Обработка выбора культуры пользователем.
     После выбора культуры продолжаем обработку первого вопроса.
     """
+    # Graceful shutdown: регистрируем задачу
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
+
     if not callback.data or not callback.message:
         return
 

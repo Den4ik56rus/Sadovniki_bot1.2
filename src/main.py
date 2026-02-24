@@ -23,6 +23,7 @@ from src.api import create_api_app
 from src.config import settings
 from src.api.handlers.webhooks import set_webhook_queue, webhook_consumer
 from src.services.payments.payment_reconciliation import payment_reconciliation_loop
+from src.shutdown import shutdown_coordinator
 
 
 async def _trigger_scheduler_loop(process_fn) -> None:
@@ -142,6 +143,9 @@ async def main() -> None:
     finally:
         # Корректное закрытие
         print("Останавливаю бота...")
+
+        # Шаг 0: Ждём завершения активных LLM-ответов (до 60 секунд)
+        await shutdown_coordinator.begin_shutdown(timeout=60.0)
 
         # Останавливаем фоновые задачи
         webhook_consumer_task.cancel()

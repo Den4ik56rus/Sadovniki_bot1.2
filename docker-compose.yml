@@ -32,6 +32,7 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: unless-stopped
+    stop_grace_period: 75s
     depends_on:
       db:
         condition: service_healthy

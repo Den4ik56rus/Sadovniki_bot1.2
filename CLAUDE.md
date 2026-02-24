@@ -22,32 +22,33 @@ Before making ANY changes:
 
 1. Execute the task immediately. No intros, no summaries, no extra comments.
 2. Ask clarifying questions when the user's intent is unclear or ambiguous.
-3. **КРИТИЧНО: Кириллица в коде** — ВСЕГДА писать русский текст напрямую (`'Загрузка...'`), НИКОГДА не использовать Unicode escape sequences (`'\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...'`). Это касается всех строк в JS/TS/TSX файлах.
-4. Locate all necessary files yourself using `docs/` as starting point:
+3. **КРИТИЧНО: Отправка сообщений пользователям** — НИКОГДА не отправлять ничего реальным пользователям бота без явного разрешения. Тестирование через API (`/api/admin/broadcasts/*/send`, прямые `bot.send_message` и т.п.) — только для администраторов. Перед любой отправкой на сервере ВСЕГДА спросить: "Это уйдёт реальным пользователям — подтверждаешь?"
+4. **КРИТИЧНО: Кириллица в коде** — ВСЕГДА писать русский текст напрямую (`'Загрузка...'`), НИКОГДА не использовать Unicode escape sequences (`'\u0417\u0430\u0433\u0440\u0443\u0437\u043a\u0430...'`). Это касается всех строк в JS/TS/TSX файлах.
+5. Locate all necessary files yourself using `docs/` as starting point:
    - Architecture questions → `docs/architecture/OVERVIEW.md`
    - Feature understanding → `docs/features/` (check relevant doc first)
    - Setup issues → `docs/development/SETUP.md`
 
    Only ask for files if not found after checking docs and `src/` structure.
-5. When modifying a file, return the full updated file.
+6. When modifying a file, return the full updated file.
    - Typical sizes: handlers 200-500 lines, services 100-400 lines
    - Large files (>500 lines): `unified_retriever.py`, `entry.py`
    - If file >600 lines, confirm full replacement is needed
-6. Keep explanations minimal (3–6 short bullet points). No line-by-line analysis unless I explicitly ask.
-7. When a feature or logic is changed:
+7. Keep explanations minimal (3–6 short bullet points). No line-by-line analysis unless I explicitly ask.
+8. When a feature or logic is changed:
    - **Update existing doc** in `docs/features/` or `docs/architecture/`
    - **Create new doc** only if explicitly requested (avoid ephemeral docs)
    - Update `DOCUMENTATION_STATUS.md` if structure changes
-8. Always use context7 when I need code generation, setup or configuration steps, or library/API documentation. This means you should automatically use the Context7 MCP tools to resolve library id and get library docs without me having to explicitly ask.
-9. **После изменений в webapp — обязательно проверить через Playwright MCP:**
+9. Always use context7 when I need code generation, setup or configuration steps, or library/API documentation. This means you should automatically use the Context7 MCP tools to resolve library id and get library docs without me having to explicitly ask.
+10. **После изменений в webapp — обязательно проверить через Playwright MCP:**
    - **НИКОГДА не запускать dev server или backend самостоятельно** — пользователь запускает их сам
    - **Считай что сервера уже запущены:** backend на `localhost:8080`, admin-webapp на `localhost:5174`
    - Сразу использовать `browser_snapshot` для проверки UI
    - Проверить логику: кликнуть по затронутым элементам, заполнить формы
    - При ошибках: сделать `browser_take_screenshot` для отладки
    - **Если браузер занят** — не перезапускать, просто сообщить пользователю
-10. После комита на гит хаб обязательно обновить версию приложения и добавить одну десятую к номеру версии (это требуется для того чтобы телеграм знал что это новая версия)
-11. Сам не пуш в гит хаб — делай только когда об этом просят напрямую
+11. После комита на гит хаб обязательно обновить версию приложения и добавить одну десятую к номеру версии (это требуется для того чтобы телеграм знал что это новая версия)
+12. Сам не пуш в гит хаб — делай только когда об этом просят напрямую
 
 ## Quick Commands
 

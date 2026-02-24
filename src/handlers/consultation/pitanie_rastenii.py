@@ -59,6 +59,7 @@ from src.utils.formatting import markdown_to_telegram_html
 
 from src.keyboards.consultation.common import get_followup_keyboard
 from src.utils.status_manager import StatusMessageManager
+from src.shutdown import shutdown_coordinator
 
 from aiogram.types import CallbackQuery
 
@@ -106,6 +107,11 @@ async def process_nutrition_consultation(
         is_last_phase: Последняя ли это фаза
         phase_number: Номер фазы (1, 2, 3)
     """
+    # Graceful shutdown: регистрируем задачу
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
+
     if telegram_user_id_override:
         telegram_user_id = telegram_user_id_override
         session_id = f"tg:{telegram_user_id}"
@@ -360,6 +366,10 @@ async def handle_nutrition_root(message: Message) -> None:
     """
     Обрабатывает ПЕРВЫЙ (корневой) вопрос по питанию растений.
     """
+    # Graceful shutdown: регистрируем задачу
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
 
     user = message.from_user
     if user is None:
@@ -562,6 +572,10 @@ async def handle_nutrition_clarification(message: Message) -> None:
     """
     Обрабатывает ответ на уточняющий вопрос LLM.
     """
+    # Graceful shutdown: регистрируем задачу
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
 
     user = message.from_user
     if user is None:
@@ -721,6 +735,10 @@ async def handle_variety_clarification(message: Message) -> None:
     """
     Обрабатывает ответ на вопрос о типе культуры (ремонтантная/летняя).
     """
+    # Graceful shutdown: регистрируем задачу
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
 
     user = message.from_user
     if user is None:
@@ -979,6 +997,11 @@ async def handle_param_replacement(message: Message) -> None:
     """
     Обрабатывает ввод новых параметров пользователем.
     """
+    # Graceful shutdown: регистрируем задачу
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
+
     user = message.from_user
     if user is None:
         return
@@ -1111,6 +1134,11 @@ async def handle_detailed_plan(message: Message) -> None:
     Обработчик кнопки "Детальный план" для всех категорий.
     Формирует детальный план на основе предыдущего контекста и категории.
     """
+    # Graceful shutdown: регистрируем задачу
+    current_task = asyncio.current_task()
+    if current_task:
+        shutdown_coordinator.register_task(current_task)
+
     user = message.from_user
     if user is None:
         return

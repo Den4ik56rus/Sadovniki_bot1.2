@@ -177,6 +177,7 @@ async def handle_broadcast_discount_click(callback: CallbackQuery) -> None:
             option_key=option_key,
             discount_percent=btn_config['discount_percent'],
             bonus_tokens=btn_config.get('discount_bonus_tokens') or 0,
+            bonus_tokens_mode=btn_config.get('discount_bonus_tokens_mode', 'absolute'),
             duration_hours=btn_config['discount_duration_hours'],
         )
 

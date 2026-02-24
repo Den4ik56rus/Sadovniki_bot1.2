@@ -677,6 +677,10 @@ def _validate_inline_buttons(buttons: list) -> None:
             btn['discount_duration_hours'] = int(dh)
             if btn.get('discount_bonus_tokens') is not None:
                 btn['discount_bonus_tokens'] = int(btn['discount_bonus_tokens'])
+            # Режим бонусных токенов: absolute (число) или percent (% от тарифа)
+            mode = btn.get('discount_bonus_tokens_mode', 'absolute')
+            if mode not in ('absolute', 'percent'):
+                btn['discount_bonus_tokens_mode'] = 'absolute'
 
         reply_text = btn.get('reply_text')
         if reply_text is not None:

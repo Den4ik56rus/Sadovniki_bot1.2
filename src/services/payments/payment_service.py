@@ -270,7 +270,15 @@ async def create_subscription_payment(
     from src.services.db.discount_repo import get_user_active_broadcast_discount
     broadcast_disc = await get_user_active_broadcast_discount(user_id)
     broadcast_discount_pct = broadcast_disc['discount_percent'] if broadcast_disc else 0
-    broadcast_bonus_tokens = broadcast_disc['bonus_tokens'] if broadcast_disc else 0
+    broadcast_bonus_tokens_raw = broadcast_disc['bonus_tokens'] if broadcast_disc else 0
+    broadcast_bonus_mode = broadcast_disc.get('bonus_tokens_mode', 'absolute') if broadcast_disc else 'absolute'
+
+    # Вычисляем бонусные токены: абсолютное число или % от tokens_included тарифа
+    import math
+    if broadcast_bonus_mode == 'percent' and broadcast_bonus_tokens_raw and broadcast_bonus_tokens_raw > 0:
+        broadcast_bonus_tokens = math.ceil(plan['tokens_included'] * broadcast_bonus_tokens_raw / 100)
+    else:
+        broadcast_bonus_tokens = broadcast_bonus_tokens_raw
 
     best_pct = max(invite_discount_pct or 0, broadcast_discount_pct)
     if best_pct > 0:

@@ -47,6 +47,8 @@ async def show_discount_subscription_menu(callback: CallbackQuery, user_id: int)
         return
 
     discount_pct = discount['discount_percent']
+    bonus_tokens = discount.get('bonus_tokens', 0) or 0
+    bonus_mode = discount.get('bonus_tokens_mode', 'absolute')
     expires_at = discount['expires_at']
     hours_left, minutes_left = _compute_time_left(expires_at)
 
@@ -60,13 +62,19 @@ async def show_discount_subscription_menu(callback: CallbackQuery, user_id: int)
     )
 
     # Список тарифов со скидкой
+    import math
     plan_lines = []
     for plan in plans:
         original = int(plan['price_rub'])
         discounted = int(original * (100 - discount_pct) / 100)
-        plan_lines.append(
-            f"📅 <b>{plan['name']}</b>: <s>{original}₽</s> → <b>{discounted}₽</b>/мес"
-        )
+        line = f"📅 <b>{plan['name']}</b>: <s>{original}₽</s> → <b>{discounted}₽</b>/мес"
+        if bonus_tokens > 0:
+            if bonus_mode == 'percent':
+                plan_bonus = math.ceil(plan['tokens_included'] * bonus_tokens / 100)
+                line += f" (+{plan_bonus} бонус-токенов)"
+            else:
+                line += f" (+{bonus_tokens} бонус-токенов)"
+        plan_lines.append(line)
 
     text = banner + "\n".join(plan_lines) + "\n\nВыберите тариф для оформления:"
 

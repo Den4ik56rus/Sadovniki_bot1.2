@@ -1198,6 +1198,7 @@ export interface BroadcastButton {
   // discount button fields (all-plans discount)
   discount_percent?: number | null
   discount_bonus_tokens?: number | null
+  discount_bonus_tokens_mode?: 'absolute' | 'percent'
   discount_duration_hours?: number | null
 }
 

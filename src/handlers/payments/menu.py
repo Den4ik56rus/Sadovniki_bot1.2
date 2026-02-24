@@ -425,8 +425,26 @@ async def back_to_main_menu(callback: CallbackQuery):
 
 
 @router.callback_query(F.data == "cancel_auto_renew")
+async def cancel_auto_renew_confirm(callback: CallbackQuery):
+    """Показать подтверждение отмены автопродления."""
+    await callback.answer()
+
+    confirm_text = (
+        "⚠️ <b>Вы уверены, что хотите отменить автопродление?</b>\n\n"
+        "После отмены подписка будет действовать до конца оплаченного периода, "
+        "но автоматически не продлится."
+    )
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="✅ Да, отменить", callback_data="confirm_cancel_auto_renew")],
+        [InlineKeyboardButton(text="◀️ Нет, вернуться", callback_data="show_payment_menu")],
+    ])
+
+    await callback.message.edit_text(confirm_text, reply_markup=keyboard, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "confirm_cancel_auto_renew")
 async def cancel_auto_renew_handler(callback: CallbackQuery):
-    """Отменить автопродление подписки."""
+    """Отменить автопродление подписки после подтверждения."""
     await callback.answer()
 
     from src.services.db.users_repo import get_or_create_user

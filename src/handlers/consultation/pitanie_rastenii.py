@@ -18,6 +18,8 @@
     - Очищаем состояние и контекст.
 """
 
+import asyncio
+
 from aiogram import Router, F
 from aiogram.types import Message
 
@@ -338,6 +340,13 @@ async def process_nutrition_consultation(
             category_guess=category_guess,
         )
 
+        # Авто-переход в CRM: new → tried (получил консультацию)
+        try:
+            from src.services.db.funnel_repo import auto_move_client_in_crm
+            asyncio.create_task(auto_move_client_in_crm(user_id, 'tried'))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Auto-move to tried failed: {e}")
 
 
 # ==== ЭТАП 1: корневой вопрос по питанию ====
@@ -684,6 +693,13 @@ async def handle_nutrition_clarification(message: Message) -> None:
             category_guess=category_guess,
         )
 
+        # Авто-переход в CRM: new → tried (получил консультацию)
+        try:
+            from src.services.db.funnel_repo import auto_move_client_in_crm
+            asyncio.create_task(auto_move_client_in_crm(user_id, 'tried'))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Auto-move to tried failed: {e}")
 
     # Сохраняем полный вопрос в контекст для кнопок
     ctx["full_question"] = combined_question
@@ -868,6 +884,13 @@ async def handle_variety_clarification(message: Message) -> None:
             category_guess=category_guess,
         )
 
+        # Авто-переход в CRM: new → tried (получил консультацию)
+        try:
+            from src.services.db.funnel_repo import auto_move_client_in_crm
+            asyncio.create_task(auto_move_client_in_crm(user_id, 'tried'))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning(f"Auto-move to tried failed: {e}")
 
     # Сохраняем полный вопрос в контекст для кнопок
     ctx["full_question"] = composed_q

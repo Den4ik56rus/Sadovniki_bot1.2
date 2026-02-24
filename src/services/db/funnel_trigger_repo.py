@@ -285,3 +285,136 @@ async def update_trigger_log_status(
             """,
             status, error_message, log_id,
         )
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# ОТМЕНА PENDING-ТРИГГЕРОВ ПРИ СМЕНЕ ЭТАПА
+# ═══════════════════════════════════════════════════════════════════════════════
+
+async def delete_pending_triggers_for_stage(
+    user_id: int,
+    funnel_id: str,
+    stage_key: str,
+) -> int:
+    """
+    Удалить все pending-триггеры пользователя для конкретного этапа воронки.
+
+    Вызывается при перемещении клиента с этапа (перед обновлением позиции).
+    Удаление (а не cancel) гарантирует, что при возврате на этап таймер начнёт заново.
+    Возвращает количество удалённых триггеров.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            """
+            DELETE FROM funnel_trigger_log ftl
+            USING funnel_stage_triggers fst
+            WHERE ftl.trigger_id = fst.id
+              AND ftl.user_id = $1
+              AND fst.funnel_id = $2
+              AND fst.stage_key = $3
+              AND ftl.status = 'pending'
+            """,
+            user_id, funnel_id, stage_key,
+        )
+        count = int(result.split()[-1]) if result else 0
+        if count > 0:
+            logger.info(
+                f"Deleted {count} pending triggers for user {user_id} "
+                f"leaving stage {funnel_id}/{stage_key}"
+            )
+        return count
+
+
+async def delete_all_pending_triggers_for_funnel(
+    user_id: int,
+    funnel_id: str,
+) -> int:
+    """
+    Удалить ВСЕ pending-триггеры пользователя во всей воронке.
+
+    Вызывается при удалении клиента из воронки (transfer_client, remove_client_from_funnel).
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            """
+            DELETE FROM funnel_trigger_log ftl
+            USING funnel_stage_triggers fst
+            WHERE ftl.trigger_id = fst.id
+              AND ftl.user_id = $1
+              AND fst.funnel_id = $2
+              AND ftl.status = 'pending'
+            """,
+            user_id, funnel_id,
+        )
+        count = int(result.split()[-1]) if result else 0
+        if count > 0:
+            logger.info(
+                f"Deleted {count} pending triggers for user {user_id} "
+                f"leaving funnel {funnel_id}"
+            )
+        return count
+
+
+async def delete_pending_triggers_for_deleted_stage(
+    funnel_id: str,
+    stage_key: str,
+    conn=None,
+) -> int:
+    """
+    Удалить все pending-триггеры для удаляемого этапа (для всех пользователей).
+
+    Принимает опциональный conn для использования внутри транзакции.
+    """
+    release = False
+    if conn is None:
+        pool = get_pool()
+        conn = await pool.acquire()
+        release = True
+
+    try:
+        result = await conn.execute(
+            """
+            DELETE FROM funnel_trigger_log ftl
+            USING funnel_stage_triggers fst
+            WHERE ftl.trigger_id = fst.id
+              AND fst.funnel_id = $1
+              AND fst.stage_key = $2
+              AND ftl.status = 'pending'
+            """,
+            funnel_id, stage_key,
+        )
+        count = int(result.split()[-1]) if result else 0
+        if count > 0:
+            logger.info(
+                f"Deleted {count} pending triggers for deleted stage {funnel_id}/{stage_key}"
+            )
+        return count
+    finally:
+        if release:
+            await pool.release(conn)
+
+
+async def delete_trigger_log_entry(log_id: int) -> None:
+    """Удалить запись из funnel_trigger_log по ID."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "DELETE FROM funnel_trigger_log WHERE id = $1",
+            log_id,
+        )
+
+
+async def is_user_on_stage(user_id: int, funnel_id: str, stage_key: str) -> bool:
+    """Проверить, находится ли пользователь на указанном этапе воронки."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT 1 FROM client_funnel_position
+            WHERE user_id = $1 AND funnel_id = $2 AND stage_key = $3
+            """,
+            user_id, funnel_id, stage_key,
+        )
+    return row is not None

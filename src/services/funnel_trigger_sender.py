@@ -21,6 +21,8 @@ from src.services.db.funnel_trigger_repo import (
     log_trigger_sent,
     get_pending_triggers_due,
     update_trigger_log_status,
+    is_user_on_stage,
+    delete_trigger_log_entry,
 )
 
 logger = logging.getLogger(__name__)
@@ -123,6 +125,19 @@ async def process_pending_triggers() -> int:
             user_id = record['user_id']
             telegram_user_id = record['telegram_user_id']
             payment_config = record.get('payment_config')
+            funnel_id = record['funnel_id']
+            stage_key = record['stage_key']
+
+            # Safety check: пользователь всё ещё на этапе триггера?
+            still_on_stage = await is_user_on_stage(user_id, funnel_id, stage_key)
+            if not still_on_stage:
+                await delete_trigger_log_entry(log_id)
+                logger.info(
+                    f"Trigger log_id={log_id} deleted: user {user_id} "
+                    f"no longer on {funnel_id}/{stage_key}"
+                )
+                processed += 1
+                continue
 
             try:
                 if payment_config:

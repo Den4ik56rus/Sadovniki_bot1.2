@@ -417,6 +417,10 @@ async def delete_stage(funnel_id: str, stage_key: str) -> bool:
             )
 
             if first_stage:
+                # Отменяем pending-триггеры для всех пользователей на удаляемом этапе
+                from src.services.db.funnel_trigger_repo import delete_pending_triggers_for_deleted_stage
+                await delete_pending_triggers_for_deleted_stage(funnel_id, stage_key, conn)
+
                 # Перемещаем клиентов на первый этап
                 await conn.execute(
                     """
@@ -713,6 +717,11 @@ async def move_client_to_stage(
             funnel_id
         )
 
+        # Отменяем pending-триггеры старого этапа перед перемещением
+        if old_stage_key and old_stage_key != new_stage_key:
+            from src.services.db.funnel_trigger_repo import delete_pending_triggers_for_stage
+            await delete_pending_triggers_for_stage(user_id, funnel_id, old_stage_key)
+
         result = await conn.execute(
             """
             UPDATE client_funnel_position
@@ -819,6 +828,10 @@ async def auto_move_client_in_crm(user_id: int, target_stage_key: str) -> bool:
             )
             return False
 
+        # Отменяем pending-триггеры текущего этапа перед перемещением
+        from src.services.db.funnel_trigger_repo import delete_pending_triggers_for_stage
+        await delete_pending_triggers_for_stage(user_id, 'crm', current_stage)
+
         # Перемещаем (manual_override остаётся false)
         await conn.execute(
             """
@@ -904,6 +917,10 @@ async def transfer_client(
                 if not to_stage_key:
                     logger.error(f"No stages found in funnel: {to_funnel_id}")
                     return False
+
+            # Отменяем все pending-триггеры в исходной воронке
+            from src.services.db.funnel_trigger_repo import delete_all_pending_triggers_for_funnel
+            await delete_all_pending_triggers_for_funnel(user_id, from_funnel_id)
 
             # Удаляем из исходной воронки
             await conn.execute(

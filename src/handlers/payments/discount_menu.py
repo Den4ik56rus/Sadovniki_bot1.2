@@ -55,19 +55,28 @@ async def show_discount_subscription_menu(callback: CallbackQuery, user_id: int)
     plans = await subscription_plan_repo.get_all_active()
 
     # Баннер
-    time_str = f"{hours_left}ч {minutes_left}мин" if hours_left > 0 else f"{minutes_left}мин"
-    banner = (
-        f"🔥 <b>Ваша персональная скидка {discount_pct}%</b>\n"
-        f"Действует ещё: <b>{time_str}</b>\n\n"
-    )
-
-    # Список тарифов со скидкой
     import math
+    time_str = f"{hours_left}ч {minutes_left}мин" if hours_left > 0 else f"{minutes_left}мин"
+    if discount_pct > 0:
+        banner = (
+            f"🔥 <b>Ваша персональная скидка {discount_pct}%</b>\n"
+            f"Действует ещё: <b>{time_str}</b>\n\n"
+        )
+    else:
+        banner = (
+            f"🎁 <b>Ваш персональный бонус</b>\n"
+            f"Действует ещё: <b>{time_str}</b>\n\n"
+        )
+
+    # Список тарифов со скидкой/бонусом
     plan_lines = []
     for plan in plans:
         original = int(plan['price_rub'])
-        discounted = int(original * (100 - discount_pct) / 100)
-        line = f"📅 <b>{plan['name']}</b>: <s>{original}₽</s> → <b>{discounted}₽</b>/мес"
+        discounted = int(original * (100 - discount_pct) / 100) if discount_pct > 0 else original
+        if discount_pct > 0:
+            line = f"📅 <b>{plan['name']}</b>: <s>{original}₽</s> → <b>{discounted}₽</b>/мес"
+        else:
+            line = f"📅 <b>{plan['name']}</b>: <b>{original}₽</b>/мес"
         if bonus_tokens > 0:
             if bonus_mode == 'percent':
                 plan_bonus = math.ceil(plan['tokens_included'] * bonus_tokens / 100)
@@ -82,9 +91,13 @@ async def show_discount_subscription_menu(callback: CallbackQuery, user_id: int)
     buttons = []
     for plan in plans:
         original = int(plan['price_rub'])
-        discounted = int(original * (100 - discount_pct) / 100)
+        discounted = int(original * (100 - discount_pct) / 100) if discount_pct > 0 else original
+        if discount_pct > 0:
+            btn_text = f"{plan['name']} — {original}₽ → {discounted}₽"
+        else:
+            btn_text = f"{plan['name']} — {original}₽"
         buttons.append([InlineKeyboardButton(
-            text=f"{plan['name']} — {original}₽ → {discounted}₽",
+            text=btn_text,
             callback_data=f"buy_subscription_{plan['id']}"
         )])
 

@@ -115,13 +115,15 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
     if (!canSave) return
     setSaving(true)
     const dto = buildDto()
+    let ok = false
     if (broadcast) {
-      await updateBroadcast(broadcast.id, dto)
+      ok = await updateBroadcast(broadcast.id, dto)
     } else {
-      await createBroadcast(dto)
+      const created = await createBroadcast(dto)
+      ok = !!created
     }
     setSaving(false)
-    onSaved()
+    if (ok) onSaved()
   }
 
   const handleSendNow = async () => {
@@ -130,10 +132,12 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
     let id = broadcast?.id
     const dto = buildDto()
     if (id) {
-      await updateBroadcast(id, dto)
+      const ok = await updateBroadcast(id, dto)
+      if (!ok) { setSaving(false); return }
     } else {
       const created = await createBroadcast(dto)
-      id = created?.id
+      if (!created) { setSaving(false); return }
+      id = created.id
     }
     if (id) {
       await sendBroadcast(id)
@@ -148,10 +152,12 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
     let id = broadcast?.id
     const dto = buildDto()
     if (id) {
-      await updateBroadcast(id, dto)
+      const ok = await updateBroadcast(id, dto)
+      if (!ok) { setSaving(false); return }
     } else {
       const created = await createBroadcast(dto)
-      id = created?.id
+      if (!created) { setSaving(false); return }
+      id = created.id
     }
     if (id) {
       await scheduleBroadcast(id, scheduledAt)
@@ -166,10 +172,12 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
     let id = broadcast?.id
     const dto = buildDto()
     if (id) {
-      await updateBroadcast(id, dto)
+      const ok = await updateBroadcast(id, dto)
+      if (!ok) { setSaving(false); return }
     } else {
       const created = await createBroadcast(dto)
-      id = created?.id
+      if (!created) { setSaving(false); return }
+      id = created.id
     }
     if (id) {
       const success = await testSendBroadcast(id)

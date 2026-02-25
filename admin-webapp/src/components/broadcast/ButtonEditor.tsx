@@ -53,10 +53,21 @@ function buildTokenButtonText(pkg: TokenPackage, customPrice: number | null | un
     : `🎁 ${pkg.tokens_amount} токенов — ${price}₽`
 }
 
-function buildDiscountButtonText(discountPercent: number | null | undefined, durationHours: number | null | undefined): string {
+function buildDiscountButtonText(discountPercent: number | null | undefined, durationHours: number | null | undefined, bonusTokens?: number | null, bonusMode?: 'absolute' | 'percent'): string {
   const pct = discountPercent ?? 0
   const hours = durationHours ?? 24
-  return `🏷️ Скидка ${pct}% на ${hours}ч`
+  if (pct > 0 && bonusTokens && bonusTokens > 0) {
+    return bonusMode === 'percent'
+      ? `🏷️ Скидка ${pct}% + ${bonusTokens}% токенов`
+      : `🏷️ Скидка ${pct}% + ${bonusTokens} токенов`
+  }
+  if (pct > 0) return `🏷️ Скидка ${pct}% на ${hours}ч`
+  if (bonusTokens && bonusTokens > 0) {
+    return bonusMode === 'percent'
+      ? `🎁 +${bonusTokens}% бонус-токенов`
+      : `🎁 +${bonusTokens} бонус-токенов`
+  }
+  return `🏷️ Скидка на ${hours}ч`
 }
 
 function buildDiscountMessageHtml(discountPercent: number | null | undefined, durationHours: number | null | undefined, bonusTokens: number | null | undefined, bonusMode?: 'absolute' | 'percent'): string {
@@ -71,12 +82,19 @@ function buildDiscountMessageHtml(discountPercent: number | null | undefined, du
       bonusLine = `<p>🎁 Бонус: +${bonusTokens} токенов при оформлении</p>`
     }
   }
+  // Если скидка 0%, но есть бонус — другой заголовок
+  const headline = pct > 0
+    ? `<p>🔥 <strong>Персональная скидка ${pct}% на все тарифы</strong></p>`
+    : `<p>🎁 <strong>Персональный бонус для вас</strong></p>`
+  const actionLine = pct > 0
+    ? `<p>Нажмите кнопку ниже, чтобы выбрать тариф со скидкой.</p>`
+    : `<p>Нажмите кнопку ниже, чтобы выбрать тариф с бонусом.</p>`
   return [
-    `<p>🔥 <strong>Персональная скидка ${pct}% на все тарифы</strong></p>`,
+    headline,
     `<p>Действует ${timeStr} — только для вас.</p>`,
     bonusLine,
     `<p></p>`,
-    `<p>Нажмите кнопку ниже, чтобы выбрать тариф со скидкой.</p>`,
+    actionLine,
   ].filter(Boolean).join('')
 }
 
@@ -594,11 +612,11 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                                   type="number"
                                   placeholder="30"
                                   value={btn.discount_percent ?? ''}
-                                  min={1}
+                                  min={0}
                                   max={99}
                                   onChange={(e) => {
                                     const pct = e.target.value ? Number(e.target.value) : null
-                                    const autoText = buildDiscountButtonText(pct, btn.discount_duration_hours)
+                                    const autoText = buildDiscountButtonText(pct, btn.discount_duration_hours, btn.discount_bonus_tokens, btn.discount_bonus_tokens_mode)
                                     updateButton(rowIdx, btnIdx, {
                                       discount_percent: pct,
                                       text: autoText,
@@ -619,7 +637,7 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                                   min={1}
                                   onChange={(e) => {
                                     const hours = e.target.value ? Number(e.target.value) : null
-                                    const autoText = buildDiscountButtonText(btn.discount_percent, hours)
+                                    const autoText = buildDiscountButtonText(btn.discount_percent, hours, btn.discount_bonus_tokens, btn.discount_bonus_tokens_mode)
                                     updateButton(rowIdx, btnIdx, {
                                       discount_duration_hours: hours,
                                       text: autoText,
@@ -640,9 +658,11 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                                     name={`bonus_mode_${rowIdx}_${btnIdx}`}
                                     checked={(btn.discount_bonus_tokens_mode ?? 'absolute') === 'absolute'}
                                     onChange={() => {
+                                      const autoText = buildDiscountButtonText(btn.discount_percent, btn.discount_duration_hours, null, 'absolute')
                                       updateButton(rowIdx, btnIdx, {
                                         discount_bonus_tokens_mode: 'absolute',
                                         discount_bonus_tokens: null,
+                                        text: autoText,
                                       })
                                       if (onAutoFillMessage) {
                                         onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, btn.discount_duration_hours, null, 'absolute'))
@@ -657,9 +677,11 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                                     name={`bonus_mode_${rowIdx}_${btnIdx}`}
                                     checked={btn.discount_bonus_tokens_mode === 'percent'}
                                     onChange={() => {
+                                      const autoText = buildDiscountButtonText(btn.discount_percent, btn.discount_duration_hours, null, 'percent')
                                       updateButton(rowIdx, btnIdx, {
                                         discount_bonus_tokens_mode: 'percent',
                                         discount_bonus_tokens: null,
+                                        text: autoText,
                                       })
                                       if (onAutoFillMessage) {
                                         onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, btn.discount_duration_hours, null, 'percent'))
@@ -680,8 +702,10 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                                   onChange={(e) => {
                                     const bonus = e.target.value ? Number(e.target.value) : null
                                     const mode = btn.discount_bonus_tokens_mode ?? 'absolute'
+                                    const autoText = buildDiscountButtonText(btn.discount_percent, btn.discount_duration_hours, bonus, mode)
                                     updateButton(rowIdx, btnIdx, {
                                       discount_bonus_tokens: bonus,
+                                      text: autoText,
                                     })
                                     if (onAutoFillMessage) {
                                       onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, btn.discount_duration_hours, bonus, mode))

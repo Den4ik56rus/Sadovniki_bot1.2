@@ -116,7 +116,6 @@ async def create_broadcast(request: web.Request) -> web.Response:
 
         # Валидация inline_buttons
         inline_buttons = data.get('inline_buttons')
-        logger.warning(f"create_broadcast: inline_buttons from request = {inline_buttons!r}")
         if inline_buttons:
             _validate_inline_buttons(inline_buttons)
 
@@ -196,7 +195,6 @@ async def update_broadcast(request: web.Request) -> web.Response:
             raise web.HTTPBadRequest(text='Invalid target_type')
 
         inline_buttons = data.get('inline_buttons')
-        logger.warning(f"update_broadcast({broadcast_id}): inline_buttons from request = {inline_buttons!r}")
         if inline_buttons:
             _validate_inline_buttons(inline_buttons)
 
@@ -674,8 +672,13 @@ def _validate_inline_buttons(buttons: list) -> None:
         if btn_type == 'discount':
             dp = btn.get('discount_percent')
             dh = btn.get('discount_duration_hours')
-            if not dp or not isinstance(dp, (int, float)) or not (1 <= int(dp) <= 99):
-                raise web.HTTPBadRequest(text='Discount button requires discount_percent (1-99)')
+            bonus = btn.get('discount_bonus_tokens')
+            # discount_percent может быть 0 если есть бонусные токены
+            if dp is None or not isinstance(dp, (int, float)) or int(dp) < 0 or int(dp) > 99:
+                raise web.HTTPBadRequest(text='Discount button requires discount_percent (0-99)')
+            # Нужна хотя бы скидка > 0 или бонус-токены > 0
+            if int(dp) == 0 and (not bonus or int(bonus) <= 0):
+                raise web.HTTPBadRequest(text='Discount button requires either discount_percent > 0 or bonus_tokens > 0')
             # Дефолт 24 часа если не указано
             if not dh:
                 dh = 24

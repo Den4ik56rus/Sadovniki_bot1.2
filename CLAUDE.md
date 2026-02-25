@@ -50,6 +50,37 @@ Before making ANY changes:
 11. После комита на гит хаб обязательно обновить версию приложения и добавить одну десятую к номеру версии (это требуется для того чтобы телеграм знал что это новая версия)
 12. Сам не пуш в гит хаб — делай только когда об этом просят напрямую
 
+## Деплой на сервер
+
+**SSH:** `ssh -i ~/.ssh/id_rsa_server root@72.56.121.98`
+**Путь:** `/root/Sadovniki_bot1.2`
+
+### Команды деплоя
+
+```bash
+# Бот (быстрая сборка ~5с):
+ssh -i ~/.ssh/id_rsa_server root@72.56.121.98 \
+  'cd /root/Sadovniki_bot1.2 && git pull && docker compose up -d --build bot'
+
+# Nginx/admin-webapp (долгая сборка, в фоне):
+ssh -i ~/.ssh/id_rsa_server root@72.56.121.98 \
+  "nohup bash -c 'cd /root/Sadovniki_bot1.2 && git pull && docker compose up -d --build nginx' > /tmp/nginx_build.log 2>&1 &"
+# Проверить: ssh ... 'tail /tmp/nginx_build.log && docker ps | grep nginx'
+```
+
+### Graceful shutdown бота
+
+При `docker compose up -d --build bot` Docker отправляет SIGTERM старому контейнеру.
+Бот использует **graceful shutdown** (`src/shutdown.py` + `src/main.py`):
+
+1. SIGTERM → наш signal handler ставит флаг + сигнализирует aiogram остановить polling
+2. `start_polling()` завершается (с `close_bot_session=False` — сессия НЕ закрывается)
+3. **finally блок ждёт завершения всех handler-задач** (LLM-ответы отправляются пользователям)
+4. Только потом закрывается bot.session, DB pool и т.д.
+5. Docker `stop_grace_period: 75s` — бот имеет 65с на завершение ответов
+
+**ВАЖНО:** НЕ менять `handle_signals`, `close_bot_session` в `dp.start_polling()` — это критично для graceful shutdown.
+
 ## Quick Commands
 
 ```bash

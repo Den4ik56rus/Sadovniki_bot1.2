@@ -65,7 +65,7 @@ async def get_all_buyers_with_status() -> List[Dict[str, Any]]:
                 COALESCE(stats.total_consultations, 0) as total_consultations,
                 COALESCE(stats.total_tokens, 0) as total_tokens,
                 COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
-                stats.last_consultation_at
+                u.last_activity_at as last_consultation_at
             FROM client_funnel_position cfp
             JOIN users u ON u.id = cfp.user_id
             LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
@@ -73,8 +73,7 @@ async def get_all_buyers_with_status() -> List[Dict[str, Any]]:
                 SELECT
                     COUNT(*)::int as total_consultations,
                     COALESCE(SUM(total_tokens), 0)::int as total_tokens,
-                    COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
-                    MAX(created_at) as last_consultation_at
+                    COALESCE(SUM(cost_usd), 0.0) as total_cost_usd
                 FROM consultation_logs cl
                 WHERE cl.user_id = u.id
             ) stats ON true
@@ -137,15 +136,14 @@ async def get_buyer_by_id(user_id: int) -> Optional[Dict[str, Any]]:
                 COALESCE(stats.total_consultations, 0) as total_consultations,
                 COALESCE(stats.total_tokens, 0) as total_tokens,
                 COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
-                stats.last_consultation_at
+                u.last_activity_at as last_consultation_at
             FROM buyer_status bs
             JOIN users u ON u.id = bs.user_id
             LEFT JOIN LATERAL (
                 SELECT
                     COUNT(*)::int as total_consultations,
                     COALESCE(SUM(total_tokens), 0)::int as total_tokens,
-                    COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
-                    MAX(created_at) as last_consultation_at
+                    COALESCE(SUM(cost_usd), 0.0) as total_cost_usd
                 FROM consultation_logs cl
                 WHERE cl.user_id = u.id
             ) stats ON true

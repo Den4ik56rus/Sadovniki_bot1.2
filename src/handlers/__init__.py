@@ -12,6 +12,9 @@
 
 from aiogram import Dispatcher
 
+# Middleware для отслеживания активности пользователей
+from src.middleware.activity_tracker import ActivityTrackerMiddleware
+
 # Главное меню (/start, кнопки и т.п.)
 from src.handlers import menu as menu_handlers
 
@@ -41,6 +44,9 @@ def setup_routers(dp: Dispatcher) -> None:
     Админские хендлеры должны быть ПЕРЕД консультационными,
     иначе общий обработчик F.text перехватит сообщения админа.
     """
+
+    # 0. Middleware: обновление last_activity_at на каждый update
+    dp.update.outer_middleware(ActivityTrackerMiddleware())
 
     # 1. Главное меню
     dp.include_router(menu_handlers.router)

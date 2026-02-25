@@ -985,7 +985,7 @@ async def get_client_full_data(user_id: int, funnel_id: Optional[str] = None) ->
                     COALESCE(stats.total_consultations, 0) as total_consultations,
                     COALESCE(stats.total_tokens, 0) as total_tokens,
                     COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
-                    stats.last_consultation_at
+                    u.last_activity_at as last_consultation_at
                 FROM users u
                 LEFT JOIN client_funnel_position cfp ON cfp.user_id = u.id AND cfp.funnel_id = $2
                 LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
@@ -993,8 +993,7 @@ async def get_client_full_data(user_id: int, funnel_id: Optional[str] = None) ->
                     SELECT
                         COUNT(*)::int as total_consultations,
                         COALESCE(SUM(total_tokens), 0)::int as total_tokens,
-                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
-                        MAX(created_at) as last_consultation_at
+                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd
                     FROM consultation_logs cl
                     WHERE cl.user_id = u.id
                 ) stats ON true
@@ -1024,15 +1023,14 @@ async def get_client_full_data(user_id: int, funnel_id: Optional[str] = None) ->
                     COALESCE(stats.total_consultations, 0) as total_consultations,
                     COALESCE(stats.total_tokens, 0) as total_tokens,
                     COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
-                    stats.last_consultation_at
+                    u.last_activity_at as last_consultation_at
                 FROM users u
                 LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
                 LEFT JOIN LATERAL (
                     SELECT
                         COUNT(*)::int as total_consultations,
                         COALESCE(SUM(total_tokens), 0)::int as total_tokens,
-                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
-                        MAX(created_at) as last_consultation_at
+                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd
                     FROM consultation_logs cl
                     WHERE cl.user_id = u.id
                 ) stats ON true

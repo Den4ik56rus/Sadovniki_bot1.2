@@ -557,7 +557,7 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     COALESCE(stats.total_consultations, 0) as total_consultations,
                     COALESCE(stats.total_tokens, 0) as total_tokens,
                     COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
-                    stats.last_consultation_at,
+                    u.last_activity_at as last_consultation_at,
                     sub_info.subscription_plan_name,
                     sub_info.subscription_status,
                     sub_info.subscription_expires_at
@@ -568,8 +568,7 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     SELECT
                         COUNT(*)::int as total_consultations,
                         COALESCE(SUM(total_tokens), 0)::int as total_tokens,
-                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
-                        MAX(created_at) as last_consultation_at
+                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd
                     FROM consultation_logs cl
                     WHERE cl.user_id = u.id
                 ) stats ON true
@@ -585,7 +584,7 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     LIMIT 1
                 ) sub_info ON true
                 WHERE cfp.funnel_id = $1
-                ORDER BY stats.last_consultation_at DESC NULLS LAST, cfp.entered_at DESC
+                ORDER BY u.last_activity_at DESC NULLS LAST, cfp.entered_at DESC
                 """,
                 funnel_id, invite_link_id
             )
@@ -608,7 +607,7 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     COALESCE(stats.total_consultations, 0) as total_consultations,
                     COALESCE(stats.total_tokens, 0) as total_tokens,
                     COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
-                    stats.last_consultation_at,
+                    u.last_activity_at as last_consultation_at,
                     sub_info.subscription_plan_name,
                     sub_info.subscription_status,
                     sub_info.subscription_expires_at
@@ -618,8 +617,7 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     SELECT
                         COUNT(*)::int as total_consultations,
                         COALESCE(SUM(total_tokens), 0)::int as total_tokens,
-                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
-                        MAX(created_at) as last_consultation_at
+                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd
                     FROM consultation_logs cl
                     WHERE cl.user_id = u.id
                 ) stats ON true
@@ -635,7 +633,7 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     LIMIT 1
                 ) sub_info ON true
                 WHERE cfp.funnel_id = $1
-                ORDER BY stats.last_consultation_at DESC NULLS LAST, cfp.entered_at DESC
+                ORDER BY u.last_activity_at DESC NULLS LAST, cfp.entered_at DESC
                 """,
                 funnel_id
             )

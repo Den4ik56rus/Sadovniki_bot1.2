@@ -307,7 +307,7 @@ async def get_users_with_stats(
                         COALESCE(COUNT(cl.id), 0) AS total_consultations,
                         COALESCE(SUM(cl.total_tokens), 0) AS total_tokens,
                         COALESCE(SUM(cl.cost_usd), 0) AS total_cost_usd,
-                        MAX(cl.created_at) AS last_consultation_at
+                        u.last_activity_at AS last_consultation_at
                     FROM users u
                     LEFT JOIN consultation_logs cl ON cl.user_id = u.id
                     WHERE u.telegram_user_id = $1
@@ -332,7 +332,7 @@ async def get_users_with_stats(
                         COALESCE(COUNT(cl.id), 0) AS total_consultations,
                         COALESCE(SUM(cl.total_tokens), 0) AS total_tokens,
                         COALESCE(SUM(cl.cost_usd), 0) AS total_cost_usd,
-                        MAX(cl.created_at) AS last_consultation_at
+                        u.last_activity_at AS last_consultation_at
                     FROM users u
                     LEFT JOIN consultation_logs cl ON cl.user_id = u.id
                     WHERE u.username ILIKE $1 OR u.first_name ILIKE $1
@@ -357,7 +357,7 @@ async def get_users_with_stats(
                     COALESCE(COUNT(cl.id), 0) AS total_consultations,
                     COALESCE(SUM(cl.total_tokens), 0) AS total_tokens,
                     COALESCE(SUM(cl.cost_usd), 0) AS total_cost_usd,
-                    MAX(cl.created_at) AS last_consultation_at
+                    u.last_activity_at AS last_consultation_at
                 FROM users u
                 LEFT JOIN consultation_logs cl ON cl.user_id = u.id
                 GROUP BY u.id

@@ -964,6 +964,8 @@ export interface InviteLink {
   created_at: string
   users_count: number
   total_users_count: number
+  new_users_count: number
+  existing_users_count: number
   total_revenue_rub: number
   deep_link: string
   bonus_tokens: number

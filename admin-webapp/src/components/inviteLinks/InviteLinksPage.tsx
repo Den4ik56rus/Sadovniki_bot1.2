@@ -412,6 +412,14 @@ export function InviteLinksPage() {
           <span className={styles.statItem}>
             👥 <span className={styles.statValue}>{link.total_users_count}</span> всего
           </span>
+          <span className={styles.statItem}>
+            🆕 <span className={styles.statValue}>{link.new_users_count}</span> новых
+          </span>
+          {link.existing_users_count > 0 && (
+            <span className={styles.statItem}>
+              🔄 <span className={styles.statValue}>{link.existing_users_count}</span> существующих
+            </span>
+          )}
           {link.users_count !== link.total_users_count && (
             <span className={styles.statItem}>
               📊 <span className={styles.statValue}>{link.users_count}</span> за период

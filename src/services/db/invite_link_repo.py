@@ -99,19 +99,36 @@ async def track_user_invite_link(
 ) -> tuple[bool, bool]:
     """
     Записать привязку пользователя к инвайт-ссылке.
-    Вычисляет discount_expires_at на основе настроек ссылки.
-    Проверяет лимит пользователей: если max_users > 0 и лимит исчерпан — не записывает.
-    ON CONFLICT DO NOTHING — если пользователь уже привязан к этой ссылке, ничего не делаем.
+    Пользователь ВСЕГДА записывается (для статистики total_users_count).
+    Бонусы не начисляются если лимит max_users исчерпан (is_limit_reached=True).
 
     Возвращает (was_new, is_limit_reached):
         was_new = True если запись добавлена впервые
-        is_limit_reached = True если лимит исчерпан (пользователь не добавлен)
+        is_limit_reached = True если лимит исчерпан (бонусы не начисляются)
     """
     pool = get_pool()
     async with pool.acquire() as conn:
         try:
             async with conn.transaction():
-                # Получаем настройки ссылки и текущий счётчик
+                # Сначала записываем пользователя (всегда, для статистики)
+                result = await conn.execute(
+                    """
+                    INSERT INTO invite_link_users (invite_link_id, user_id, is_existing_user, discount_expires_at)
+                    SELECT $1, $2, $3,
+                        CASE WHEN il.discount_duration_days > 0
+                                  AND (il.discount_percent > 0 OR il.token_bonus_percent > 0)
+                             THEN NOW() + (il.discount_duration_days || ' days')::INTERVAL
+                             ELSE NULL
+                        END
+                    FROM invite_links il
+                    WHERE il.id = $1
+                    ON CONFLICT (invite_link_id, user_id) DO NOTHING
+                    """,
+                    invite_link_id, user_id, is_existing_user,
+                )
+                was_new = result == "INSERT 0 1"
+
+                # Проверяем лимит для бонусов
                 row = await conn.fetchrow(
                     """
                     SELECT il.max_users,
@@ -129,27 +146,9 @@ async def track_user_invite_link(
                 max_users = row['max_users']
                 current_count = row['current_count']
 
-                # Проверяем лимит (max_users=0 означает без лимита)
-                if max_users > 0 and current_count >= max_users:
-                    return False, True
-
-                result = await conn.execute(
-                    """
-                    INSERT INTO invite_link_users (invite_link_id, user_id, is_existing_user, discount_expires_at)
-                    SELECT $1, $2, $3,
-                        CASE WHEN il.discount_duration_days > 0
-                                  AND (il.discount_percent > 0 OR il.token_bonus_percent > 0)
-                             THEN NOW() + (il.discount_duration_days || ' days')::INTERVAL
-                             ELSE NULL
-                        END
-                    FROM invite_links il
-                    WHERE il.id = $1
-                    ON CONFLICT (invite_link_id, user_id) DO NOTHING
-                    """,
-                    invite_link_id, user_id, is_existing_user,
-                )
-                was_new = result == "INSERT 0 1"
-                return was_new, False
+                # max_users=0 означает без лимита
+                is_limit_reached = max_users > 0 and current_count > max_users
+                return was_new, is_limit_reached
         except Exception as e:
             logger.error(f"Ошибка привязки пользователя к инвайт-ссылке: {e}")
             return False, False

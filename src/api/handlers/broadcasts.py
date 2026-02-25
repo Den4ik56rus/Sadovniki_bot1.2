@@ -323,6 +323,8 @@ async def delete_broadcasts_bulk(request: web.Request) -> web.Response:
         ids = data.get('ids', [])
         if not ids or not isinstance(ids, list):
             raise web.HTTPBadRequest(text='ids array required')
+        if len(ids) > 20:
+            raise web.HTTPBadRequest(text='Maximum 20 broadcasts per bulk delete')
         broadcast_ids = [int(i) for i in ids]
         deleted_count = await broadcast_repo.delete_broadcasts_bulk(broadcast_ids)
         return web.json_response({'success': True, 'deleted_count': deleted_count})

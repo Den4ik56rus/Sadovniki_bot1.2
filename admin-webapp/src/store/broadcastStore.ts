@@ -141,7 +141,12 @@ export const useBroadcastStore = create<BroadcastStore>()((set, get) => ({
     const ids = Array.from(get().selectedIds)
     if (ids.length === 0) return false
     try {
-      await api.deleteBroadcastsBulk(ids)
+      // Удаляем батчами по 20 чтобы не блокировать БД надолго
+      const BATCH_SIZE = 20
+      for (let i = 0; i < ids.length; i += BATCH_SIZE) {
+        const batch = ids.slice(i, i + BATCH_SIZE)
+        await api.deleteBroadcastsBulk(batch)
+      }
       const deletedSet = new Set(ids)
       set((state) => ({
         broadcasts: state.broadcasts.filter((b) => !deletedSet.has(b.id)),

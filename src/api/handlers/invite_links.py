@@ -91,10 +91,17 @@ async def create_invite_link(request: web.Request) -> web.Response:
         discount_percent = int(data.get('discount_percent', 0))
         discount_duration_days = int(data.get('discount_duration_days', 0))
         max_users = int(data.get('max_users', 0))
+        token_bonus_percent = int(data.get('token_bonus_percent', 0))
+        allow_existing_users = bool(data.get('allow_existing_users', False))
+        existing_user_bonus_tokens = bool(data.get('existing_user_bonus_tokens', True))
+        existing_user_discount = bool(data.get('existing_user_discount', True))
+        existing_user_token_bonus = bool(data.get('existing_user_token_bonus', True))
 
         # Валидация
         if not (0 <= discount_percent <= 100):
             raise web.HTTPBadRequest(text='discount_percent must be 0-100')
+        if not (0 <= token_bonus_percent <= 100):
+            raise web.HTTPBadRequest(text='token_bonus_percent must be 0-100')
         if bonus_tokens < 0:
             raise web.HTTPBadRequest(text='bonus_tokens must be >= 0')
         if discount_duration_days < 0:
@@ -108,6 +115,11 @@ async def create_invite_link(request: web.Request) -> web.Response:
             discount_percent=discount_percent,
             discount_duration_days=discount_duration_days,
             max_users=max_users,
+            token_bonus_percent=token_bonus_percent,
+            allow_existing_users=allow_existing_users,
+            existing_user_bonus_tokens=existing_user_bonus_tokens,
+            existing_user_discount=existing_user_discount,
+            existing_user_token_bonus=existing_user_token_bonus,
         )
         result = _serialize_dict(link)
         result['deep_link'] = _build_deep_link(result['code'])
@@ -141,6 +153,11 @@ async def update_invite_link(request: web.Request) -> web.Response:
         discount_percent = int(data.get('discount_percent', 0))
         discount_duration_days = int(data.get('discount_duration_days', 0))
         max_users = int(data.get('max_users', 0))
+        token_bonus_percent = int(data.get('token_bonus_percent', 0))
+        allow_existing_users = bool(data.get('allow_existing_users', False))
+        existing_user_bonus_tokens = bool(data.get('existing_user_bonus_tokens', True))
+        existing_user_discount = bool(data.get('existing_user_discount', True))
+        existing_user_token_bonus = bool(data.get('existing_user_token_bonus', True))
         is_active = data.get('is_active')
         if is_active is not None:
             is_active = bool(is_active)
@@ -148,6 +165,8 @@ async def update_invite_link(request: web.Request) -> web.Response:
         # Валидация
         if not (0 <= discount_percent <= 100):
             raise web.HTTPBadRequest(text='discount_percent must be 0-100')
+        if not (0 <= token_bonus_percent <= 100):
+            raise web.HTTPBadRequest(text='token_bonus_percent must be 0-100')
         if bonus_tokens < 0:
             raise web.HTTPBadRequest(text='bonus_tokens must be >= 0')
         if discount_duration_days < 0:
@@ -161,6 +180,11 @@ async def update_invite_link(request: web.Request) -> web.Response:
             discount_percent=discount_percent,
             discount_duration_days=discount_duration_days,
             max_users=max_users,
+            token_bonus_percent=token_bonus_percent,
+            allow_existing_users=allow_existing_users,
+            existing_user_bonus_tokens=existing_user_bonus_tokens,
+            existing_user_discount=existing_user_discount,
+            existing_user_token_bonus=existing_user_token_bonus,
             is_active=is_active,
         )
         if not link:

@@ -970,6 +970,11 @@ export interface InviteLink {
   discount_duration_days: number
   max_users: number
   is_active: boolean
+  token_bonus_percent: number
+  allow_existing_users: boolean
+  existing_user_bonus_tokens: boolean
+  existing_user_discount: boolean
+  existing_user_token_bonus: boolean
 }
 
 export interface InviteLinksSummary {

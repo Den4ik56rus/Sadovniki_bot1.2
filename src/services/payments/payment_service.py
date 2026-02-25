@@ -150,6 +150,14 @@ async def create_token_payment(
         final_price = original_price
         discount_percent = None
 
+    # Бонус токенов (%) по инвайт-ссылке
+    import math
+    from src.services.db.invite_link_repo import get_user_active_token_bonus
+    invite_token_bonus_pct = await get_user_active_token_bonus(user_id)
+    invite_bonus_tokens = 0
+    if invite_token_bonus_pct and invite_token_bonus_pct > 0:
+        invite_bonus_tokens = math.ceil(package['tokens_amount'] * invite_token_bonus_pct / 100)
+
     # Генерировать ключ идемпотентности
     idempotency_key = f"tokens_{user_id}_{package_id}_{int(datetime.now().timestamp())}"
 
@@ -175,6 +183,8 @@ async def create_token_payment(
     if discount_percent:
         metadata["discount_percent"] = str(discount_percent)
         metadata["original_price_rub"] = str(original_price)
+    if invite_bonus_tokens > 0:
+        metadata["bonus_tokens"] = str(invite_bonus_tokens)
 
     try:
         # Создать платеж в YooKassa
@@ -280,6 +290,16 @@ async def create_subscription_payment(
     else:
         broadcast_bonus_tokens = broadcast_bonus_tokens_raw
 
+    # Бонус токенов (%) по инвайт-ссылке
+    from src.services.db.invite_link_repo import get_user_active_token_bonus
+    invite_token_bonus_pct = await get_user_active_token_bonus(user_id)
+    invite_bonus_tokens = 0
+    if invite_token_bonus_pct and invite_token_bonus_pct > 0:
+        invite_bonus_tokens = math.ceil(plan['tokens_included'] * invite_token_bonus_pct / 100)
+
+    # Берём максимальный бонус токенов из всех источников
+    final_bonus_tokens = max(broadcast_bonus_tokens or 0, invite_bonus_tokens)
+
     best_pct = max(invite_discount_pct or 0, broadcast_discount_pct)
     if best_pct > 0:
         discount_amount = original_price * Decimal(best_pct) / Decimal(100)
@@ -316,9 +336,9 @@ async def create_subscription_payment(
     if discount_percent:
         metadata["discount_percent"] = str(discount_percent)
         metadata["original_price_rub"] = str(original_price)
-    # Бонусные токены из скидки рассылки (начисляются в process_payment_success)
-    if broadcast_bonus_tokens and broadcast_bonus_tokens > 0:
-        metadata["bonus_tokens"] = str(broadcast_bonus_tokens)
+    # Бонусные токены (начисляются в process_payment_success)
+    if final_bonus_tokens and final_bonus_tokens > 0:
+        metadata["bonus_tokens"] = str(final_bonus_tokens)
 
     try:
         # Создать платеж в YooKassa с сохранением способа оплаты для автопродления
@@ -940,17 +960,29 @@ async def _process_token_payment_success(
     if not package:
         raise ValueError(f"Token package {payment['token_package_id']} not found")
 
-    # Начислить купленные токены
+    # Читаем bonus_tokens из metadata (бонус % по инвайт-ссылке)
+    metadata = payment.get("metadata", {})
+    if isinstance(metadata, str):
+        try:
+            metadata = json.loads(metadata)
+        except Exception:
+            metadata = {}
+    bonus_tokens = int(metadata.get("bonus_tokens", 0)) if metadata.get("bonus_tokens") else 0
+
+    total_tokens = package["tokens_amount"] + bonus_tokens
+
+    # Начислить купленные токены + бонус
     new_balance = await add_purchased_tokens(
         user_id=payment["user_id"],
-        amount=package["tokens_amount"],
+        amount=total_tokens,
         operation_type="payment_yookassa",
-        description=f"Оплата пакета: {package['name']} (платеж {payment['yookassa_payment_id']})",
+        description=f"Оплата пакета: {package['name']}{f' (+{bonus_tokens} бонус)' if bonus_tokens else ''} (платеж {payment['yookassa_payment_id']})",
     )
 
+    bonus_info = f" (base={package['tokens_amount']} + bonus={bonus_tokens})" if bonus_tokens else ""
     logger.info(
         f"Tokens credited: user={payment['user_id']}, "
-        f"amount={package['tokens_amount']}, new_balance={new_balance}"
+        f"amount={total_tokens}{bonus_info}, new_balance={new_balance}"
     )
 
     # Отправить уведомление в Telegram

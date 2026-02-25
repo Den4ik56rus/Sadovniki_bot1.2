@@ -74,16 +74,24 @@ async def buy_subscription_handler(callback: CallbackQuery):
 
         # --- Проверяем бонусные токены из рассылки ---
         from src.services.db.discount_repo import get_user_active_broadcast_discount
+        from src.services.db.invite_link_repo import get_user_active_token_bonus
         import math
         broadcast_disc = await get_user_active_broadcast_discount(user_id)
-        bonus_tokens = 0
+        broadcast_bonus_tokens = 0
         if broadcast_disc:
             raw_bonus = broadcast_disc.get('bonus_tokens', 0) or 0
             bonus_mode = broadcast_disc.get('bonus_tokens_mode', 'absolute')
             if bonus_mode == 'percent' and raw_bonus > 0:
-                bonus_tokens = math.ceil(plan.get('tokens_included', 0) * raw_bonus / 100)
+                broadcast_bonus_tokens = math.ceil(plan.get('tokens_included', 0) * raw_bonus / 100)
             else:
-                bonus_tokens = raw_bonus
+                broadcast_bonus_tokens = raw_bonus
+
+        # --- Проверяем бонусные токены от инвайт-ссылки ---
+        invite_token_bonus_pct = await get_user_active_token_bonus(user_id) or 0
+        invite_bonus_tokens = math.ceil(plan.get('tokens_included', 0) * invite_token_bonus_pct / 100) if invite_token_bonus_pct > 0 else 0
+
+        # Берём лучший бонус
+        bonus_tokens = max(broadcast_bonus_tokens, invite_bonus_tokens)
 
         # --- Режим перенаправления на менеджера (тестовый запуск) ---
         if settings.PAYMENTS_REDIRECT_MODE:

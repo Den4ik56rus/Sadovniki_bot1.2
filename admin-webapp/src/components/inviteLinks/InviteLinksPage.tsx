@@ -41,6 +41,11 @@ export function InviteLinksPage() {
   const [newDiscountPercent, setNewDiscountPercent] = useState(0)
   const [newDiscountDays, setNewDiscountDays] = useState(0)
   const [newMaxUsers, setNewMaxUsers] = useState(0)
+  const [newTokenBonusPercent, setNewTokenBonusPercent] = useState(0)
+  const [newAllowExisting, setNewAllowExisting] = useState(false)
+  const [newExistingBonusTokens, setNewExistingBonusTokens] = useState(true)
+  const [newExistingDiscount, setNewExistingDiscount] = useState(true)
+  const [newExistingTokenBonus, setNewExistingTokenBonus] = useState(true)
   const [creating, setCreating] = useState(false)
   const [copiedId, setCopiedId] = useState<number | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -49,6 +54,11 @@ export function InviteLinksPage() {
   const [editingDiscountPercent, setEditingDiscountPercent] = useState(0)
   const [editingDiscountDays, setEditingDiscountDays] = useState(0)
   const [editingMaxUsers, setEditingMaxUsers] = useState(0)
+  const [editingTokenBonusPercent, setEditingTokenBonusPercent] = useState(0)
+  const [editingAllowExisting, setEditingAllowExisting] = useState(false)
+  const [editingExistingBonusTokens, setEditingExistingBonusTokens] = useState(true)
+  const [editingExistingDiscount, setEditingExistingDiscount] = useState(true)
+  const [editingExistingTokenBonus, setEditingExistingTokenBonus] = useState(true)
 
   // Date range label
   const dateRangeLabel = `${format(startOfMonth(currentDate), 'd MMM yyyy', { locale: ru })} – ${format(endOfMonth(currentDate), 'd MMM yyyy', { locale: ru })}`
@@ -125,6 +135,11 @@ export function InviteLinksPage() {
       discount_percent: newDiscountPercent,
       discount_duration_days: newDiscountDays,
       max_users: newMaxUsers,
+      token_bonus_percent: newTokenBonusPercent,
+      allow_existing_users: newAllowExisting,
+      existing_user_bonus_tokens: newExistingBonusTokens,
+      existing_user_discount: newExistingDiscount,
+      existing_user_token_bonus: newExistingTokenBonus,
     })
     setCreating(false)
     if (ok) {
@@ -133,6 +148,11 @@ export function InviteLinksPage() {
       setNewDiscountPercent(0)
       setNewDiscountDays(0)
       setNewMaxUsers(0)
+      setNewTokenBonusPercent(0)
+      setNewAllowExisting(false)
+      setNewExistingBonusTokens(true)
+      setNewExistingDiscount(true)
+      setNewExistingTokenBonus(true)
       setShowCreateForm(false)
     }
   }
@@ -161,6 +181,11 @@ export function InviteLinksPage() {
     setEditingDiscountPercent(link.discount_percent || 0)
     setEditingDiscountDays(link.discount_duration_days || 0)
     setEditingMaxUsers(link.max_users || 0)
+    setEditingTokenBonusPercent(link.token_bonus_percent || 0)
+    setEditingAllowExisting(link.allow_existing_users || false)
+    setEditingExistingBonusTokens(link.existing_user_bonus_tokens !== false)
+    setEditingExistingDiscount(link.existing_user_discount !== false)
+    setEditingExistingTokenBonus(link.existing_user_token_bonus !== false)
   }
 
   const handleSaveEdit = async () => {
@@ -171,6 +196,11 @@ export function InviteLinksPage() {
       discount_percent: editingDiscountPercent,
       discount_duration_days: editingDiscountDays,
       max_users: editingMaxUsers,
+      token_bonus_percent: editingTokenBonusPercent,
+      allow_existing_users: editingAllowExisting,
+      existing_user_bonus_tokens: editingExistingBonusTokens,
+      existing_user_discount: editingExistingDiscount,
+      existing_user_token_bonus: editingExistingTokenBonus,
     })
     setEditingId(null)
     setEditingName('')
@@ -300,6 +330,47 @@ export function InviteLinksPage() {
                   onChange={(e) => setNewMaxUsers(Number(e.target.value) || 0)}
                 />
               </div>
+              <div className={styles.fieldGroup}>
+                <label className={styles.fieldLabel}>Бонус токенов %</label>
+                <input
+                  className={styles.numberInput}
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={newTokenBonusPercent}
+                  onChange={(e) => setNewTokenBonusPercent(Number(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+            {/* Секция: для существующих пользователей */}
+            <div className={styles.existingUsersSection}>
+              <label className={styles.toggleLabel}>
+                <input
+                  type="checkbox"
+                  checked={newAllowExisting}
+                  onChange={(e) => setNewAllowExisting(e.target.checked)}
+                />
+                <span>Для существующих пользователей</span>
+              </label>
+              {newAllowExisting && (
+                <div className={styles.existingCheckboxes}>
+                  <label className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={newExistingBonusTokens}
+                      onChange={(e) => setNewExistingBonusTokens(e.target.checked)} />
+                    <span>Разовые токены</span>
+                  </label>
+                  <label className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={newExistingDiscount}
+                      onChange={(e) => setNewExistingDiscount(e.target.checked)} />
+                    <span>Скидка на цену</span>
+                  </label>
+                  <label className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={newExistingTokenBonus}
+                      onChange={(e) => setNewExistingTokenBonus(e.target.checked)} />
+                    <span>Бонус на токены</span>
+                  </label>
+                </div>
+              )}
             </div>
           </div>
           <div className={styles.createActions}>
@@ -312,7 +383,7 @@ export function InviteLinksPage() {
             </button>
             <button
               className={styles.createCancel}
-              onClick={() => { setShowCreateForm(false); setNewLinkName(''); setNewBonusTokens(0); setNewDiscountPercent(0); setNewDiscountDays(0); setNewMaxUsers(0) }}
+              onClick={() => { setShowCreateForm(false); setNewLinkName(''); setNewBonusTokens(0); setNewDiscountPercent(0); setNewDiscountDays(0); setNewMaxUsers(0); setNewTokenBonusPercent(0); setNewAllowExisting(false); setNewExistingBonusTokens(true); setNewExistingDiscount(true); setNewExistingTokenBonus(true) }}
             >
               Отмена
             </button>
@@ -360,6 +431,7 @@ export function InviteLinksPage() {
               <th>Ссылка</th>
               <th>Бонус</th>
               <th>Скидка</th>
+              <th>Бонус %</th>
               <th>Дней</th>
               <th>Лимит</th>
               <th>Пользователи</th>
@@ -385,26 +457,54 @@ export function InviteLinksPage() {
                 <td>
                   {editingId === link.id ? (
                     <div className={styles.editNameRow}>
-                      <input
-                        className={styles.editNameInput}
-                        value={editingName}
-                        onChange={(e) => setEditingName(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleSaveEdit()
-                          if (e.key === 'Escape') handleCancelEdit()
-                        }}
-                        autoFocus
-                      />
-                      <button className={styles.editSaveBtn} onClick={handleSaveEdit} title="Сохранить">
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      </button>
-                      <button className={styles.editCancelBtn} onClick={handleCancelEdit} title="Отмена">
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                        </svg>
-                      </button>
+                      <div className={styles.editNameTop}>
+                        <input
+                          className={styles.editNameInput}
+                          value={editingName}
+                          onChange={(e) => setEditingName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleSaveEdit()
+                            if (e.key === 'Escape') handleCancelEdit()
+                          }}
+                          autoFocus
+                        />
+                        <button className={styles.editSaveBtn} onClick={handleSaveEdit} title="Сохранить">
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+                        <button className={styles.editCancelBtn} onClick={handleCancelEdit} title="Отмена">
+                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                            <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                          </svg>
+                        </button>
+                      </div>
+                      <div className={styles.editExistingSection}>
+                        <label className={styles.checkboxLabel}>
+                          <input type="checkbox" checked={editingAllowExisting}
+                            onChange={(e) => setEditingAllowExisting(e.target.checked)} />
+                          <span>Для существующих</span>
+                        </label>
+                        {editingAllowExisting && (
+                          <div className={styles.existingCheckboxes}>
+                            <label className={styles.checkboxLabel}>
+                              <input type="checkbox" checked={editingExistingBonusTokens}
+                                onChange={(e) => setEditingExistingBonusTokens(e.target.checked)} />
+                              <span>Токены</span>
+                            </label>
+                            <label className={styles.checkboxLabel}>
+                              <input type="checkbox" checked={editingExistingDiscount}
+                                onChange={(e) => setEditingExistingDiscount(e.target.checked)} />
+                              <span>Скидка</span>
+                            </label>
+                            <label className={styles.checkboxLabel}>
+                              <input type="checkbox" checked={editingExistingTokenBonus}
+                                onChange={(e) => setEditingExistingTokenBonus(e.target.checked)} />
+                              <span>Бонус %</span>
+                            </label>
+                          </div>
+                        )}
+                      </div>
                     </div>
                   ) : (
                     <span
@@ -413,6 +513,7 @@ export function InviteLinksPage() {
                       title="Двойной клик для редактирования"
                     >
                       {link.name}
+                      {link.allow_existing_users && <span className={styles.existingBadge} title="Для существующих пользователей">Сущ.</span>}
                       <button
                         className={styles.editIcon}
                         onClick={() => handleStartEdit(link)}
@@ -464,6 +565,16 @@ export function InviteLinksPage() {
                       value={editingDiscountPercent} onChange={(e) => setEditingDiscountPercent(Number(e.target.value) || 0)} />
                   ) : (
                     link.discount_percent > 0 ? <span className={styles.discountValue}>{link.discount_percent}%</span> : '—'
+                  )}
+                </td>
+
+                {/* Бонус токенов % */}
+                <td className={styles.discountCell}>
+                  {editingId === link.id ? (
+                    <input type="number" min="0" max="100" className={styles.numberInputSmall}
+                      value={editingTokenBonusPercent} onChange={(e) => setEditingTokenBonusPercent(Number(e.target.value) || 0)} />
+                  ) : (
+                    link.token_bonus_percent > 0 ? <span className={styles.discountValue}>+{link.token_bonus_percent}%</span> : '—'
                   )}
                 </td>
 

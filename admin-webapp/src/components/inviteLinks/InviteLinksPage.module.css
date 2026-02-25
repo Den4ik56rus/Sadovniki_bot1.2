@@ -332,8 +332,8 @@
 /* Inline edit row */
 .editNameRow {
   display: flex;
-  align-items: center;
-  gap: 6px;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .editNameInput {
@@ -601,4 +601,80 @@
 
 .rowInactive .statusCell {
   opacity: 1;
+}
+
+/* Existing users section */
+.existingUsersSection {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: rgba(74, 124, 89, 0.05);
+  border-radius: 6px;
+  border: 1px solid rgba(74, 124, 89, 0.15);
+}
+
+.toggleLabel {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #4A7C59;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.toggleLabel input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  accent-color: #4A7C59;
+  cursor: pointer;
+}
+
+.existingCheckboxes {
+  display: flex;
+  gap: 16px;
+  margin-top: 6px;
+  padding-left: 24px;
+}
+
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #555;
+  cursor: pointer;
+}
+
+.checkboxLabel input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: #4A7C59;
+  cursor: pointer;
+}
+
+/* Existing badge */
+.existingBadge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #4A7C59;
+  background: rgba(74, 124, 89, 0.1);
+  border: 1px solid rgba(74, 124, 89, 0.25);
+  border-radius: 4px;
+  vertical-align: middle;
+}
+
+/* Edit name top row */
+.editNameTop {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Edit existing section in inline edit */
+.editExistingSection {
+  margin-top: 4px;
+  font-size: 11px;
 }

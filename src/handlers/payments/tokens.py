@@ -87,6 +87,12 @@ async def buy_tokens_handler(callback: CallbackQuery):
             )
             return
 
+        # --- Проверяем бонусные токены от инвайт-ссылки ---
+        from src.services.db.invite_link_repo import get_user_active_token_bonus
+        import math
+        invite_token_bonus_pct = await get_user_active_token_bonus(user_id) or 0
+        invite_bonus_tokens = math.ceil(package['tokens_amount'] * invite_token_bonus_pct / 100) if invite_token_bonus_pct > 0 else 0
+
         # --- Режим перенаправления на менеджера (тестовый запуск) ---
         if settings.PAYMENTS_REDIRECT_MODE:
             from urllib.parse import quote
@@ -97,10 +103,15 @@ async def buy_tokens_handler(callback: CallbackQuery):
             pre_filled = f"Здравствуйте, хочу купить пакет «{package['name']}» ({price}₽)"
             link = f"https://t.me/{contact}?text={quote(pre_filled)}"
 
+            if invite_bonus_tokens > 0:
+                tokens_line = f"🎁 Вы получите: {package['tokens_amount']} + {invite_bonus_tokens} бонус = <b>{package['tokens_amount'] + invite_bonus_tokens} токенов</b>  (+{invite_token_bonus_pct}%)"
+            else:
+                tokens_line = f"🎁 Вы получите: {package['tokens_amount']} токенов"
+
             purchase_text = (
                 f"🛒 Пакет: <b>{package['name']}</b>\n"
                 f"💰 Цена: {price}₽\n"
-                f"🎁 Вы получите: {package['tokens_amount']} токенов\n\n"
+                f"{tokens_line}\n\n"
                 f"Для покупки напишите нашему менеджеру — "
                 f"нажмите кнопку ниже."
             )
@@ -158,13 +169,19 @@ async def buy_tokens_handler(callback: CallbackQuery):
             )]
         ])
 
+        # Строка с количеством токенов (с учётом бонуса)
+        if invite_bonus_tokens > 0:
+            tokens_line = f"🎁 Вы получите: {package['tokens_amount']} + {invite_bonus_tokens} бонус = <b>{package['tokens_amount'] + invite_bonus_tokens} токенов</b>  (+{invite_token_bonus_pct}%)"
+        else:
+            tokens_line = f"🎁 Вы получите: {package['tokens_amount']} токенов"
+
         # Текст с учётом скидки
         if payment.get("discount_percent"):
             original = int(payment['original_amount'])
             purchase_text = (
                 f"🛒 Покупка: {package['name']}\n"
                 f"💰 Цена: <s>{original}₽</s> → <b>{pay_amount}₽</b> (скидка {payment['discount_percent']}%)\n"
-                f"🎁 Вы получите: {package['tokens_amount']} токенов\n\n"
+                f"{tokens_line}\n\n"
                 f"Нажмите кнопку ниже для оплаты.\n"
                 f"После успешной оплаты токены будут автоматически начислены на ваш баланс.\n\n"
                 f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}"
@@ -173,7 +190,7 @@ async def buy_tokens_handler(callback: CallbackQuery):
             purchase_text = (
                 f"🛒 Покупка: {package['name']}\n"
                 f"💰 Сумма: {pay_amount}₽\n"
-                f"🎁 Вы получите: {package['tokens_amount']} токенов\n\n"
+                f"{tokens_line}\n\n"
                 f"Нажмите кнопку ниже для оплаты.\n"
                 f"После успешной оплаты токены будут автоматически начислены на ваш баланс.\n\n"
                 f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}"

@@ -10,6 +10,11 @@ interface InviteLinkData {
   discount_percent: number
   discount_duration_days: number
   max_users: number
+  token_bonus_percent: number
+  allow_existing_users: boolean
+  existing_user_bonus_tokens: boolean
+  existing_user_discount: boolean
+  existing_user_token_bonus: boolean
 }
 
 interface InviteLinksStore {

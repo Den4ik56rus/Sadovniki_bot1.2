@@ -1265,14 +1265,22 @@ export const api = {
     return fetchApi<InviteLinksResponse>(`/invite-links${query ? `?${query}` : ''}`)
   },
 
-  async createInviteLink(data: { name: string; bonus_tokens?: number; discount_percent?: number; discount_duration_days?: number; max_users?: number }): Promise<InviteLink> {
+  async createInviteLink(data: {
+    name: string; bonus_tokens?: number; discount_percent?: number; discount_duration_days?: number; max_users?: number;
+    token_bonus_percent?: number; allow_existing_users?: boolean;
+    existing_user_bonus_tokens?: boolean; existing_user_discount?: boolean; existing_user_token_bonus?: boolean;
+  }): Promise<InviteLink> {
     return fetchApi<InviteLink>('/invite-links', {
       method: 'POST',
       body: JSON.stringify(data),
     })
   },
 
-  async updateInviteLink(id: number, data: { name: string; bonus_tokens?: number; discount_percent?: number; discount_duration_days?: number; max_users?: number }): Promise<InviteLink> {
+  async updateInviteLink(id: number, data: {
+    name: string; bonus_tokens?: number; discount_percent?: number; discount_duration_days?: number; max_users?: number;
+    token_bonus_percent?: number; allow_existing_users?: boolean;
+    existing_user_bonus_tokens?: boolean; existing_user_discount?: boolean; existing_user_token_bonus?: boolean;
+  }): Promise<InviteLink> {
     return fetchApi<InviteLink>(`/invite-links/${id}`, {
       method: 'PATCH',
       body: JSON.stringify(data),

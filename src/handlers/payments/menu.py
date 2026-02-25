@@ -8,6 +8,7 @@
 
 import asyncio
 import logging
+import math
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.filters import Command
@@ -83,9 +84,29 @@ def _build_menu_text(
     token_discount_percent: int = 0,
     invite_discount_percent: int = 0,
     active_subscription: dict = None,
+    invite_token_bonus_pct: int = 0,
+    invite_promo: dict = None,
 ) -> str:
     """Формирует текст меню управления подпиской."""
     text_parts = ["⚙️ <b>Управлять подпиской</b>\n"]
+
+    # Баннер активной акции
+    if invite_promo:
+        promo_name = invite_promo.get("name", "")
+        promo_expires = invite_promo.get("discount_expires_at")
+        promo_discount = invite_promo.get("discount_percent", 0)
+        promo_token_bonus = invite_promo.get("token_bonus_percent", 0)
+        bonuses = []
+        if promo_discount > 0:
+            bonuses.append(f"скидка {promo_discount}%")
+        if promo_token_bonus > 0:
+            bonuses.append(f"+{promo_token_bonus}% токенов")
+        if bonuses:
+            expires_str = f" до {_fmt_date(promo_expires)}" if promo_expires else ""
+            text_parts.append(
+                f"🎉 <b>Акция «{promo_name}»</b>{expires_str}\n"
+                f"Ваши бонусы: {', '.join(bonuses)}\n"
+            )
 
     # Блок текущей подписки
     if active_subscription:
@@ -116,11 +137,17 @@ def _build_menu_text(
                 price_str = f"<s>{price}₽</s> → <b>{discounted}₽</b>/мес  (скидка {invite_discount_percent}%)"
             else:
                 price_str = f"{price}₽/мес"
+            # Бонус токенов от инвайт-ссылки
+            if invite_token_bonus_pct > 0:
+                bonus = math.ceil(qty * invite_token_bonus_pct / 100)
+                limit_str = f"<b>Лимит: {qty} + {bonus} бонус = {qty + bonus} токенов в месяц</b>  (+{invite_token_bonus_pct}%)"
+            else:
+                limit_str = f"<b>Лимит: {qty} токенов в месяц</b>"
             text_parts.append(
                 f"\nПодписка: <b>{plan['name']}</b>\n"
                 f"Цена: {price_str}\n"
                 f"Срок: {plan.get('duration_days', 30)} дней\n"
-                f"<b>Лимит: {qty} токенов в месяц</b>"
+                f"{limit_str}"
                 f"{carryover_info}"
             )
 
@@ -130,13 +157,20 @@ def _build_menu_text(
         text_parts.append("\n\n➕ <b>Дополнительные токены:</b>")
         for package in token_packages:
             price = int(package['price_rub'])
+            tokens_amount = package.get('tokens_amount', 0)
+            # Бонус токенов от инвайт-ссылки
+            if invite_token_bonus_pct > 0:
+                bonus = math.ceil(tokens_amount * invite_token_bonus_pct / 100)
+                tokens_str = f"{tokens_amount}+{bonus} токенов"
+            else:
+                tokens_str = f"{tokens_amount} токенов"
             if best_discount > 0:
                 discounted = int(price * (100 - best_discount) / 100)
                 text_parts.append(
-                    f"  • {package['name']} — <s>{price}₽</s> <b>{discounted}₽</b>"
+                    f"  • {package['name']} — <s>{price}₽</s> <b>{discounted}₽</b>  ({tokens_str})"
                 )
             else:
-                text_parts.append(f"  • {package['name']} — {price}₽")
+                text_parts.append(f"  • {package['name']} — {price}₽  ({tokens_str})")
     elif token_packages and not has_subscription:
         text_parts.append("\n\n➕ <b>Дополнительные токены</b>\n  Доступны только при активной подписке")
 
@@ -201,9 +235,11 @@ async def show_payment_menu(message: Message):
             return
 
         # Проверить скидку по инвайт-ссылке
-        from src.services.db.invite_link_repo import get_user_active_discount
+        from src.services.db.invite_link_repo import get_user_active_discount, get_user_active_token_bonus, get_user_active_invite_promo
         _inv = await get_user_active_discount(internal_user_id)
         invite_discount = _inv["discount_percent"] if _inv else 0
+        invite_token_bonus = await get_user_active_token_bonus(internal_user_id) or 0
+        invite_promo = await get_user_active_invite_promo(internal_user_id)
 
         # Проверить подписку и скидку от неё
         has_subscription, token_discount, active_sub = await _get_subscription_info(internal_user_id)
@@ -214,6 +250,8 @@ async def show_payment_menu(message: Message):
             token_discount_percent=token_discount,
             invite_discount_percent=invite_discount,
             active_subscription=active_sub,
+            invite_token_bonus_pct=invite_token_bonus,
+            invite_promo=invite_promo,
         )
         auto_renew = active_sub.get("auto_renew", False) if active_sub else False
         keyboard = get_payment_menu_keyboard(
@@ -275,9 +313,11 @@ async def show_payment_menu_callback(callback: CallbackQuery):
             return
 
         # Проверить скидку по инвайт-ссылке
-        from src.services.db.invite_link_repo import get_user_active_discount
+        from src.services.db.invite_link_repo import get_user_active_discount, get_user_active_token_bonus, get_user_active_invite_promo
         _inv = await get_user_active_discount(user_id)
         invite_discount = _inv["discount_percent"] if _inv else 0
+        invite_token_bonus = await get_user_active_token_bonus(user_id) or 0
+        invite_promo = await get_user_active_invite_promo(user_id)
 
         # Проверить подписку и скидку от неё
         has_subscription, token_discount, active_sub = await _get_subscription_info(user_id)
@@ -288,6 +328,8 @@ async def show_payment_menu_callback(callback: CallbackQuery):
             token_discount_percent=token_discount,
             invite_discount_percent=invite_discount,
             active_subscription=active_sub,
+            invite_token_bonus_pct=invite_token_bonus,
+            invite_promo=invite_promo,
         )
         auto_renew = active_sub.get("auto_renew", False) if active_sub else False
         keyboard = get_payment_menu_keyboard(
@@ -330,7 +372,7 @@ async def show_subscription_plans_handler(callback: CallbackQuery):
     await callback.answer()
 
     from src.services.db.users_repo import get_or_create_user
-    from src.services.db.invite_link_repo import get_user_active_discount
+    from src.services.db.invite_link_repo import get_user_active_discount, get_user_active_token_bonus
     user_id = await get_or_create_user(
         telegram_user_id=callback.from_user.id,
         username=callback.from_user.username,
@@ -341,15 +383,22 @@ async def show_subscription_plans_handler(callback: CallbackQuery):
     subscription_plans = await subscription_plan_repo.get_all_active()
     _inv = await get_user_active_discount(user_id)
     invite_discount = _inv["discount_percent"] if _inv else 0
+    invite_token_bonus = await get_user_active_token_bonus(user_id) or 0
 
     buttons = []
     for plan in subscription_plans:
         price = int(plan['price_rub'])
+        qty = plan.get('tokens_included', 0)
+        # Бонус токенов
+        bonus_suffix = ""
+        if invite_token_bonus > 0:
+            bonus = math.ceil(qty * invite_token_bonus / 100)
+            bonus_suffix = f"  +{bonus} бонус"
         if invite_discount > 0:
             discounted = int(price * (100 - invite_discount) / 100)
-            text = f"{plan['name']}  {price}₽ → {discounted}₽/мес"
+            text = f"{plan['name']}  {price}₽ → {discounted}₽/мес{bonus_suffix}"
         else:
-            text = f"{plan['name']}  {price}₽/мес"
+            text = f"{plan['name']}  {price}₽/мес{bonus_suffix}"
         buttons.append([InlineKeyboardButton(
             text=text,
             callback_data=f"buy_subscription_{plan['id']}"
@@ -369,7 +418,7 @@ async def show_token_packages_handler(callback: CallbackQuery):
     await callback.answer()
 
     from src.services.db.users_repo import get_or_create_user
-    from src.services.db.invite_link_repo import get_user_active_discount
+    from src.services.db.invite_link_repo import get_user_active_discount, get_user_active_token_bonus
     user_id = await get_or_create_user(
         telegram_user_id=callback.from_user.id,
         username=callback.from_user.username,
@@ -380,17 +429,24 @@ async def show_token_packages_handler(callback: CallbackQuery):
     token_packages = await token_package_repo.get_all_active()
     _inv = await get_user_active_discount(user_id)
     invite_discount = _inv["discount_percent"] if _inv else 0
+    invite_token_bonus = await get_user_active_token_bonus(user_id) or 0
     _, token_discount, _ = await _get_subscription_info(user_id)
     best_discount = max(token_discount, invite_discount)
 
     buttons = []
     for package in token_packages:
         price = int(package['price_rub'])
+        tokens_amount = package.get('tokens_amount', 0)
+        # Бонус токенов
+        bonus_suffix = ""
+        if invite_token_bonus > 0:
+            bonus = math.ceil(tokens_amount * invite_token_bonus / 100)
+            bonus_suffix = f"  +{bonus} бонус"
         if best_discount > 0:
             discounted = int(price * (100 - best_discount) / 100)
-            text = f"{package['name']}  {price}₽ → {discounted}₽"
+            text = f"{package['name']}  {price}₽ → {discounted}₽{bonus_suffix}"
         else:
-            text = f"{package['name']}  {price}₽"
+            text = f"{package['name']}  {price}₽{bonus_suffix}"
         buttons.append([InlineKeyboardButton(
             text=text,
             callback_data=f"buy_tokens_{package['id']}"

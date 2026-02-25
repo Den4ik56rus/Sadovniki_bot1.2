@@ -149,7 +149,10 @@ async def cmd_start(message: Message) -> None:
             )
             inv_link = None  # Не обрабатываем дальше
         if inv_link:
-            was_new, is_limit_reached = await track_user_invite_link(inv_link['id'], user_id)
+            _is_existing = not is_new_user
+            was_new, is_limit_reached = await track_user_invite_link(
+                inv_link['id'], user_id, is_existing_user=_is_existing,
+            )
             from src.services.db.client_funnel_repo import set_initial_source
             await set_initial_source(user_id, f"Кампания: {inv_link['name']}")
 
@@ -177,15 +180,48 @@ async def cmd_start(message: Message) -> None:
                         "Но не расстраивайтесь — вы можете воспользоваться ботом в обычном режиме!"
                     )
                 await message.answer(limit_msg, parse_mode="HTML")
-            elif was_new and inv_link.get('bonus_tokens', 0) > 0:
-                # Начислить бонусные токены (только при первой привязке)
+            elif was_new and is_new_user:
+                # Новый пользователь — все бонусы
+                if inv_link.get('bonus_tokens', 0) > 0:
+                    from src.services.db.tokens_repo import add_tokens
+                    await add_tokens(
+                        user_id=user_id,
+                        amount=inv_link['bonus_tokens'],
+                        operation_type='invite_bonus',
+                        description=f"Бонус по кампании: {inv_link['name']}",
+                    )
+            elif was_new and _is_existing and inv_link.get('allow_existing_users', False):
+                # Существующий пользователь — выборочные бонусы по чекбоксам
                 from src.services.db.tokens_repo import add_tokens
-                await add_tokens(
-                    user_id=user_id,
-                    amount=inv_link['bonus_tokens'],
-                    operation_type='invite_bonus',
-                    description=f"Бонус по кампании: {inv_link['name']}",
-                )
+                bonus_parts = []
+
+                # Разовые токены
+                if inv_link.get('existing_user_bonus_tokens', True) and inv_link.get('bonus_tokens', 0) > 0:
+                    await add_tokens(
+                        user_id=user_id,
+                        amount=inv_link['bonus_tokens'],
+                        operation_type='invite_bonus',
+                        description=f"Бонус по кампании: {inv_link['name']}",
+                    )
+                    bonus_parts.append(f"+{inv_link['bonus_tokens']} токенов")
+
+                # Скидка на цену — применяется автоматически через discount_expires_at
+                if inv_link.get('existing_user_discount', True) and inv_link.get('discount_percent', 0) > 0:
+                    bonus_parts.append(f"скидка {inv_link['discount_percent']}%")
+
+                # Бонус на токены — применяется автоматически через discount_expires_at
+                if inv_link.get('existing_user_token_bonus', True) and inv_link.get('token_bonus_percent', 0) > 0:
+                    bonus_parts.append(f"+{inv_link['token_bonus_percent']}% бонус токенов")
+
+                if bonus_parts:
+                    duration_text = ""
+                    if inv_link.get('discount_duration_days', 0) > 0:
+                        duration_text = f"\nДействует {inv_link['discount_duration_days']} дней."
+                    msg = (
+                        f"🎉 Вы активировали акцию «{inv_link['name']}»!\n\n"
+                        f"Вам доступно: {', '.join(bonus_parts)}.{duration_text}"
+                    )
+                    await message.answer(msg, parse_mode="HTML")
 
     # Устанавливаем источник трафика если был start-параметр (не реферал)
     if start_param:
@@ -782,12 +818,15 @@ async def render_and_send_profile(
         )
 
     token_discount = plan.get("token_discount_percent", 0) if plan else 0
+    ref_token_bonus = ref_discount_data.get("token_bonus_percent", 0) if ref_discount_data else 0
     discount_lines = ""
-    if ref_discount > 0 or token_discount > 0:
+    if ref_discount > 0 or token_discount > 0 or ref_token_bonus > 0:
         discount_lines = "\n\n🎁 <b>Ваши скидки</b>\n"
         if ref_discount > 0:
             expires_label = f"\n  Действует до: {_fmt_date(ref_discount_expires)}" if ref_discount_expires else "\n  Действует до: бессрочно"
             discount_lines += f"  Персональная скидка: <b>−{ref_discount}%</b>{expires_label}\n"
+        if ref_token_bonus > 0:
+            discount_lines += f"  Бонус токенов: <b>+{ref_token_bonus}%</b>\n"
         if token_discount > 0:
             discount_lines += f"  Доп. скидка на токены по подписке: <b>−{token_discount}%</b>"
 

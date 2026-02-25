@@ -9,6 +9,7 @@
     - track_user_invite_link — записать привязку пользователя к ссылке
     - get_invite_links_with_stats — все ссылки со статистикой (users + revenue)
     - get_user_active_discount — получить активную скидку пользователя
+    - get_user_active_token_bonus — получить активный бонус токенов (%) пользователя
     - delete_invite_link — удалить ссылку
 """
 
@@ -21,6 +22,14 @@ from typing import Optional, Dict, Any, List
 from src.services.db.pool import get_pool
 
 logger = logging.getLogger(__name__)
+
+# Общий список колонок для SELECT/RETURNING
+_INVITE_LINK_COLUMNS = (
+    "id, name, code, bonus_tokens, discount_percent, discount_duration_days, "
+    "max_users, is_active, token_bonus_percent, "
+    "allow_existing_users, existing_user_bonus_tokens, existing_user_discount, existing_user_token_bonus, "
+    "created_at"
+)
 
 
 def _generate_code(length: int = 8) -> str:
@@ -35,6 +44,11 @@ async def create_invite_link(
     discount_percent: int = 0,
     discount_duration_days: int = 0,
     max_users: int = 0,
+    token_bonus_percent: int = 0,
+    allow_existing_users: bool = False,
+    existing_user_bonus_tokens: bool = True,
+    existing_user_discount: bool = True,
+    existing_user_token_bonus: bool = True,
 ) -> Dict[str, Any]:
     """Создать новую инвайт-ссылку. Код генерируется автоматически."""
     pool = get_pool()
@@ -43,12 +57,18 @@ async def create_invite_link(
             code = _generate_code()
             try:
                 row = await conn.fetchrow(
-                    """
-                    INSERT INTO invite_links (name, code, bonus_tokens, discount_percent, discount_duration_days, max_users)
-                    VALUES ($1, $2, $3, $4, $5, $6)
-                    RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, created_at
+                    f"""
+                    INSERT INTO invite_links (
+                        name, code, bonus_tokens, discount_percent, discount_duration_days,
+                        max_users, token_bonus_percent,
+                        allow_existing_users, existing_user_bonus_tokens, existing_user_discount, existing_user_token_bonus
+                    )
+                    VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+                    RETURNING {_INVITE_LINK_COLUMNS}
                     """,
-                    name, code, bonus_tokens, discount_percent, discount_duration_days, max_users,
+                    name, code, bonus_tokens, discount_percent, discount_duration_days,
+                    max_users, token_bonus_percent,
+                    allow_existing_users, existing_user_bonus_tokens, existing_user_discount, existing_user_token_bonus,
                 )
                 return dict(row)
             except Exception:
@@ -61,8 +81,8 @@ async def get_invite_link_by_code(code: str) -> Optional[Dict[str, Any]]:
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            """
-            SELECT id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, created_at
+            f"""
+            SELECT {_INVITE_LINK_COLUMNS}
             FROM invite_links WHERE code = $1
             """,
             code.upper(),
@@ -72,12 +92,16 @@ async def get_invite_link_by_code(code: str) -> Optional[Dict[str, Any]]:
     return dict(row)
 
 
-async def track_user_invite_link(invite_link_id: int, user_id: int) -> tuple[bool, bool]:
+async def track_user_invite_link(
+    invite_link_id: int,
+    user_id: int,
+    is_existing_user: bool = False,
+) -> tuple[bool, bool]:
     """
     Записать привязку пользователя к инвайт-ссылке.
     Вычисляет discount_expires_at на основе настроек ссылки.
     Проверяет лимит пользователей: если max_users > 0 и лимит исчерпан — не записывает.
-    ON CONFLICT DO NOTHING — если пользователь уже привязан, ничего не делаем.
+    ON CONFLICT DO NOTHING — если пользователь уже привязан к этой ссылке, ничего не делаем.
 
     Возвращает (was_new, is_limit_reached):
         was_new = True если запись добавлена впервые
@@ -111,17 +135,18 @@ async def track_user_invite_link(invite_link_id: int, user_id: int) -> tuple[boo
 
                 result = await conn.execute(
                     """
-                    INSERT INTO invite_link_users (invite_link_id, user_id, discount_expires_at)
-                    SELECT $1, $2,
-                        CASE WHEN il.discount_duration_days > 0 AND il.discount_percent > 0
+                    INSERT INTO invite_link_users (invite_link_id, user_id, is_existing_user, discount_expires_at)
+                    SELECT $1, $2, $3,
+                        CASE WHEN il.discount_duration_days > 0
+                                  AND (il.discount_percent > 0 OR il.token_bonus_percent > 0)
                              THEN NOW() + (il.discount_duration_days || ' days')::INTERVAL
                              ELSE NULL
                         END
                     FROM invite_links il
                     WHERE il.id = $1
-                    ON CONFLICT (user_id) DO NOTHING
+                    ON CONFLICT (invite_link_id, user_id) DO NOTHING
                     """,
-                    invite_link_id, user_id,
+                    invite_link_id, user_id, is_existing_user,
                 )
                 was_new = result == "INSERT 0 1"
                 return was_new, False
@@ -132,26 +157,98 @@ async def track_user_invite_link(invite_link_id: int, user_id: int) -> tuple[boo
 
 async def get_user_active_discount(user_id: int) -> Optional[Dict[str, Any]]:
     """
-    Возвращает активную скидку пользователя: {discount_percent, discount_expires_at}.
-    discount_expires_at = None означает бессрочную скидку.
+    Возвращает лучшую активную скидку пользователя:
+    {discount_percent, token_bonus_percent, discount_expires_at}.
+    Учитывает флаги existing_user_discount для существующих пользователей.
     Возвращает None если скидки нет.
     """
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            SELECT il.discount_percent, ilu.discount_expires_at
+            SELECT il.discount_percent, il.token_bonus_percent, ilu.discount_expires_at
             FROM invite_link_users ilu
             JOIN invite_links il ON il.id = ilu.invite_link_id
             WHERE ilu.user_id = $1
               AND (ilu.discount_expires_at IS NULL OR ilu.discount_expires_at > NOW())
               AND il.discount_percent > 0
+              AND (ilu.is_existing_user = FALSE OR il.existing_user_discount = TRUE)
+            ORDER BY il.discount_percent DESC
             LIMIT 1
             """,
             user_id,
         )
     if row:
-        return {"discount_percent": row["discount_percent"], "discount_expires_at": row["discount_expires_at"]}
+        return {
+            "discount_percent": row["discount_percent"],
+            "token_bonus_percent": row["token_bonus_percent"],
+            "discount_expires_at": row["discount_expires_at"],
+        }
+    return None
+
+
+async def get_user_active_token_bonus(user_id: int) -> Optional[int]:
+    """
+    Возвращает максимальный активный бонус токенов (%) пользователя.
+    Нужна отдельная функция потому что лучшая скидка и лучший бонус токенов
+    могут быть на разных ссылках.
+    Возвращает None если бонуса нет.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT MAX(il.token_bonus_percent) AS token_bonus_percent
+            FROM invite_link_users ilu
+            JOIN invite_links il ON il.id = ilu.invite_link_id
+            WHERE ilu.user_id = $1
+              AND (ilu.discount_expires_at IS NULL OR ilu.discount_expires_at > NOW())
+              AND il.token_bonus_percent > 0
+              AND (ilu.is_existing_user = FALSE OR il.existing_user_token_bonus = TRUE)
+            """,
+            user_id,
+        )
+    if row and row["token_bonus_percent"]:
+        return row["token_bonus_percent"]
+    return None
+
+
+async def get_user_active_invite_promo(user_id: int) -> Optional[Dict[str, Any]]:
+    """
+    Возвращает сводку по активным бонусам инвайт-ссылки пользователя:
+    {name, discount_percent, token_bonus_percent, discount_expires_at}.
+    Берёт ссылку с наибольшей суммой бонусов (discount + token_bonus).
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            SELECT il.name,
+                   CASE WHEN ilu.is_existing_user = FALSE OR il.existing_user_discount = TRUE
+                        THEN il.discount_percent ELSE 0 END AS discount_percent,
+                   CASE WHEN ilu.is_existing_user = FALSE OR il.existing_user_token_bonus = TRUE
+                        THEN il.token_bonus_percent ELSE 0 END AS token_bonus_percent,
+                   ilu.discount_expires_at
+            FROM invite_link_users ilu
+            JOIN invite_links il ON il.id = ilu.invite_link_id
+            WHERE ilu.user_id = $1
+              AND (ilu.discount_expires_at IS NULL OR ilu.discount_expires_at > NOW())
+              AND (il.discount_percent > 0 OR il.token_bonus_percent > 0)
+            ORDER BY (CASE WHEN ilu.is_existing_user = FALSE OR il.existing_user_discount = TRUE
+                           THEN il.discount_percent ELSE 0 END)
+                   + (CASE WHEN ilu.is_existing_user = FALSE OR il.existing_user_token_bonus = TRUE
+                           THEN il.token_bonus_percent ELSE 0 END) DESC
+            LIMIT 1
+            """,
+            user_id,
+        )
+    if row and (row["discount_percent"] > 0 or row["token_bonus_percent"] > 0):
+        return {
+            "name": row["name"],
+            "discount_percent": row["discount_percent"],
+            "token_bonus_percent": row["token_bonus_percent"],
+            "discount_expires_at": row["discount_expires_at"],
+        }
     return None
 
 
@@ -188,7 +285,9 @@ async def get_invite_links_with_stats(
             SELECT
                 il.id, il.name, il.code,
                 il.bonus_tokens, il.discount_percent, il.discount_duration_days, il.max_users,
-                il.is_active, il.created_at,
+                il.is_active, il.token_bonus_percent,
+                il.allow_existing_users, il.existing_user_bonus_tokens, il.existing_user_discount, il.existing_user_token_bonus,
+                il.created_at,
                 COUNT(DISTINCT ilu.user_id) AS users_count,
                 COALESCE(SUM(p.amount_rub) FILTER (WHERE p.paid = true), 0) AS total_revenue_rub
             FROM invite_links il
@@ -250,6 +349,11 @@ async def update_invite_link(
     discount_percent: int = 0,
     discount_duration_days: int = 0,
     max_users: int = 0,
+    token_bonus_percent: int = 0,
+    allow_existing_users: bool = False,
+    existing_user_bonus_tokens: bool = True,
+    existing_user_discount: bool = True,
+    existing_user_token_bonus: bool = True,
     is_active: Optional[bool] = None,
 ) -> Optional[Dict[str, Any]]:
     """Обновить инвайт-ссылку. Возвращает обновлённую строку или None."""
@@ -257,23 +361,38 @@ async def update_invite_link(
     async with pool.acquire() as conn:
         if is_active is not None:
             row = await conn.fetchrow(
-                """
+                f"""
                 UPDATE invite_links
-                SET name = $1, bonus_tokens = $2, discount_percent = $3, discount_duration_days = $4, max_users = $5, is_active = $6
-                WHERE id = $7
-                RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, created_at
+                SET name = $1, bonus_tokens = $2, discount_percent = $3, discount_duration_days = $4,
+                    max_users = $5, token_bonus_percent = $6,
+                    allow_existing_users = $7, existing_user_bonus_tokens = $8,
+                    existing_user_discount = $9, existing_user_token_bonus = $10,
+                    is_active = $11
+                WHERE id = $12
+                RETURNING {_INVITE_LINK_COLUMNS}
                 """,
-                name, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, link_id,
+                name, bonus_tokens, discount_percent, discount_duration_days,
+                max_users, token_bonus_percent,
+                allow_existing_users, existing_user_bonus_tokens,
+                existing_user_discount, existing_user_token_bonus,
+                is_active, link_id,
             )
         else:
             row = await conn.fetchrow(
-                """
+                f"""
                 UPDATE invite_links
-                SET name = $1, bonus_tokens = $2, discount_percent = $3, discount_duration_days = $4, max_users = $5
-                WHERE id = $6
-                RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, created_at
+                SET name = $1, bonus_tokens = $2, discount_percent = $3, discount_duration_days = $4,
+                    max_users = $5, token_bonus_percent = $6,
+                    allow_existing_users = $7, existing_user_bonus_tokens = $8,
+                    existing_user_discount = $9, existing_user_token_bonus = $10
+                WHERE id = $11
+                RETURNING {_INVITE_LINK_COLUMNS}
                 """,
-                name, bonus_tokens, discount_percent, discount_duration_days, max_users, link_id,
+                name, bonus_tokens, discount_percent, discount_duration_days,
+                max_users, token_bonus_percent,
+                allow_existing_users, existing_user_bonus_tokens,
+                existing_user_discount, existing_user_token_bonus,
+                link_id,
             )
     if not row:
         return None
@@ -285,9 +404,9 @@ async def toggle_invite_link_active(link_id: int, is_active: bool) -> Optional[D
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
-            """
+            f"""
             UPDATE invite_links SET is_active = $1 WHERE id = $2
-            RETURNING id, name, code, bonus_tokens, discount_percent, discount_duration_days, max_users, is_active, created_at
+            RETURNING {_INVITE_LINK_COLUMNS}
             """,
             is_active, link_id,
         )

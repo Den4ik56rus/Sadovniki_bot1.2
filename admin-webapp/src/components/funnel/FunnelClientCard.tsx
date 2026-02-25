@@ -13,13 +13,24 @@ interface FunnelClientCardProps {
   onClick: () => void
 }
 
-// Helper to calculate days since last activity
-function getDaysSince(dateStr: string | null): number {
-  if (!dateStr) return 0
+// Helper to format relative time ("5 мин назад", "2 ч назад", "3 дн назад")
+function getRelativeTime(dateStr: string | null): string | null {
+  if (!dateStr) return null
   const date = new Date(dateStr)
   const now = new Date()
-  const diff = now.getTime() - date.getTime()
-  return Math.floor(diff / (1000 * 60 * 60 * 24))
+  const diffMs = now.getTime() - date.getTime()
+  if (diffMs < 0) return null
+
+  const minutes = Math.floor(diffMs / (1000 * 60))
+  const hours = Math.floor(diffMs / (1000 * 60 * 60))
+  const days = Math.floor(diffMs / (1000 * 60 * 60 * 24))
+
+  if (minutes < 1) return 'только что'
+  if (minutes < 60) return `${minutes} мин назад`
+  if (hours < 24) return `${hours} ч назад`
+  if (days === 1) return '1 день назад'
+  if (days < 5) return `${days} дня назад`
+  return `${days} дн назад`
 }
 
 // Format date as DD.MM.YYYY
@@ -73,8 +84,8 @@ export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
   // Get display name
   const displayName = client.first_name || client.username || `User ${client.telegram_user_id}`
 
-  // Days since last activity
-  const daysSinceActivity = getDaysSince(client.last_consultation_at)
+  // Relative time since last activity
+  const lastActivity = getRelativeTime(client.last_consultation_at)
 
   // Source (placeholder - telegram by default)
   const source = 'Telegram'
@@ -148,14 +159,16 @@ export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
         </div>
       )}
 
-      {/* Footer: Cost + Days + Button */}
+      {/* Footer: Cost + Last Activity + Button */}
       <div className={styles.footer}>
         <div className={styles.footerLeft}>
           {costRub > 0 && (
             <span className={styles.cost}>{formatCost(costRub)}</span>
           )}
-          {daysSinceActivity > 0 && (
-            <span className={styles.days}>{daysSinceActivity}дн ·</span>
+          {lastActivity && (
+            <span className={styles.activity} title={client.last_consultation_at || ''}>
+              🕐 {lastActivity}
+            </span>
           )}
         </div>
         <button

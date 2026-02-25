@@ -1,4 +1,4 @@
-/* Invite Links Page Styles */
+/* Invite Links Page Styles — Card Layout */
 
 .container {
   padding: 32px 48px;
@@ -190,6 +190,7 @@
 .bonusFields {
   display: flex;
   gap: 16px;
+  flex-wrap: wrap;
 }
 
 .fieldGroup {
@@ -262,130 +263,107 @@
   background: var(--bg-tertiary);
 }
 
-/* Table */
-.table {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-default);
-  overflow: hidden;
-}
+/* ===================== */
+/* Card List Layout      */
+/* ===================== */
 
-.table th {
-  padding: 12px 16px;
-  text-align: left;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  border-bottom: 1px solid var(--border-default);
-  background: var(--bg-tertiary);
-}
-
-.table td {
-  padding: 14px 16px;
-  font-size: 14px;
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border-default);
-}
-
-.table tr:last-child td {
-  border-bottom: none;
-}
-
-.table tr:hover td {
-  background: var(--bg-tertiary);
-}
-
-/* Link Name — editable */
-.linkName {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-weight: 500;
-  cursor: default;
-}
-
-.editIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px;
-  height: 28px;
-  background: transparent;
-  border: none;
-  border-radius: 6px;
-  font-size: 16px;
-  cursor: pointer;
-  transition: all 0.15s;
-  padding: 0;
-  line-height: 1;
-}
-
-.editIcon:hover {
-  background: rgba(74, 124, 89, 0.1);
-}
-
-/* Inline edit row */
-.editNameRow {
+.linksList {
   display: flex;
   flex-direction: column;
+  gap: 12px;
+}
+
+.linkCard {
+  padding: 16px 20px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-lg);
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+.linkCard:hover {
+  border-color: #D1D5DB;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+}
+
+.linkCardInactive {
+  opacity: 0.55;
+}
+
+.linkCardInactive:hover {
+  opacity: 0.7;
+}
+
+/* Card Header */
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.cardHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cardName {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cardHeaderActions {
+  display: flex;
+  align-items: center;
   gap: 4px;
 }
 
-.editNameInput {
-  padding: 4px 8px;
-  border: 1px solid var(--accent-primary);
-  border-radius: 6px;
-  font-size: 14px;
-  font-weight: 500;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  outline: none;
-  width: 180px;
-}
-
-.editSaveBtn,
-.editCancelBtn {
-  display: flex;
+/* Toggle Switch */
+.toggleSwitch {
+  position: relative;
+  display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 40px;
+  height: 22px;
+  background: #D1D5DB;
   border: none;
-  border-radius: 5px;
+  border-radius: 11px;
   cursor: pointer;
-  transition: all 0.15s;
+  padding: 2px;
+  transition: background 0.2s ease;
+  flex-shrink: 0;
 }
 
-.editSaveBtn {
+.toggleSwitchOn {
   background: var(--accent-primary);
-  color: white;
 }
 
-.editSaveBtn:hover {
-  opacity: 0.85;
+.toggleSwitchKnob {
+  display: block;
+  width: 18px;
+  height: 18px;
+  background: white;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  transition: transform 0.2s ease;
+  transform: translateX(0);
 }
 
-.editCancelBtn {
-  background: transparent;
-  color: var(--text-muted);
-  border: 1px solid var(--border-default);
+.toggleSwitchOn .toggleSwitchKnob {
+  transform: translateX(18px);
 }
 
-.editCancelBtn:hover {
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-}
-
-/* Deep Link — full URL visible */
-.deepLink {
+/* Deep Link Row */
+.deepLinkRow {
   display: flex;
   align-items: center;
   gap: 8px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
+  background: var(--bg-tertiary);
+  border-radius: 8px;
 }
 
 .deepLinkUrl {
@@ -395,6 +373,8 @@
   word-break: break-all;
   line-height: 1.4;
   text-decoration: none;
+  flex: 1;
+  min-width: 0;
 }
 
 .deepLinkUrl:hover {
@@ -417,7 +397,7 @@
 }
 
 .copyButton:hover {
-  background: var(--bg-tertiary);
+  background: var(--bg-secondary);
   color: var(--text-primary);
   border-color: var(--text-muted);
 }
@@ -428,79 +408,94 @@
   background: rgba(74, 124, 89, 0.08);
 }
 
-.usersCount {
-  font-weight: 600;
-  color: var(--accent-primary);
+/* Badges Row */
+.badgesRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
 }
 
-.revenue {
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
   font-weight: 600;
-}
-
-/* Bonus / Discount / Days / Limit cells */
-.bonusCell,
-.discountCell,
-.daysCell,
-.limitCell {
-  text-align: center;
   white-space: nowrap;
 }
 
-.limitOk {
-  font-weight: 600;
-  color: var(--accent-primary);
+.badgeBonus {
+  background: #DCFCE7;
+  color: #15803D;
 }
 
-.limitWarning {
-  font-weight: 600;
-  color: #E67E22;
+.badgeDiscount {
+  background: #FEF3C7;
+  color: #D97706;
 }
 
-.limitReached {
-  font-weight: 600;
-  color: #C75B5B;
+.badgeTokenBonus {
+  background: #DBEAFE;
+  color: #2563EB;
 }
 
-.bonusValue {
-  font-weight: 600;
-  color: var(--accent-primary);
+.badgeDays {
+  background: #F3F4F6;
+  color: #4B5563;
 }
 
-.discountValue {
-  font-weight: 600;
-  color: #E67E22;
+.badgeExisting {
+  background: rgba(74, 124, 89, 0.08);
+  color: #4A7C59;
+  border: 1px solid rgba(74, 124, 89, 0.25);
 }
 
-.numberInputSmall {
-  width: 60px;
-  padding: 4px 6px;
-  border: 1px solid var(--accent-primary);
-  border-radius: 6px;
+.badgeLimit {
+  background: #F3F4F6;
+  color: #4B5563;
+}
+
+.badgeLimitWarning {
+  background: #FEF3C7;
+  color: #D97706;
+}
+
+.badgeLimitReached {
+  background: #FEE2E2;
+  color: #DC2626;
+}
+
+/* Stats Row */
+.statsRow {
+  display: flex;
+  align-items: center;
+  gap: 24px;
   font-size: 13px;
-  background: var(--bg-primary);
-  color: var(--text-primary);
-  outline: none;
-  text-align: center;
+  color: var(--text-secondary);
 }
 
-.numberInputSmall:focus {
-  border-color: var(--accent-primary);
-  box-shadow: 0 0 0 2px rgba(74, 124, 89, 0.15);
-}
-
-/* Actions column */
-.actions {
+.statItem {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
+.statValue {
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+/* Action Buttons */
+.editButton,
 .deleteButton {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   background: transparent;
   border: none;
   border-radius: 6px;
@@ -511,101 +506,120 @@
   line-height: 1;
 }
 
+.editButton:hover {
+  background: rgba(74, 124, 89, 0.1);
+}
+
 .deleteButton:hover {
   background: rgba(239, 68, 68, 0.1);
 }
 
-.dateCell {
-  color: var(--text-secondary);
-  font-size: 13px;
-  white-space: nowrap;
+/* ===================== */
+/* Edit Form in Card     */
+/* ===================== */
+
+.editForm {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-/* States */
-.loading {
-  padding: 48px;
-  text-align: center;
-  color: var(--text-muted);
-}
-
-.error {
-  padding: 48px;
-  text-align: center;
-  color: var(--accent-red);
-}
-
-.empty {
-  padding: 48px;
-  text-align: center;
-  color: var(--text-muted);
-}
-
-.emptyIcon {
-  font-size: 48px;
-  margin-bottom: 12px;
-}
-
-.emptyText {
-  font-size: 15px;
-  margin-bottom: 4px;
-}
-
-.emptyHint {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-/* Toggle Switch */
-.statusCell {
-  text-align: center;
-  width: 60px;
-}
-
-.toggleSwitch {
-  position: relative;
-  display: inline-flex;
+.editHeader {
+  display: flex;
   align-items: center;
-  width: 40px;
-  height: 22px;
-  background: #D1D5DB;
+  gap: 12px;
+}
+
+.editNameInput {
+  flex: 1;
+  padding: 8px 12px;
+  border: 1px solid var(--accent-primary);
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.editNameInput:focus {
+  box-shadow: 0 0 0 2px rgba(74, 124, 89, 0.15);
+}
+
+.editSaveBtn,
+.editCancelBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
   border: none;
-  border-radius: 11px;
+  border-radius: 6px;
   cursor: pointer;
-  padding: 2px;
-  transition: background 0.2s ease;
+  transition: all 0.15s;
+  flex-shrink: 0;
 }
 
-.toggleSwitchOn {
+.editSaveBtn {
   background: var(--accent-primary);
+  color: white;
 }
 
-.toggleSwitchKnob {
-  display: block;
-  width: 18px;
-  height: 18px;
-  background: white;
-  border-radius: 50%;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
-  transition: transform 0.2s ease;
-  transform: translateX(0);
+.editSaveBtn:hover {
+  opacity: 0.85;
 }
 
-.toggleSwitchOn .toggleSwitchKnob {
-  transform: translateX(18px);
+.editCancelBtn {
+  background: transparent;
+  color: var(--text-muted);
+  border: 1px solid var(--border-default);
 }
 
-/* Inactive row */
-.rowInactive td {
-  opacity: 0.5;
+.editCancelBtn:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
 }
 
-.rowInactive .statusCell {
-  opacity: 1;
+.editFields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 12px;
+}
+
+.editFieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.editFieldLabel {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.editNumberInput {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-size: 14px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.editNumberInput:focus {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 2px rgba(74, 124, 89, 0.1);
 }
 
 /* Existing users section */
 .existingUsersSection {
-  margin-top: 8px;
+  margin-top: 4px;
   padding: 8px 12px;
   background: rgba(74, 124, 89, 0.05);
   border-radius: 6px;
@@ -652,29 +666,36 @@
   cursor: pointer;
 }
 
-/* Existing badge */
-.existingBadge {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 5px;
-  font-size: 10px;
-  font-weight: 600;
-  color: #4A7C59;
-  background: rgba(74, 124, 89, 0.1);
-  border: 1px solid rgba(74, 124, 89, 0.25);
-  border-radius: 4px;
-  vertical-align: middle;
+/* States */
+.loading {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-muted);
 }
 
-/* Edit name top row */
-.editNameTop {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.error {
+  padding: 48px;
+  text-align: center;
+  color: var(--accent-red);
 }
 
-/* Edit existing section in inline edit */
-.editExistingSection {
-  margin-top: 4px;
-  font-size: 11px;
+.empty {
+  padding: 48px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+.emptyIcon {
+  font-size: 48px;
+  margin-bottom: 12px;
+}
+
+.emptyText {
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.emptyHint {
+  font-size: 13px;
+  color: var(--text-muted);
 }

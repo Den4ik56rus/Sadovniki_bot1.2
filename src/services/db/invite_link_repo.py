@@ -289,7 +289,8 @@ async def get_invite_links_with_stats(
                 il.allow_existing_users, il.existing_user_bonus_tokens, il.existing_user_discount, il.existing_user_token_bonus,
                 il.created_at,
                 COUNT(DISTINCT ilu.user_id) AS users_count,
-                COALESCE(SUM(p.amount_rub) FILTER (WHERE p.paid = true), 0) AS total_revenue_rub
+                COALESCE(SUM(p.amount_rub) FILTER (WHERE p.paid = true), 0) AS total_revenue_rub,
+                (SELECT COUNT(DISTINCT user_id) FROM invite_link_users WHERE invite_link_id = il.id) AS total_users_count
             FROM invite_links il
             LEFT JOIN invite_link_users ilu
                 ON ilu.invite_link_id = il.id {date_filter_ilu}

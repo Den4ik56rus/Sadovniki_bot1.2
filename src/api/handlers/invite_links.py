@@ -124,6 +124,7 @@ async def create_invite_link(request: web.Request) -> web.Response:
         result = _serialize_dict(link)
         result['deep_link'] = _build_deep_link(result['code'])
         result['users_count'] = 0
+        result['total_users_count'] = 0
         result['total_revenue_rub'] = 0.0
 
         return web.json_response(result, status=201)

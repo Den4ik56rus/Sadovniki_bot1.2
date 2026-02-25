@@ -963,6 +963,7 @@ export interface InviteLink {
   code: string
   created_at: string
   users_count: number
+  total_users_count: number
   total_revenue_rub: number
   deep_link: string
   bonus_tokens: number

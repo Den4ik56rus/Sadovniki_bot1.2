@@ -224,6 +224,210 @@ export function InviteLinksPage() {
     }
   }
 
+  const renderLinkCard = (link: InviteLink) => {
+    const isEditing = editingId === link.id
+    const isActive = link.is_active !== false
+
+    if (isEditing) {
+      return (
+        <div key={link.id} className={styles.linkCard}>
+          <div className={styles.editForm}>
+            {/* Header: toggle + name input + save/cancel */}
+            <div className={styles.editHeader}>
+              <button
+                className={`${styles.toggleSwitch} ${isActive ? styles.toggleSwitchOn : ''}`}
+                onClick={() => toggleLinkActive(link.id, !isActive)}
+                title={isActive ? 'Отключить' : 'Включить'}
+              >
+                <span className={styles.toggleSwitchKnob} />
+              </button>
+              <input
+                className={styles.editNameInput}
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleSaveEdit()
+                  if (e.key === 'Escape') handleCancelEdit()
+                }}
+                autoFocus
+              />
+              <button className={styles.editSaveBtn} onClick={handleSaveEdit} title="Сохранить">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+              </button>
+              <button className={styles.editCancelBtn} onClick={handleCancelEdit} title="Отмена">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
+                </svg>
+              </button>
+            </div>
+
+            {/* Fields grid */}
+            <div className={styles.editFields}>
+              <div className={styles.editFieldGroup}>
+                <label className={styles.editFieldLabel}>Бонус токенов</label>
+                <input type="number" min="0" className={styles.editNumberInput}
+                  value={editingBonusTokens} onChange={(e) => setEditingBonusTokens(Number(e.target.value) || 0)} />
+              </div>
+              <div className={styles.editFieldGroup}>
+                <label className={styles.editFieldLabel}>Скидка %</label>
+                <input type="number" min="0" max="100" className={styles.editNumberInput}
+                  value={editingDiscountPercent} onChange={(e) => setEditingDiscountPercent(Number(e.target.value) || 0)} />
+              </div>
+              <div className={styles.editFieldGroup}>
+                <label className={styles.editFieldLabel}>Бонус токенов %</label>
+                <input type="number" min="0" max="100" className={styles.editNumberInput}
+                  value={editingTokenBonusPercent} onChange={(e) => setEditingTokenBonusPercent(Number(e.target.value) || 0)} />
+              </div>
+              <div className={styles.editFieldGroup}>
+                <label className={styles.editFieldLabel}>Дней скидки</label>
+                <input type="number" min="0" className={styles.editNumberInput}
+                  value={editingDiscountDays} onChange={(e) => setEditingDiscountDays(Number(e.target.value) || 0)} />
+              </div>
+              <div className={styles.editFieldGroup}>
+                <label className={styles.editFieldLabel}>Лимит (0 = ∞)</label>
+                <input type="number" min="0" className={styles.editNumberInput}
+                  value={editingMaxUsers} onChange={(e) => setEditingMaxUsers(Number(e.target.value) || 0)} />
+              </div>
+            </div>
+
+            {/* Existing users section */}
+            <div className={styles.existingUsersSection}>
+              <label className={styles.toggleLabel}>
+                <input
+                  type="checkbox"
+                  checked={editingAllowExisting}
+                  onChange={(e) => setEditingAllowExisting(e.target.checked)}
+                />
+                <span>Для существующих пользователей</span>
+              </label>
+              {editingAllowExisting && (
+                <div className={styles.existingCheckboxes}>
+                  <label className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={editingExistingBonusTokens}
+                      onChange={(e) => setEditingExistingBonusTokens(e.target.checked)} />
+                    <span>Разовые токены</span>
+                  </label>
+                  <label className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={editingExistingDiscount}
+                      onChange={(e) => setEditingExistingDiscount(e.target.checked)} />
+                    <span>Скидка на цену</span>
+                  </label>
+                  <label className={styles.checkboxLabel}>
+                    <input type="checkbox" checked={editingExistingTokenBonus}
+                      onChange={(e) => setEditingExistingTokenBonus(e.target.checked)} />
+                    <span>Бонус на токены</span>
+                  </label>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )
+    }
+
+    // Normal view mode
+    const hasBonuses = link.bonus_tokens > 0 || link.discount_percent > 0 || link.token_bonus_percent > 0 || link.discount_duration_days > 0 || link.allow_existing_users
+
+    return (
+      <div key={link.id} className={`${styles.linkCard} ${!isActive ? styles.linkCardInactive : ''}`}>
+        {/* Header: toggle + name + edit/delete */}
+        <div className={styles.cardHeader}>
+          <div className={styles.cardHeaderLeft}>
+            <button
+              className={`${styles.toggleSwitch} ${isActive ? styles.toggleSwitchOn : ''}`}
+              onClick={() => toggleLinkActive(link.id, !isActive)}
+              title={isActive ? 'Отключить' : 'Включить'}
+            >
+              <span className={styles.toggleSwitchKnob} />
+            </button>
+            <span className={styles.cardName}>{link.name}</span>
+          </div>
+          <div className={styles.cardHeaderActions}>
+            <button className={styles.editButton} onClick={() => handleStartEdit(link)} title="Редактировать">
+              ✏️
+            </button>
+            <button className={styles.deleteButton} onClick={() => handleDelete(link.id, link.name)} title="Удалить">
+              🗑️
+            </button>
+          </div>
+        </div>
+
+        {/* Deep link */}
+        <div className={styles.deepLinkRow}>
+          <a href={link.deep_link} target="_blank" rel="noopener noreferrer" className={styles.deepLinkUrl}>
+            {link.deep_link}
+          </a>
+          <button
+            className={`${styles.copyButton} ${copiedId === link.id ? styles.copied : ''}`}
+            onClick={() => handleCopy(link.deep_link, link.id)}
+            title={copiedId === link.id ? 'Скопировано!' : 'Скопировать ссылку'}
+          >
+            {copiedId === link.id ? (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <rect x="4" y="4" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
+                <path d="M10 4V2.5C10 1.67 9.33 1 8.5 1H2.5C1.67 1 1 1.67 1 2.5V8.5C1 9.33 1.67 10 2.5 10H4" stroke="currentColor" strokeWidth="1.5"/>
+              </svg>
+            )}
+          </button>
+        </div>
+
+        {/* Badges */}
+        {hasBonuses && (
+          <div className={styles.badgesRow}>
+            {link.bonus_tokens > 0 && (
+              <span className={`${styles.badge} ${styles.badgeBonus}`}>+{link.bonus_tokens} токенов</span>
+            )}
+            {link.discount_percent > 0 && (
+              <span className={`${styles.badge} ${styles.badgeDiscount}`}>Скидка {link.discount_percent}%</span>
+            )}
+            {link.token_bonus_percent > 0 && (
+              <span className={`${styles.badge} ${styles.badgeTokenBonus}`}>Бонус +{link.token_bonus_percent}%</span>
+            )}
+            {link.discount_duration_days > 0 && (
+              <span className={`${styles.badge} ${styles.badgeDays}`}>{link.discount_duration_days} дн.</span>
+            )}
+            {link.max_users > 0 && (
+              <span className={`${styles.badge} ${
+                link.total_users_count >= link.max_users ? styles.badgeLimitReached
+                : link.total_users_count >= link.max_users * 0.8 ? styles.badgeLimitWarning
+                : styles.badgeLimit
+              }`}>
+                {link.total_users_count}/{link.max_users}{link.total_users_count >= link.max_users ? ' 🔒' : ''}
+              </span>
+            )}
+            {link.allow_existing_users && (
+              <span className={`${styles.badge} ${styles.badgeExisting}`}>Для существующих</span>
+            )}
+          </div>
+        )}
+
+        {/* Stats */}
+        <div className={styles.statsRow}>
+          <span className={styles.statItem}>
+            👥 <span className={styles.statValue}>{link.total_users_count}</span> всего
+          </span>
+          {link.users_count !== link.total_users_count && (
+            <span className={styles.statItem}>
+              📊 <span className={styles.statValue}>{link.users_count}</span> за период
+            </span>
+          )}
+          <span className={styles.statItem}>
+            💰 <span className={styles.statValue}>{link.total_revenue_rub.toLocaleString('ru-RU')} ₽</span>
+          </span>
+          <span className={styles.statItem}>
+            📅 {formatDate(link.created_at)}
+          </span>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div className={styles.container}>
       {/* Header */}
@@ -311,6 +515,17 @@ export function InviteLinksPage() {
                 />
               </div>
               <div className={styles.fieldGroup}>
+                <label className={styles.fieldLabel}>Бонус токенов %</label>
+                <input
+                  className={styles.numberInput}
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={newTokenBonusPercent}
+                  onChange={(e) => setNewTokenBonusPercent(Number(e.target.value) || 0)}
+                />
+              </div>
+              <div className={styles.fieldGroup}>
                 <label className={styles.fieldLabel}>Дней скидки</label>
                 <input
                   className={styles.numberInput}
@@ -328,17 +543,6 @@ export function InviteLinksPage() {
                   min="0"
                   value={newMaxUsers}
                   onChange={(e) => setNewMaxUsers(Number(e.target.value) || 0)}
-                />
-              </div>
-              <div className={styles.fieldGroup}>
-                <label className={styles.fieldLabel}>Бонус токенов %</label>
-                <input
-                  className={styles.numberInput}
-                  type="number"
-                  min="0"
-                  max="100"
-                  value={newTokenBonusPercent}
-                  onChange={(e) => setNewTokenBonusPercent(Number(e.target.value) || 0)}
                 />
               </div>
             </div>
@@ -423,208 +627,9 @@ export function InviteLinksPage() {
           <div className={styles.emptyHint}>Создайте первую ссылку для отслеживания кампании</div>
         </div>
       ) : (
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Статус</th>
-              <th>Название</th>
-              <th>Ссылка</th>
-              <th>Бонус</th>
-              <th>Скидка</th>
-              <th>Бонус %</th>
-              <th>Дней</th>
-              <th>Лимит</th>
-              <th>Пользователи</th>
-              <th>Выручка</th>
-              <th>Создана</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {links.map((link) => (
-              <tr key={link.id} className={link.is_active === false ? styles.rowInactive : ''}>
-                {/* Статус — toggle switch */}
-                <td className={styles.statusCell}>
-                  <button
-                    className={`${styles.toggleSwitch} ${link.is_active !== false ? styles.toggleSwitchOn : ''}`}
-                    onClick={() => toggleLinkActive(link.id, link.is_active === false)}
-                    title={link.is_active !== false ? 'Отключить ссылку' : 'Включить ссылку'}
-                  >
-                    <span className={styles.toggleSwitchKnob} />
-                  </button>
-                </td>
-                {/* Название — с inline-редактированием */}
-                <td>
-                  {editingId === link.id ? (
-                    <div className={styles.editNameRow}>
-                      <div className={styles.editNameTop}>
-                        <input
-                          className={styles.editNameInput}
-                          value={editingName}
-                          onChange={(e) => setEditingName(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') handleSaveEdit()
-                            if (e.key === 'Escape') handleCancelEdit()
-                          }}
-                          autoFocus
-                        />
-                        <button className={styles.editSaveBtn} onClick={handleSaveEdit} title="Сохранить">
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                            <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                          </svg>
-                        </button>
-                        <button className={styles.editCancelBtn} onClick={handleCancelEdit} title="Отмена">
-                          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                            <path d="M3 3L11 11M11 3L3 11" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/>
-                          </svg>
-                        </button>
-                      </div>
-                      <div className={styles.editExistingSection}>
-                        <label className={styles.checkboxLabel}>
-                          <input type="checkbox" checked={editingAllowExisting}
-                            onChange={(e) => setEditingAllowExisting(e.target.checked)} />
-                          <span>Для существующих</span>
-                        </label>
-                        {editingAllowExisting && (
-                          <div className={styles.existingCheckboxes}>
-                            <label className={styles.checkboxLabel}>
-                              <input type="checkbox" checked={editingExistingBonusTokens}
-                                onChange={(e) => setEditingExistingBonusTokens(e.target.checked)} />
-                              <span>Токены</span>
-                            </label>
-                            <label className={styles.checkboxLabel}>
-                              <input type="checkbox" checked={editingExistingDiscount}
-                                onChange={(e) => setEditingExistingDiscount(e.target.checked)} />
-                              <span>Скидка</span>
-                            </label>
-                            <label className={styles.checkboxLabel}>
-                              <input type="checkbox" checked={editingExistingTokenBonus}
-                                onChange={(e) => setEditingExistingTokenBonus(e.target.checked)} />
-                              <span>Бонус %</span>
-                            </label>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <span
-                      className={styles.linkName}
-                      onDoubleClick={() => handleStartEdit(link)}
-                      title="Двойной клик для редактирования"
-                    >
-                      {link.name}
-                      {link.allow_existing_users && <span className={styles.existingBadge} title="Для существующих пользователей">Сущ.</span>}
-                      <button
-                        className={styles.editIcon}
-                        onClick={() => handleStartEdit(link)}
-                        title="Редактировать"
-                      >
-                        ✏️
-                      </button>
-                    </span>
-                  )}
-                </td>
-
-                {/* Ссылка — полностью видна + кнопка копирования */}
-                <td>
-                  <div className={styles.deepLink}>
-                    <a href={link.deep_link} target="_blank" rel="noopener noreferrer" className={styles.deepLinkUrl}>{link.deep_link}</a>
-                    <button
-                      className={`${styles.copyButton} ${copiedId === link.id ? styles.copied : ''}`}
-                      onClick={() => handleCopy(link.deep_link, link.id)}
-                      title={copiedId === link.id ? 'Скопировано!' : 'Скопировать ссылку'}
-                    >
-                      {copiedId === link.id ? (
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <path d="M3 7L6 10L11 4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                        </svg>
-                      ) : (
-                        <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
-                          <rect x="4" y="4" width="9" height="9" rx="1.5" stroke="currentColor" strokeWidth="1.5"/>
-                          <path d="M10 4V2.5C10 1.67 9.33 1 8.5 1H2.5C1.67 1 1 1.67 1 2.5V8.5C1 9.33 1.67 10 2.5 10H4" stroke="currentColor" strokeWidth="1.5"/>
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                </td>
-
-                {/* Бонус токенов */}
-                <td className={styles.bonusCell}>
-                  {editingId === link.id ? (
-                    <input type="number" min="0" className={styles.numberInputSmall}
-                      value={editingBonusTokens} onChange={(e) => setEditingBonusTokens(Number(e.target.value) || 0)} />
-                  ) : (
-                    link.bonus_tokens > 0 ? <span className={styles.bonusValue}>+{link.bonus_tokens}</span> : '—'
-                  )}
-                </td>
-
-                {/* Скидка % */}
-                <td className={styles.discountCell}>
-                  {editingId === link.id ? (
-                    <input type="number" min="0" max="100" className={styles.numberInputSmall}
-                      value={editingDiscountPercent} onChange={(e) => setEditingDiscountPercent(Number(e.target.value) || 0)} />
-                  ) : (
-                    link.discount_percent > 0 ? <span className={styles.discountValue}>{link.discount_percent}%</span> : '—'
-                  )}
-                </td>
-
-                {/* Бонус токенов % */}
-                <td className={styles.discountCell}>
-                  {editingId === link.id ? (
-                    <input type="number" min="0" max="100" className={styles.numberInputSmall}
-                      value={editingTokenBonusPercent} onChange={(e) => setEditingTokenBonusPercent(Number(e.target.value) || 0)} />
-                  ) : (
-                    link.token_bonus_percent > 0 ? <span className={styles.discountValue}>+{link.token_bonus_percent}%</span> : '—'
-                  )}
-                </td>
-
-                {/* Дней скидки */}
-                <td className={styles.daysCell}>
-                  {editingId === link.id ? (
-                    <input type="number" min="0" className={styles.numberInputSmall}
-                      value={editingDiscountDays} onChange={(e) => setEditingDiscountDays(Number(e.target.value) || 0)} />
-                  ) : (
-                    link.discount_duration_days > 0 ? `${link.discount_duration_days} дн.` : '—'
-                  )}
-                </td>
-
-                {/* Лимит пользователей */}
-                <td className={styles.limitCell}>
-                  {editingId === link.id ? (
-                    <input type="number" min="0" className={styles.numberInputSmall}
-                      value={editingMaxUsers} onChange={(e) => setEditingMaxUsers(Number(e.target.value) || 0)} />
-                  ) : (
-                    link.max_users > 0 ? (
-                      <span className={link.users_count >= link.max_users ? styles.limitReached : link.users_count >= link.max_users * 0.8 ? styles.limitWarning : styles.limitOk}>
-                        {link.users_count}/{link.max_users}
-                        {link.users_count >= link.max_users && ' 🔒'}
-                      </span>
-                    ) : '∞'
-                  )}
-                </td>
-
-                <td className={styles.usersCount}>{link.users_count}</td>
-                <td className={styles.revenue}>
-                  {link.total_revenue_rub.toLocaleString('ru-RU')} ₽
-                </td>
-                <td className={styles.dateCell}>{formatDate(link.created_at)}</td>
-
-                {/* Действия */}
-                <td>
-                  <div className={styles.actions}>
-                    <button
-                      className={styles.deleteButton}
-                      onClick={() => handleDelete(link.id, link.name)}
-                      title="Удалить"
-                    >
-                      🗑️
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <div className={styles.linksList}>
+          {links.map(renderLinkCard)}
+        </div>
       )}
     </div>
   )

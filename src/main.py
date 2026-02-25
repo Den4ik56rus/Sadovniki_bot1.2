@@ -81,7 +81,7 @@ async def main() -> None:
     3) Запускает API сервер для WebApp.
     4) Регистрирует команды бота (показываются при вводе / ).
     5) Запускает long polling.
-    6) При завершении закрывает пул БД и API сервер.
+    6) При завершении: ждёт handler-задачи → закрывает ресурсы.
     """
 
     print("Инициализирую пул подключений к БД...")
@@ -135,26 +135,35 @@ async def main() -> None:
     trigger_task = asyncio.create_task(_trigger_scheduler_loop(_process_pending_triggers))
     print("Фоновая задача триггеров воронки запущена.")
 
-    # Graceful shutdown: сохраняем ссылку на dispatcher и ставим свои signal handlers
-    # ВАЖНО: aiogram по умолчанию перехватывает SIGTERM и сразу отменяет handler-задачи.
-    # Мы ставим свои хендлеры, которые СНАЧАЛА ждут завершения всех LLM-ответов,
-    # и только потом сигнализируют aiogram остановить polling.
+    # Graceful shutdown: сохраняем ссылку на dispatcher и ставим свои signal handlers.
+    # При SIGTERM наш handler ставит флаг + сигнализирует aiogram остановить polling.
+    # start_polling(close_bot_session=False) НЕ закрывает bot.session —
+    # мы закрываем её сами ПОСЛЕ завершения всех handler-задач.
     shutdown_coordinator.set_dispatcher(dp)
     shutdown_coordinator.install_signal_handlers()
 
     print("Бот запущен. Нажмите Ctrl+C, чтобы остановить его.")
 
     try:
-        # Старт long polling (handle_signals=False — мы сами обрабатываем SIGTERM/SIGINT)
-        await dp.start_polling(bot, handle_signals=False)
+        # handle_signals=False — мы сами обрабатываем SIGTERM/SIGINT
+        # close_bot_session=False — НЕ закрываем bot.session внутри start_polling,
+        # иначе handler-задачи не смогут отправить ответы после остановки polling
+        await dp.start_polling(bot, handle_signals=False, close_bot_session=False)
     finally:
         # Корректное закрытие
         print("Останавливаю бота...")
 
-        # Если shutdown прошёл через наш signal handler — задачи уже дождены.
-        # Если start_polling завершился по другой причине — ждём здесь.
-        if not shutdown_coordinator.is_shutting_down:
-            await shutdown_coordinator.begin_shutdown(timeout=60.0)
+        # Ждём завершения всех активных handler-задач aiogram (LLM-ответы)
+        # КРИТИЧНО: это происходит ДО закрытия bot.session,
+        # поэтому handler-задачи ещё могут отправлять сообщения
+        print("Ожидаю завершения активных ответов пользователям...")
+        await shutdown_coordinator.wait_aiogram_handlers(timeout=65.0)
+        await shutdown_coordinator.wait_registered_tasks(timeout=65.0)
+
+        # Теперь закрываем bot.session (после этого отправка невозможна)
+        print("Закрываю сессию бота...")
+        await bot.session.close()
+        print("Сессия бота закрыта.")
 
         # Останавливаем фоновые задачи
         webhook_consumer_task.cancel()

@@ -5,14 +5,15 @@
 
 При получении SIGTERM (docker stop / deploy):
 1. Ставит флаг is_shutting_down = True
-2. Ждёт завершения ВСЕХ активных handler-задач aiogram (включая LLM)
-3. Сигнализирует aiogram остановить polling
-4. Только после этого продолжается остановка бота
+2. Сигнализирует aiogram остановить polling (перестать принимать новые updates)
+3. В finally блоке main.py ждём завершения ВСЕХ активных handler-задач
+4. Только после этого закрываем bot.session, DB pool и т.д.
 
 Ключевое отличие от стандартного поведения aiogram:
-aiogram при SIGTERM сразу отменяет polling-задачу, оставляя handler-задачи
-"осиротевшими" — они теряются при закрытии bot.session.
-Мы перехватываем сигнал ДО aiogram и ждём завершения всех handler-задач.
+aiogram при SIGTERM сразу отменяет polling и ЗАКРЫВАЕТ bot.session,
+после чего handler-задачи не могут отправить ответы пользователям.
+Мы передаём close_bot_session=False и закрываем сессию сами — ПОСЛЕ
+завершения всех handler-задач.
 """
 
 import asyncio
@@ -43,7 +44,7 @@ class ShutdownCoordinator:
         return len(self._active_tasks)
 
     def set_dispatcher(self, dp) -> None:
-        """Сохраняет ссылку на Dispatcher для доступа к _handle_update_tasks и _stop_signal."""
+        """Сохраняет ссылку на Dispatcher для доступа к _handle_update_tasks."""
         self._dispatcher = dp
         self._aiogram_tasks = dp._handle_update_tasks
 
@@ -60,8 +61,13 @@ class ShutdownCoordinator:
 
     def install_signal_handlers(self) -> None:
         """
-        Ставит свои SIGTERM/SIGINT хендлеры вместо aiogram'овских.
-        Вызывать ПОСЛЕ set_dispatcher() и ДО dp.start_polling(handle_signals=False).
+        Ставит свои SIGTERM/SIGINT хендлеры.
+
+        При сигнале:
+        - Ставим флаг _shutting_down
+        - Сигнализируем aiogram остановить polling (dp._stop_signal.set())
+        - start_polling завершается → попадаем в finally блок main.py
+        - Там ждём handler-задачи и закрываем ресурсы
         """
         loop = asyncio.get_running_loop()
 
@@ -71,37 +77,16 @@ class ShutdownCoordinator:
                 return
             logger.warning(f"[shutdown] Получен {sig.name}, начинаем graceful shutdown...")
             self._shutting_down = True
-            asyncio.ensure_future(self._graceful_shutdown_sequence())
+
+            # Сигнализируем aiogram остановить polling — start_polling() вернётся
+            if self._dispatcher and self._dispatcher._stop_signal:
+                self._dispatcher._stop_signal.set()
 
         loop.add_signal_handler(signal.SIGTERM, _on_signal, signal.SIGTERM)
         loop.add_signal_handler(signal.SIGINT, _on_signal, signal.SIGINT)
         logger.info("[shutdown] Свои signal handlers установлены (SIGTERM, SIGINT)")
 
-    async def _graceful_shutdown_sequence(self) -> None:
-        """
-        Async-последовательность при SIGTERM:
-        1. Ждём завершения всех handler-задач aiogram (LLM-ответы уходят пользователям)
-        2. Ждём наши зарегистрированные задачи (перестраховка)
-        3. Сигнализируем aiogram остановить polling
-        """
-        logger.info("[shutdown] === Graceful shutdown sequence ===")
-
-        # Шаг 1: ждём все handler-задачи aiogram
-        await self._wait_aiogram_handlers(timeout=65.0)
-
-        # Шаг 2: ждём наши зарегистрированные LLM-задачи (на случай если что-то не в aiogram tasks)
-        await self._wait_registered_tasks(timeout=65.0)
-
-        # Шаг 3: сигнализируем aiogram остановить polling
-        if self._dispatcher and self._dispatcher._stop_signal:
-            logger.info("[shutdown] Сигнализируем aiogram остановить polling...")
-            self._dispatcher._stop_signal.set()
-        else:
-            logger.warning("[shutdown] Нет ссылки на dispatcher, не можем остановить polling")
-
-        logger.info("[shutdown] === Graceful shutdown sequence завершена ===")
-
-    async def _wait_aiogram_handlers(self, timeout: float = 65.0) -> None:
+    async def wait_aiogram_handlers(self, timeout: float = 65.0) -> None:
         """
         Ждём пока dp._handle_update_tasks опустеет.
         Polling-цикл: каждые 5 секунд проверяем, не появились ли новые задачи.
@@ -137,14 +122,13 @@ class ShutdownCoordinator:
             except Exception as e:
                 logger.error(f"[shutdown] Ошибка при ожидании aiogram задач: {e}")
                 break
-            # Цикл повторится — проверим, не появились ли новые задачи
 
         if not self._aiogram_tasks:
             logger.info("[shutdown] Все aiogram handler-задачи завершены")
 
-    async def _wait_registered_tasks(self, timeout: float = 65.0) -> None:
+    async def wait_registered_tasks(self, timeout: float = 65.0) -> None:
         """
-        Ждём завершения зарегистрированных LLM-задач (перестраховка).
+        Ждём завершения зарегистрированных LLM-задач.
         """
         active = len(self._active_tasks)
         if active == 0:
@@ -159,29 +143,6 @@ class ShutdownCoordinator:
             remaining = len(self._active_tasks)
             logger.warning(
                 f"[shutdown] Таймаут! {remaining} LLM-задач не завершились за {timeout}с. "
-                f"Crash recovery подберёт их при следующем запуске."
-            )
-
-    async def begin_shutdown(self, timeout: float = 60.0) -> None:
-        """
-        Начать graceful shutdown (вызывается из finally блока main.py).
-        Если shutdown уже прошёл через _graceful_shutdown_sequence — быстро выходит.
-        """
-        self._shutting_down = True
-        active = len(self._active_tasks)
-
-        if active == 0:
-            logger.info("[shutdown] Нет активных LLM-задач, продолжаем остановку")
-            return
-
-        logger.info(f"[shutdown] Ждём завершения {active} активных LLM-задач (таймаут {timeout}с)...")
-        try:
-            await asyncio.wait_for(self._drain_event.wait(), timeout=timeout)
-            logger.info("[shutdown] Все LLM-задачи завершены, продолжаем остановку")
-        except asyncio.TimeoutError:
-            remaining = len(self._active_tasks)
-            logger.warning(
-                f"[shutdown] Таймаут! {remaining} задач не завершились за {timeout}с. "
                 f"Crash recovery подберёт их при следующем запуске."
             )
 

@@ -945,13 +945,14 @@ async def update_client_source(user_id: int, source: str) -> bool:
         return "UPDATE" in result
 
 
-async def get_client_full_data(user_id: int) -> Optional[Dict[str, Any]]:
+async def get_client_full_data(user_id: int, funnel_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     """
     Получить полные данные клиента для карточки.
 
     Включает:
         - Базовую информацию о пользователе
-        - Статус воронки, приоритет, источник
+        - Статус воронки (из client_funnel_position если передан funnel_id)
+        - Приоритет, источник
         - Статистику по консультациям
         - Теги
         - Кастомные поля
@@ -960,43 +961,85 @@ async def get_client_full_data(user_id: int) -> Optional[Dict[str, Any]]:
 
     async with pool.acquire() as conn:
         # Основные данные
-        row = await conn.fetchrow(
-            """
-            SELECT
-                u.id,
-                u.telegram_user_id,
-                u.username,
-                u.first_name,
-                u.last_name,
-                u.avatar_path,
-                u.token_balance,
-                u.region,
-                u.created_at as user_created_at,
-                COALESCE(cfs.status, 'new') as status,
-                cfs.auto_status,
-                COALESCE(cfs.manual_override, false) as manual_override,
-                COALESCE(cfs.priority, 'normal') as priority,
-                cfs.source,
-                cfs.updated_at as status_updated_at,
-                COALESCE(stats.total_consultations, 0) as total_consultations,
-                COALESCE(stats.total_tokens, 0) as total_tokens,
-                COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
-                stats.last_consultation_at
-            FROM users u
-            LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
-            LEFT JOIN LATERAL (
+        # Если передан funnel_id — берём статус из client_funnel_position (актуальная таблица)
+        # Иначе fallback на client_funnel_status (legacy)
+        if funnel_id:
+            row = await conn.fetchrow(
+                """
                 SELECT
-                    COUNT(*)::int as total_consultations,
-                    COALESCE(SUM(total_tokens), 0)::int as total_tokens,
-                    COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
-                    MAX(created_at) as last_consultation_at
-                FROM consultation_logs cl
-                WHERE cl.user_id = u.id
-            ) stats ON true
-            WHERE u.id = $1
-            """,
-            user_id
-        )
+                    u.id,
+                    u.telegram_user_id,
+                    u.username,
+                    u.first_name,
+                    u.last_name,
+                    u.avatar_path,
+                    u.token_balance,
+                    u.region,
+                    u.created_at as user_created_at,
+                    COALESCE(cfp.stage_key, cfs.status, 'new') as status,
+                    cfs.auto_status,
+                    COALESCE(cfp.manual_override, cfs.manual_override, false) as manual_override,
+                    COALESCE(cfs.priority, 'normal') as priority,
+                    cfs.source,
+                    COALESCE(cfp.updated_at, cfs.updated_at) as status_updated_at,
+                    COALESCE(stats.total_consultations, 0) as total_consultations,
+                    COALESCE(stats.total_tokens, 0) as total_tokens,
+                    COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
+                    stats.last_consultation_at
+                FROM users u
+                LEFT JOIN client_funnel_position cfp ON cfp.user_id = u.id AND cfp.funnel_id = $2
+                LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
+                LEFT JOIN LATERAL (
+                    SELECT
+                        COUNT(*)::int as total_consultations,
+                        COALESCE(SUM(total_tokens), 0)::int as total_tokens,
+                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
+                        MAX(created_at) as last_consultation_at
+                    FROM consultation_logs cl
+                    WHERE cl.user_id = u.id
+                ) stats ON true
+                WHERE u.id = $1
+                """,
+                user_id, funnel_id
+            )
+        else:
+            row = await conn.fetchrow(
+                """
+                SELECT
+                    u.id,
+                    u.telegram_user_id,
+                    u.username,
+                    u.first_name,
+                    u.last_name,
+                    u.avatar_path,
+                    u.token_balance,
+                    u.region,
+                    u.created_at as user_created_at,
+                    COALESCE(cfs.status, 'new') as status,
+                    cfs.auto_status,
+                    COALESCE(cfs.manual_override, false) as manual_override,
+                    COALESCE(cfs.priority, 'normal') as priority,
+                    cfs.source,
+                    cfs.updated_at as status_updated_at,
+                    COALESCE(stats.total_consultations, 0) as total_consultations,
+                    COALESCE(stats.total_tokens, 0) as total_tokens,
+                    COALESCE(stats.total_cost_usd, 0.0) as total_cost_usd,
+                    stats.last_consultation_at
+                FROM users u
+                LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
+                LEFT JOIN LATERAL (
+                    SELECT
+                        COUNT(*)::int as total_consultations,
+                        COALESCE(SUM(total_tokens), 0)::int as total_tokens,
+                        COALESCE(SUM(cost_usd), 0.0) as total_cost_usd,
+                        MAX(created_at) as last_consultation_at
+                    FROM consultation_logs cl
+                    WHERE cl.user_id = u.id
+                ) stats ON true
+                WHERE u.id = $1
+                """,
+                user_id
+            )
 
         if not row:
             return None

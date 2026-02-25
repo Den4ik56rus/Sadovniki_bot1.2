@@ -211,7 +211,8 @@ async def get_client_full(request: web.Request) -> web.Response:
     """
     try:
         user_id = int(request.match_info["id"])
-        client = await client_crm_repo.get_client_full_data(user_id)
+        funnel_id = request.query.get("funnel_id")
+        client = await client_crm_repo.get_client_full_data(user_id, funnel_id=funnel_id)
 
         if not client:
             raise web.HTTPNotFound(text="Client not found")

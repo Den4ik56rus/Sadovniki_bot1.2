@@ -44,7 +44,7 @@ export function FunnelClientCardFull({ clientId, funnelId, onClose }: FunnelClie
   const fetchData = useCallback(async () => {
     try {
       const [clientData, tagsData] = await Promise.all([
-        api.getClientFull(clientId),
+        api.getClientFull(clientId, funnelId),
         api.getTags(),
       ])
       setClient(clientData)
@@ -54,7 +54,7 @@ export function FunnelClientCardFull({ clientId, funnelId, onClose }: FunnelClie
     } finally {
       setIsLoading(false)
     }
-  }, [clientId])
+  }, [clientId, funnelId])
 
   useEffect(() => {
     fetchData()

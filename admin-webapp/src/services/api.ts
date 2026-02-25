@@ -283,8 +283,9 @@ export const api = {
   },
 
   // CRM Extended: Client full data
-  async getClientFull(id: number): Promise<CrmClientFull> {
-    return fetchApi<CrmClientFull>(`/crm/clients/${id}/full`)
+  async getClientFull(id: number, funnelId?: string): Promise<CrmClientFull> {
+    const params = funnelId ? `?funnel_id=${encodeURIComponent(funnelId)}` : ''
+    return fetchApi<CrmClientFull>(`/crm/clients/${id}/full${params}`)
   },
 
   async updateClientPriority(

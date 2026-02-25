@@ -116,6 +116,7 @@ async def create_broadcast(request: web.Request) -> web.Response:
 
         # Валидация inline_buttons
         inline_buttons = data.get('inline_buttons')
+        logger.info(f"create_broadcast: inline_buttons from request = {inline_buttons!r}")
         if inline_buttons:
             _validate_inline_buttons(inline_buttons)
 
@@ -195,6 +196,7 @@ async def update_broadcast(request: web.Request) -> web.Response:
             raise web.HTTPBadRequest(text='Invalid target_type')
 
         inline_buttons = data.get('inline_buttons')
+        logger.info(f"update_broadcast({broadcast_id}): inline_buttons from request = {inline_buttons!r}")
         if inline_buttons:
             _validate_inline_buttons(inline_buttons)
 

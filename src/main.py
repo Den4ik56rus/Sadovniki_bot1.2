@@ -135,17 +135,26 @@ async def main() -> None:
     trigger_task = asyncio.create_task(_trigger_scheduler_loop(_process_pending_triggers))
     print("Фоновая задача триггеров воронки запущена.")
 
+    # Graceful shutdown: сохраняем ссылку на dispatcher и ставим свои signal handlers
+    # ВАЖНО: aiogram по умолчанию перехватывает SIGTERM и сразу отменяет handler-задачи.
+    # Мы ставим свои хендлеры, которые СНАЧАЛА ждут завершения всех LLM-ответов,
+    # и только потом сигнализируют aiogram остановить polling.
+    shutdown_coordinator.set_dispatcher(dp)
+    shutdown_coordinator.install_signal_handlers()
+
     print("Бот запущен. Нажмите Ctrl+C, чтобы остановить его.")
 
     try:
-        # Старт long polling
-        await dp.start_polling(bot)
+        # Старт long polling (handle_signals=False — мы сами обрабатываем SIGTERM/SIGINT)
+        await dp.start_polling(bot, handle_signals=False)
     finally:
         # Корректное закрытие
         print("Останавливаю бота...")
 
-        # Шаг 0: Ждём завершения активных LLM-ответов (до 60 секунд)
-        await shutdown_coordinator.begin_shutdown(timeout=60.0)
+        # Если shutdown прошёл через наш signal handler — задачи уже дождены.
+        # Если start_polling завершился по другой причине — ждём здесь.
+        if not shutdown_coordinator.is_shutting_down:
+            await shutdown_coordinator.begin_shutdown(timeout=60.0)
 
         # Останавливаем фоновые задачи
         webhook_consumer_task.cancel()

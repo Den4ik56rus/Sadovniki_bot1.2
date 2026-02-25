@@ -931,13 +931,12 @@ async def run_consultation_pipeline(
     # Используется recovery при рестарте бота.
     await mark_message_processing(question_msg_id)
 
-    # Graceful shutdown: регистрируем задачу + ранний выход если бот останавливается
+    # Graceful shutdown: регистрируем задачу для отслеживания.
+    # НЕ делаем ранний выход — при shutdown мы ЖДЁМ завершения всех handler-задач,
+    # чтобы пользователь получил ответ до остановки бота.
     current_task = asyncio.current_task()
     if current_task:
         shutdown_coordinator.register_task(current_task)
-    if shutdown_coordinator.is_shutting_down:
-        logger.info(f"[shutdown] Пропускаем LLM для user {telegram_user_id} — бот останавливается, recovery подберёт")
-        return
 
     # Быстрая проверка баланса (минимум 1 токен) — без LLM-вызова
     if not await has_sufficient_tokens(internal_user_id, 1):

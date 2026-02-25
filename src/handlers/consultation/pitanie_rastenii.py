@@ -191,6 +191,15 @@ async def process_nutrition_consultation(
         await message.answer(hint)
         await _log_bot_msg(hint, user_id=user_id, session_id=session_id, topic_id=topic_id)
 
+    # Удаляем промежуточное "Обрабатываю..." перед показом прогресс-бара
+    from src.handlers.consultation.entry import _PENDING_WAIT_MSGS
+    _wait = _PENDING_WAIT_MSGS.pop(telegram_user_id, None)
+    if _wait:
+        try:
+            await _wait.delete()
+        except Exception:
+            pass
+
     # Показываем сообщение ожидания с динамическими обновлениями
     status_mgr = StatusMessageManager(message, use_rag=use_rag)
     await status_mgr.start()

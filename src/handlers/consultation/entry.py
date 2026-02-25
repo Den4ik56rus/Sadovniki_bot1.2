@@ -96,6 +96,9 @@ from src.utils.status_manager import StatusMessageManager
 
 router = Router()
 
+# Промежуточные сообщения "Обрабатываю..." для удаления перед показом прогресс-бара
+_PENDING_WAIT_MSGS: dict[int, Message] = {}
+
 
 def serialize_keyboard(markup) -> dict | None:
     """Конвертирует Aiogram keyboard markup в dict для meta."""
@@ -360,6 +363,14 @@ async def _process_culture_and_respond(message: Message, context: dict) -> None:
             "complexity_classification_cost_usd": cr.get("cost_usd", 0.0),
             "complexity_classification_tokens": cr.get("tokens", 0),
         }
+
+    # Удаляем промежуточное "Обрабатываю..." перед показом прогресс-бара
+    _wait = _PENDING_WAIT_MSGS.pop(telegram_user_id, None)
+    if _wait:
+        try:
+            await _wait.delete()
+        except Exception:
+            pass
 
     # CASE 1: Культура неясна → LLM спрашивает уточнение (БЕЗ RAG, БЕЗ compose)
     if culture in ("не определено", "общая информация"):
@@ -1455,6 +1466,9 @@ async def handle_variety_clarification(message: Message) -> None:
     # Сохраняем ответ пользователя в последнее уточнение
     _set_clarification_answer(context, variety_answer)
 
+    # Сразу показываем пользователю что бот обрабатывает ответ
+    _PENDING_WAIT_MSGS[telegram_user_id] = await message.answer("🔄 Обрабатываю ваш ответ...")
+
     # Определяем новую культуру на основе ответа
     variety_answer_lower = variety_answer.lower()
     if "ремонтант" in variety_answer_lower or "нсд" in variety_answer_lower:
@@ -1538,6 +1552,9 @@ async def handle_clarification_answer(message: Message) -> None:
 
     # Сохраняем ответ пользователя в последнее уточнение
     _set_clarification_answer(context, clarification_answer)
+
+    # Сразу показываем пользователю что бот обрабатывает ответ
+    _PENDING_WAIT_MSGS[telegram_user_id] = await message.answer("🔄 Обрабатываю ваш ответ...")
 
     # Логируем ответ пользователя
     await log_message(
@@ -2281,6 +2298,10 @@ async def handle_complexity_confirm(callback: CallbackQuery) -> None:
         CONSULTATION_STATE.pop(telegram_user_id, None)
 
     await callback.answer(f"Списано {pluralize_questions(cost)}")
+
+    # Показываем пользователю что бот начал обработку
+    if callback.message:
+        _PENDING_WAIT_MSGS[telegram_user_id] = await callback.message.answer("🔄 Готовлю ответ на ваш вопрос...")
 
     # Маршрутизация на обработчик
     if callback.message:

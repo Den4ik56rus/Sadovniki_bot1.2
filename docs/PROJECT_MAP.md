@@ -1,8 +1,8 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2026-02-22
-**Project:** Sadovniki-bot v1.5.4
-**Status:** Active development — broadcasts v2 + funnel triggers + HTTPS/SSL; DB migrations 62-66 pending on production
+**Last Updated:** 2026-02-25
+**Project:** Sadovniki-bot v1.5.5
+**Status:** Active development — broadcasts v2 + funnel triggers + graceful shutdown; DB migrations 62-66 pending on production; payment reliability + discount/payment broadcast buttons planned
 
 ## Quick Navigation
 
@@ -168,6 +168,9 @@ User Question
 | Full Message Logging | ✅ Production | - | All bot/user messages + buttons logged |
 | CRM ChatHistory | ✅ Production | - | Full conversation timeline per client |
 | Broadcasts | ⏳ Implemented v2, DB migrations 62-66 pending | [BROADCASTS.md](features/BROADCASTS.md) | Mass messaging with photos/polls/buttons; resend runs; text responses |
+| Broadcast Discount Button | ❌ Planned | docs/plans/2026-02-23-broadcast-discount-button.md | Time-limited personal discount on all subscription plans |
+| Broadcast Payment Button | ❌ Planned | docs/plans/2026-02-23-broadcast-payment-button-and-create-modal.md | Personal YooKassa URL per recipient |
+| Payment Webhook Reliability | ❌ Planned | docs/plans/2026-02-23-payment-reliability.md | Async queue, reconciliation, alerts |
 | Funnel Stage Triggers | ⏳ Implemented, DB migrations pending | - | Auto-send broadcast when client moves to kanban stage |
 | Article Writing Mode | ✅ Production | - | Admin feature, needs docs |
 | Document Upload | ✅ Production | [DOCUMENT_PIPELINE.md](features/DOCUMENT_PIPELINE.md) | PDF/TXT/MD/DOCX |
@@ -210,26 +213,31 @@ User Question
 
 ## Active Context
 
-### Current Phase: Broadcasts v2 + Funnel Triggers + Production Hardening
+### Current Phase: Payment Reliability + Broadcast Buttons v3
 
 **Focus Areas:**
-1. Broadcast resend (broadcast_runs architecture)
-2. Text response collection on quick_reply buttons
-3. Funnel stage triggers — auto-send broadcast when client moves to kanban stage
-4. HTTPS/SSL for proagro56.ru production domain
-5. YooKassa payment method safety (recurring payments approval pending)
+1. Payment webhook reliability (async queue + periodic reconciliation)
+2. Broadcast `discount` button type (personal time-limited discount on all plans)
+3. Broadcast `payment` button type (personal YooKassa URL per recipient)
+4. "Create broadcast" modal inside StageTriggerEditor
 
-**Last Session Changes (2026-02-22 — v1.5.3 + v1.5.4):**
-- Broadcast resend: `broadcast_runs` table, each send is a separate run with own stats
-- Button click uniqueness changed: one click per (broadcast, run, user, option_key) — allows clicking multiple different buttons
-- Text responses: quick_reply buttons can have `ask_for_response=true` — captures next text message from user
-- Funnel stage triggers: attach any broadcast to a funnel stage; fires automatically on client stage change (one-per-user via `funnel_trigger_log`)
-- ResendDialog UI in admin panel for resending broadcasts
-- StageTriggerEditor UI in funnel kanban
-- HTTPS/SSL: nginx reconfigured for proagro56.ru with Let's Encrypt certificates
-- node_modules removed from git tracking (.gitignore updated)
-- YooKassa: `save_payment_method=False` until recurring payment approval granted
-- DB migrations 62-66 MUST be applied on production before using broadcast or funnel trigger features
+**Last Session Changes (2026-02-25 — v1.5.5, documentation only):**
+- No code changes — session closed immediately after opening
+- Three implementation plan docs staged for commit (created 2026-02-23):
+  - `docs/plans/2026-02-23-payment-reliability.md`
+  - `docs/plans/2026-02-23-broadcast-payment-button-and-create-modal.md`
+  - `docs/plans/2026-02-23-broadcast-discount-button.md`
+
+**Previous Session Changes (2026-02-25 — v1.5.5):**
+- Graceful shutdown hardened: `close_bot_session=False` + `handle_signals=False`, finally block waits for handler tasks
+- Invite link analytics: new vs existing user breakdown in invite link stats
+- Invite link tracking: always tracks even after `member_limit` reached
+- CLAUDE.md: deploy commands and graceful shutdown notes added
+
+**Pending Implementation (Plans Ready — see docs/plans/):**
+- `payment-reliability.md` — webhook queue, reconciliation, alerts, activity feed fix
+- `broadcast-payment-button-and-create-modal.md` — `payment` button type, create-in-trigger modal
+- `broadcast-discount-button.md` — `discount` button type, `user_broadcast_discounts` table, discount menu
 
 ### Constraints & Invariants
 

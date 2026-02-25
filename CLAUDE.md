@@ -11,11 +11,12 @@ Before making ANY changes:
 2. Read `session-summary.md` — contains latest session changes
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
-**Current Project State (2026-02-22):**
+**Current Project State (2026-02-25):**
 - Version: 1.5.5
-- Phase: Broadcasts v2 + funnel stage triggers + production hardening
-- Latest changes: Broadcast resend (broadcast_runs), text responses on buttons, funnel stage triggers, HTTPS/SSL for proagro56.ru, YooKassa save_payment_method disabled
+- Phase: Payment reliability + broadcast buttons v3 (discount + payment types)
+- Latest changes: Graceful shutdown hardened, invite link new/existing user breakdown
 - CRITICAL: DB schemas 62-66 NOT YET APPLIED ON PRODUCTION — must apply all five before using broadcasts or funnel triggers
+- PENDING PLANS: 3 implementation plans ready in `docs/plans/` — payment reliability, broadcast payment button, broadcast discount button
 - See: `session-summary.md` for details
 
 ## Collaboration Rules

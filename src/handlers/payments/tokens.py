@@ -6,6 +6,7 @@
     - payment_cancel — отменить платеж
 """
 
+import asyncio
 import logging
 from aiogram import Router, F
 from aiogram.types import CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -125,6 +126,10 @@ async def buy_tokens_handler(callback: CallbackQuery):
                 pass
 
             logger.info(f"Token redirect shown: user={user_id}, package={package['name']}")
+
+            # Авто-переход CRM: * → saw_pricing
+            from src.services.db.funnel_repo import auto_move_client_in_crm
+            asyncio.create_task(auto_move_client_in_crm(user_id, 'saw_pricing'))
             return
 
         # Создать платеж (скидка применяется внутри payment_service)
@@ -187,6 +192,10 @@ async def buy_tokens_handler(callback: CallbackQuery):
             f"Token payment created: user={user_id}, package={package['name']}, "
             f"amount={pay_amount}, payment_id={payment['payment_id']}"
         )
+
+        # Авто-переход CRM: * → saw_pricing
+        from src.services.db.funnel_repo import auto_move_client_in_crm
+        asyncio.create_task(auto_move_client_in_crm(user_id, 'saw_pricing'))
 
     except Exception as e:
         logger.error(f"Error creating token payment for user {user_id}: {e}", exc_info=True)

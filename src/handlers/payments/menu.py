@@ -6,6 +6,7 @@
     - Кнопка "💰 Пополнить баланс" из главного меню
 """
 
+import asyncio
 import logging
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
@@ -233,6 +234,10 @@ async def show_payment_menu(message: Message):
 
         logger.info(f"Payment menu shown to user {telegram_user_id}")
 
+        # Авто-переход CRM: * → saw_pricing (пользователь увидел тарифы)
+        from src.services.db.funnel_repo import auto_move_client_in_crm
+        asyncio.create_task(auto_move_client_in_crm(internal_user_id, 'saw_pricing'))
+
     except Exception as e:
         logger.error(f"Error showing payment menu for user {telegram_user_id}: {e}", exc_info=True)
         await message.answer(
@@ -300,6 +305,10 @@ async def show_payment_menu_callback(callback: CallbackQuery):
         )
 
         logger.info(f"Payment menu shown to user {user_id} (callback)")
+
+        # Авто-переход CRM: * → saw_pricing (пользователь увидел тарифы)
+        from src.services.db.funnel_repo import auto_move_client_in_crm
+        asyncio.create_task(auto_move_client_in_crm(user_id, 'saw_pricing'))
 
     except Exception as e:
         logger.error(f"Error showing payment menu callback for user {user_id}: {e}", exc_info=True)

@@ -774,7 +774,7 @@ async def move_client_to_stage(
 
 
 # Порядок системных стадий CRM-воронки (для авто-переходов)
-CRM_STAGE_ORDER = {'new': 0, 'tried': 1, 'trial_ended': 2, 'paid': 3}
+CRM_STAGE_ORDER = {'new': 0, 'tried': 1, 'trial_ended': 2, 'saw_pricing': 3, 'paid': 4}
 
 
 async def auto_move_client_in_crm(user_id: int, target_stage_key: str) -> bool:

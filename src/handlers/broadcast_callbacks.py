@@ -8,6 +8,7 @@
 - PollAnswer — ответ на неанонимный опрос рассылки
 """
 
+import asyncio
 import json
 import logging
 
@@ -197,6 +198,10 @@ async def handle_broadcast_discount_click(callback: CallbackQuery) -> None:
         # Показываем меню подписок со скидкой
         from src.handlers.payments.discount_menu import show_discount_subscription_menu
         await show_discount_subscription_menu(callback, user_id)
+
+        # Авто-переход CRM: * → saw_pricing (пользователь увидел тарифы со скидкой)
+        from src.services.db.funnel_repo import auto_move_client_in_crm
+        asyncio.create_task(auto_move_client_in_crm(user_id, 'saw_pricing'))
 
     except Exception as e:
         logger.error(f"Error handling broadcast discount click: {e}", exc_info=True)

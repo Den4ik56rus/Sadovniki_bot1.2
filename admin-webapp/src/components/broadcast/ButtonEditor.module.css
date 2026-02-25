@@ -380,6 +380,40 @@
   font-style: italic;
 }
 
+/* Duration hours+minutes inputs */
+.durationInputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.durationInputGroup {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.durationInput {
+  padding: 6px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-size: 12px;
+  width: 60px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.durationInput:focus {
+  border-color: var(--accent-primary);
+}
+
+.durationUnit {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
 .paymentHint {
   font-size: 11px;
   color: var(--text-secondary);

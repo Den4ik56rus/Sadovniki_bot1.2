@@ -21,7 +21,7 @@ async def upsert_broadcast_discount(
     option_key: str,
     discount_percent: int,
     bonus_tokens: int,
-    duration_hours: int,
+    duration_hours: float,
     bonus_tokens_mode: str = 'absolute',
 ) -> Dict[str, Any]:
     """
@@ -45,8 +45,14 @@ async def upsert_broadcast_discount(
                 discount_percent = EXCLUDED.discount_percent,
                 bonus_tokens     = EXCLUDED.bonus_tokens,
                 bonus_tokens_mode = EXCLUDED.bonus_tokens_mode,
-                activated_at     = NOW(),
-                expires_at       = NOW() + ($6 * INTERVAL '1 hour')
+                activated_at     = CASE
+                    WHEN user_broadcast_discounts.expires_at <= NOW() THEN NOW()
+                    ELSE user_broadcast_discounts.activated_at
+                END,
+                expires_at       = CASE
+                    WHEN user_broadcast_discounts.expires_at <= NOW() THEN NOW() + ($6 * INTERVAL '1 hour')
+                    ELSE user_broadcast_discounts.expires_at
+                END
             RETURNING *
             """,
             user_id, broadcast_id, option_key, discount_percent, bonus_tokens, duration_hours, bonus_tokens_mode,

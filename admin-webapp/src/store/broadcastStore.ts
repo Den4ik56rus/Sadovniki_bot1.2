@@ -52,6 +52,9 @@ interface BroadcastStore {
   fetchStatUsers: (id: number, type: 'button' | 'poll', key: string) => Promise<void>
   clearError: () => void
 
+  // Reminder actions
+  cancelReminder: (broadcastId: number, reminderId: number) => Promise<boolean>
+
   // Runs actions
   fetchRuns: (broadcastId: number) => Promise<void>
   resendBroadcast: (id: number, data: {
@@ -259,6 +262,10 @@ export const useBroadcastStore = create<BroadcastStore>()((set, get) => ({
 
   selectBroadcast: (broadcast: Broadcast | null) => {
     set({ currentBroadcast: broadcast, recipients: [], runs: [], currentRunId: null })
+    // Подгрузить полные данные (включая reminders) с сервера
+    if (broadcast) {
+      get().refreshBroadcast(broadcast.id)
+    }
   },
 
   refreshBroadcast: async (id: number) => {
@@ -292,6 +299,21 @@ export const useBroadcastStore = create<BroadcastStore>()((set, get) => ({
   },
 
   clearError: () => set({ error: null }),
+
+  // ═══════════════════════════════════════════════════════════════════
+  // REMINDERS — напоминалки
+  // ═══════════════════════════════════════════════════════════════════
+
+  cancelReminder: async (broadcastId: number, reminderId: number) => {
+    try {
+      await api.cancelReminder(broadcastId, reminderId)
+      await get().refreshBroadcast(broadcastId)
+      return true
+    } catch (e) {
+      set({ error: String(e) })
+      return false
+    }
+  },
 
   // ═══════════════════════════════════════════════════════════════════
   // RUNS — повторные запуски

@@ -209,8 +209,26 @@
 
 .rightColumn {
   min-width: 0;
-  position: sticky;
-  top: 24px;
+  max-height: calc(100vh - 60px - 32px - 24px - 40px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.rightColumn::-webkit-scrollbar {
+  width: 6px;
+}
+
+.rightColumn::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.rightColumn::-webkit-scrollbar-thumb {
+  background: var(--border-default);
+  border-radius: 3px;
+}
+
+.rightColumn::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 /* Responsive */

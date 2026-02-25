@@ -38,6 +38,28 @@ from src.services.db.pool import get_pool
 logger = logging.getLogger(__name__)
 
 
+def _clean_user_ids(raw) -> Optional[List[int]]:
+    """Нормализовать target_user_ids из JSONB: распарсить строки, оставить только int."""
+    if raw is None:
+        return None
+    while isinstance(raw, str):
+        raw = json.loads(raw)
+    if isinstance(raw, list):
+        seen = set()
+        result = []
+        for x in raw:
+            val = None
+            if isinstance(x, (int, float)):
+                val = int(x)
+            elif isinstance(x, str) and x.isdigit():
+                val = int(x)
+            if val is not None and val not in seen:
+                seen.add(val)
+                result.append(val)
+        return result if result else None
+    return None
+
+
 async def create_broadcast(
     title: str,
     message_text: Optional[str] = None,
@@ -81,12 +103,13 @@ async def create_broadcast(
 
 
 async def get_broadcasts(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
-    """Список рассылок, отсортированных по дате создания."""
+    """Список рассылок, отсортированных по дате создания (без напоминалок)."""
     pool = get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
             SELECT * FROM broadcasts
+            WHERE parent_broadcast_id IS NULL
             ORDER BY created_at DESC
             LIMIT $1 OFFSET $2
             """,
@@ -125,7 +148,7 @@ async def update_broadcast(
     scheduled_at: Optional[str] = None,
     inline_buttons: Optional[List[Dict[str, Any]]] = None,
 ) -> Optional[Dict[str, Any]]:
-    """Обновить черновик рассылки. Только для status='draft'."""
+    """Обновить рассылку. Все статусы кроме 'sending'."""
     pool = get_pool()
     async with pool.acquire() as conn:
         # Собираем SET-клаузы динамически
@@ -179,7 +202,7 @@ async def update_broadcast(
         params.append(broadcast_id)
         query = f"""
             UPDATE broadcasts SET {', '.join(sets)}
-            WHERE id = ${idx} AND status = 'draft'
+            WHERE id = ${idx} AND status != 'sending'
             RETURNING *
         """
         row = await conn.fetchrow(query, *params)
@@ -326,12 +349,9 @@ async def resolve_recipients(broadcast_id: int) -> int:
             await conn.execute(query, broadcast_id, funnel_id, stage_key, bot_tg_id or 0)
 
         elif target_type == 'manual':
-            user_ids = broadcast['target_user_ids']
+            user_ids = _clean_user_ids(broadcast['target_user_ids'])
             if not user_ids:
                 return 0
-            # JSONB может вернуться как строка из asyncpg
-            if isinstance(user_ids, str):
-                user_ids = json.loads(user_ids)
             query = """
                 INSERT INTO broadcast_recipients (broadcast_id, user_id, telegram_user_id)
                 SELECT $1, u.id, u.telegram_user_id
@@ -462,12 +482,15 @@ async def get_recipient_count_preview(
                 target_funnel_id, target_stage_key, bot_tg_id or 0,
             )
         elif target_type == 'manual' and target_user_ids:
+            clean_ids = _clean_user_ids(target_user_ids)
+            if not clean_ids:
+                return 0
             row = await conn.fetchrow(
                 """
                 SELECT COUNT(*) AS cnt FROM users
                 WHERE id = ANY($1::int[]) AND telegram_user_id != $2
                 """,
-                target_user_ids, bot_tg_id or 0,
+                clean_ids, bot_tg_id or 0,
             )
         else:
             return 0
@@ -476,13 +499,14 @@ async def get_recipient_count_preview(
 
 
 async def get_scheduled_broadcasts() -> List[Dict[str, Any]]:
-    """Получить рассылки, готовые к отправке (scheduled_at <= NOW())."""
+    """Получить рассылки, готовые к отправке (scheduled_at <= NOW()). Без напоминалок."""
     pool = get_pool()
     async with pool.acquire() as conn:
         rows = await conn.fetch(
             """
             SELECT * FROM broadcasts
             WHERE status = 'scheduled' AND scheduled_at <= NOW()
+              AND parent_broadcast_id IS NULL
             ORDER BY scheduled_at
             """
         )
@@ -912,11 +936,9 @@ async def resolve_recipients_for_run(run_id: int) -> int:
             await conn.execute(query, broadcast_id, run_id, funnel_id, stage_key, bot_tg_id or 0)
 
         elif target_type == 'manual':
-            user_ids = run['target_user_ids']
+            user_ids = _clean_user_ids(run['target_user_ids'])
             if not user_ids:
                 return 0
-            if isinstance(user_ids, str):
-                user_ids = json.loads(user_ids)
             query = """
                 INSERT INTO broadcast_recipients (broadcast_id, run_id, user_id, telegram_user_id)
                 SELECT $1, $2, u.id, u.telegram_user_id
@@ -1163,10 +1185,322 @@ async def resolve_run_id_from_poll(telegram_poll_id: str) -> Optional[int]:
     return row['run_id'] if row else None
 
 
+# ═══════════════════════════════════════════════════════════════════════════════
+# REMINDER BROADCASTS — напоминалки (дочерние рассылки)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+async def get_reminders_for_broadcast(broadcast_id: int) -> List[Dict[str, Any]]:
+    """Получить все напоминалки для рассылки, отсортированные по sort_order."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT * FROM broadcasts
+            WHERE parent_broadcast_id = $1
+            ORDER BY reminder_sort_order
+            """,
+            broadcast_id,
+        )
+    return [_row_to_dict(row) for row in rows]
+
+
+async def create_reminder(
+    parent_id: int,
+    sort_order: int = 0,
+    message_text: Optional[str] = None,
+    photo_path: Optional[str] = None,
+    inline_buttons: Optional[List[Dict[str, Any]]] = None,
+    poll_question: Optional[str] = None,
+    poll_options: Optional[List[str]] = None,
+    poll_is_anonymous: bool = True,
+    poll_allows_multiple: bool = False,
+    offset_hours: float = 2.0,
+    trigger_type: str = 'after_send',
+    exclude_bought: bool = False,
+    exclude_clicked: Optional[List[str]] = None,
+) -> Dict[str, Any]:
+    """Создать напоминалку как дочернюю запись в broadcasts."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO broadcasts (
+                title, message_text, photo_path,
+                inline_buttons,
+                poll_question, poll_options, poll_is_anonymous, poll_allows_multiple,
+                target_type, status,
+                parent_broadcast_id, reminder_sort_order,
+                reminder_offset_hours, reminder_trigger_type,
+                reminder_exclude_bought, reminder_exclude_clicked,
+                reminder_status
+            )
+            VALUES (
+                $1, $2, $3,
+                $4::jsonb,
+                $5, $6::jsonb, $7, $8,
+                'all', 'draft',
+                $9, $10,
+                $11, $12,
+                $13, $14::jsonb,
+                'pending'
+            )
+            RETURNING *
+            """,
+            f"Напоминание #{sort_order + 1}",
+            message_text, photo_path,
+            json.dumps(inline_buttons) if inline_buttons else None,
+            poll_question,
+            json.dumps(poll_options) if poll_options else None,
+            poll_is_anonymous, poll_allows_multiple,
+            parent_id, sort_order,
+            offset_hours, trigger_type,
+            exclude_bought,
+            json.dumps(exclude_clicked) if exclude_clicked else None,
+        )
+    return _row_to_dict(row)
+
+
+async def update_reminder(
+    reminder_id: int,
+    data: Dict[str, Any],
+) -> Optional[Dict[str, Any]]:
+    """Обновить напоминалку. Только если parent_broadcast_id IS NOT NULL."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        sets = []
+        params = []
+        idx = 1
+
+        simple_fields = {
+            'message_text': data.get('message_text'),
+            'photo_path': data.get('photo_path'),
+            'poll_question': data.get('poll_question'),
+            'poll_is_anonymous': data.get('poll_is_anonymous'),
+            'poll_allows_multiple': data.get('poll_allows_multiple'),
+            'reminder_sort_order': data.get('sort_order'),
+            'reminder_offset_hours': data.get('offset_hours'),
+            'reminder_trigger_type': data.get('trigger_type'),
+            'reminder_exclude_bought': data.get('exclude_bought'),
+        }
+
+        for field, value in simple_fields.items():
+            if value is not None:
+                sets.append(f"{field} = ${idx}")
+                params.append(value)
+                idx += 1
+
+        # JSON-поля
+        if 'inline_buttons' in data:
+            sets.append(f"inline_buttons = ${idx}::jsonb")
+            params.append(json.dumps(data['inline_buttons']) if data['inline_buttons'] else None)
+            idx += 1
+
+        if 'poll_options' in data:
+            sets.append(f"poll_options = ${idx}::jsonb")
+            params.append(json.dumps(data['poll_options']) if data['poll_options'] else None)
+            idx += 1
+
+        if 'exclude_clicked_buttons' in data:
+            sets.append(f"reminder_exclude_clicked = ${idx}::jsonb")
+            params.append(json.dumps(data['exclude_clicked_buttons']) if data['exclude_clicked_buttons'] else None)
+            idx += 1
+
+        if not sets:
+            return await get_broadcast(reminder_id)
+
+        params.append(reminder_id)
+        query = f"""
+            UPDATE broadcasts SET {', '.join(sets)}
+            WHERE id = ${idx} AND parent_broadcast_id IS NOT NULL
+            RETURNING *
+        """
+        row = await conn.fetchrow(query, *params)
+
+    if not row:
+        return None
+    return _row_to_dict(row)
+
+
+async def delete_reminder(reminder_id: int) -> bool:
+    """Удалить напоминалку."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM broadcasts WHERE id = $1 AND parent_broadcast_id IS NOT NULL",
+            reminder_id,
+        )
+    return result == "DELETE 1"
+
+
+async def sync_reminders(broadcast_id: int, reminders_data: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Синхронизировать напоминалки: создать новые, обновить существующие, удалить лишние.
+    Вызывается при сохранении рассылки (create/update).
+    """
+    existing = await get_reminders_for_broadcast(broadcast_id)
+    existing_ids = {r['id'] for r in existing}
+    incoming_ids = {r['id'] for r in reminders_data if r.get('id')}
+
+    # Удалить те, что больше не в списке
+    for eid in existing_ids - incoming_ids:
+        await delete_reminder(eid)
+
+    result = []
+    for i, rdata in enumerate(reminders_data):
+        rdata['sort_order'] = i
+        if rdata.get('id') and rdata['id'] in existing_ids:
+            # Обновить
+            updated = await update_reminder(rdata['id'], rdata)
+            if updated:
+                result.append(updated)
+        else:
+            # Создать
+            created = await create_reminder(
+                parent_id=broadcast_id,
+                sort_order=i,
+                message_text=rdata.get('message_text'),
+                photo_path=rdata.get('photo_path'),
+                inline_buttons=rdata.get('inline_buttons'),
+                poll_question=rdata.get('poll_question'),
+                poll_options=rdata.get('poll_options'),
+                poll_is_anonymous=rdata.get('poll_is_anonymous', True),
+                poll_allows_multiple=rdata.get('poll_allows_multiple', False),
+                offset_hours=float(rdata.get('offset_hours', 2)),
+                trigger_type=rdata.get('trigger_type', 'after_send'),
+                exclude_bought=rdata.get('exclude_bought', False),
+                exclude_clicked=rdata.get('exclude_clicked_buttons'),
+            )
+            result.append(created)
+
+    return result
+
+
+async def get_due_reminders() -> List[Dict[str, Any]]:
+    """Получить напоминалки, готовые к отправке (reminder_scheduled_at <= NOW())."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT * FROM broadcasts
+            WHERE parent_broadcast_id IS NOT NULL
+              AND reminder_status = 'scheduled'
+              AND reminder_scheduled_at <= NOW()
+            ORDER BY reminder_scheduled_at
+            """
+        )
+    return [_row_to_dict(row) for row in rows]
+
+
+async def update_reminder_status(
+    reminder_id: int,
+    status: str,
+    scheduled_at=None,
+) -> None:
+    """Обновить статус напоминалки."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        if scheduled_at:
+            await conn.execute(
+                """
+                UPDATE broadcasts
+                SET reminder_status = $1, reminder_scheduled_at = $2
+                WHERE id = $3 AND parent_broadcast_id IS NOT NULL
+                """,
+                status, scheduled_at, reminder_id,
+            )
+        else:
+            await conn.execute(
+                """
+                UPDATE broadcasts SET reminder_status = $1
+                WHERE id = $2 AND parent_broadcast_id IS NOT NULL
+                """,
+                status, reminder_id,
+            )
+
+
+async def cancel_broadcast_reminders(broadcast_id: int) -> None:
+    """Отменить все pending/scheduled напоминалки при отмене родительской рассылки."""
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            """
+            UPDATE broadcasts SET reminder_status = 'cancelled'
+            WHERE parent_broadcast_id = $1
+              AND reminder_status IN ('pending', 'scheduled')
+            """,
+            broadcast_id,
+        )
+
+
+async def resolve_reminder_recipients(
+    reminder_id: int,
+    parent_id: int,
+    exclude_bought: bool = False,
+    exclude_clicked: Optional[List[str]] = None,
+) -> int:
+    """
+    Собрать получателей для напоминалки:
+    1. Все кто получил родительскую рассылку (status='sent')
+    2. Исключить купивших (если exclude_bought)
+    3. Исключить кликнувших определённые кнопки (если exclude_clicked)
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        # Базовый запрос: получатели родителя со статусом 'sent'
+        query = """
+            INSERT INTO broadcast_recipients (broadcast_id, user_id, telegram_user_id)
+            SELECT $1, br.user_id, br.telegram_user_id
+            FROM broadcast_recipients br
+            WHERE br.broadcast_id = $2 AND br.status = 'sent'
+        """
+        params = [reminder_id, parent_id]
+        idx = 3
+
+        # Исключить купивших (есть оплата после начала родительской рассылки)
+        if exclude_bought:
+            query += f"""
+                AND br.user_id NOT IN (
+                    SELECT p.user_id FROM payments p
+                    WHERE p.status = 'succeeded'
+                      AND p.created_at >= (SELECT started_at FROM broadcasts WHERE id = ${idx})
+                )
+            """
+            params.append(parent_id)
+            idx += 1
+
+        # Исключить кликнувших определённые кнопки
+        if exclude_clicked and len(exclude_clicked) > 0:
+            query += f"""
+                AND br.user_id NOT IN (
+                    SELECT bbc.user_id FROM broadcast_button_clicks bbc
+                    WHERE bbc.broadcast_id = ${idx} AND bbc.option_key = ANY(${idx + 1}::text[])
+                )
+            """
+            params.extend([parent_id, exclude_clicked])
+            idx += 2
+
+        query += " ON CONFLICT (broadcast_id, run_id, user_id) DO NOTHING"
+
+        await conn.execute(query, *params)
+
+        # Посчитать и обновить total_recipients
+        count_row = await conn.fetchrow(
+            "SELECT COUNT(*) AS cnt FROM broadcast_recipients WHERE broadcast_id = $1",
+            reminder_id,
+        )
+        total = count_row['cnt'] if count_row else 0
+        await conn.execute(
+            "UPDATE broadcasts SET total_recipients = $1 WHERE id = $2",
+            total, reminder_id,
+        )
+        return total
+
+
 def _row_to_dict(row) -> Dict[str, Any]:
     """Конвертация asyncpg.Record в dict с сериализацией datetime и JSON."""
     d = dict(row)
-    for key in ('created_at', 'started_at', 'completed_at', 'scheduled_at'):
+    for key in ('created_at', 'started_at', 'completed_at', 'scheduled_at', 'reminder_scheduled_at'):
         if key in d and d[key] is not None:
             d[key] = d[key].isoformat()
     return d

@@ -423,6 +423,14 @@ async def execute_broadcast(broadcast_id: int, run_id: Optional[int] = None) -> 
         f"{total_sent} sent, {total_failed} failed out of {len(recipients)}"
     )
 
+    # Планируем напоминалки для родительских рассылок (не для run-ов и не для самих напоминалок)
+    if not run_id and current and current['status'] != 'cancelled' and not current.get('parent_broadcast_id'):
+        try:
+            from src.services.reminder_scheduler import compute_reminder_schedules
+            await compute_reminder_schedules(broadcast_id)
+        except Exception as e:
+            logger.error(f"Failed to compute reminder schedules for broadcast {broadcast_id}: {e}", exc_info=True)
+
 
 async def send_to_single_user(broadcast_id: int, user_id: int, telegram_user_id: int) -> bool:
     """

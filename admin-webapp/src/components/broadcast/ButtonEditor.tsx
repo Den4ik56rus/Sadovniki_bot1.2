@@ -53,27 +53,38 @@ function buildTokenButtonText(pkg: TokenPackage, customPrice: number | null | un
     : `🎁 ${pkg.tokens_amount} токенов — ${price}₽`
 }
 
+function formatDurationHours(durationHours: number | null | undefined): string {
+  const total = durationHours ?? 24
+  const h = Math.floor(total)
+  const m = Math.round((total % 1) * 60)
+  if (m === 0) return `${h}ч`
+  if (h === 0) return `${m}мин`
+  return `${h}ч ${m}мин`
+}
+
 function buildDiscountButtonText(discountPercent: number | null | undefined, durationHours: number | null | undefined, bonusTokens?: number | null, bonusMode?: 'absolute' | 'percent'): string {
   const pct = discountPercent ?? 0
-  const hours = durationHours ?? 24
+  const timeStr = formatDurationHours(durationHours)
   if (pct > 0 && bonusTokens && bonusTokens > 0) {
     return bonusMode === 'percent'
       ? `🏷️ Скидка ${pct}% + ${bonusTokens}% токенов`
       : `🏷️ Скидка ${pct}% + ${bonusTokens} токенов`
   }
-  if (pct > 0) return `🏷️ Скидка ${pct}% на ${hours}ч`
+  if (pct > 0) return `🏷️ Скидка ${pct}% на ${timeStr}`
   if (bonusTokens && bonusTokens > 0) {
     return bonusMode === 'percent'
       ? `🎁 +${bonusTokens}% бонус-токенов`
       : `🎁 +${bonusTokens} бонус-токенов`
   }
-  return `🏷️ Скидка на ${hours}ч`
+  return `🏷️ Скидка на ${timeStr}`
 }
 
 function buildDiscountMessageHtml(discountPercent: number | null | undefined, durationHours: number | null | undefined, bonusTokens: number | null | undefined, bonusMode?: 'absolute' | 'percent'): string {
   const pct = discountPercent ?? 0
   const hours = durationHours ?? 24
-  const timeStr = hours >= 24 ? `${Math.floor(hours / 24)} ${Math.floor(hours / 24) === 1 ? 'день' : Math.floor(hours / 24) < 5 ? 'дня' : 'дней'}` : `${hours} часов`
+  const timeStr = hours >= 24 && hours % 1 === 0
+    ? `${Math.floor(hours / 24)} ${Math.floor(hours / 24) === 1 ? 'день' : Math.floor(hours / 24) < 5 ? 'дня' : 'дней'}`
+    : formatDurationHours(hours)
   let bonusLine = ''
   if (bonusTokens && bonusTokens > 0) {
     if (bonusMode === 'percent') {
@@ -628,25 +639,60 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                                 />
                               </div>
                               <div className={styles.paymentFieldGroup}>
-                                <label className={styles.paymentFieldLabel}>Срок (часов)</label>
-                                <input
-                                  className={styles.urlInput}
-                                  type="number"
-                                  placeholder="24"
-                                  value={btn.discount_duration_hours ?? ''}
-                                  min={1}
-                                  onChange={(e) => {
-                                    const hours = e.target.value ? Number(e.target.value) : null
-                                    const autoText = buildDiscountButtonText(btn.discount_percent, hours, btn.discount_bonus_tokens, btn.discount_bonus_tokens_mode)
-                                    updateButton(rowIdx, btnIdx, {
-                                      discount_duration_hours: hours,
-                                      text: autoText,
-                                    })
-                                    if (onAutoFillMessage) {
-                                      onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, hours, btn.discount_bonus_tokens, btn.discount_bonus_tokens_mode))
-                                    }
-                                  }}
-                                />
+                                <label className={styles.paymentFieldLabel}>Срок</label>
+                                <div className={styles.durationInputs}>
+                                  <label className={styles.durationInputGroup}>
+                                    <input
+                                      className={styles.durationInput}
+                                      type="number"
+                                      placeholder="24"
+                                      value={btn.discount_duration_hours != null ? Math.floor(btn.discount_duration_hours) : ''}
+                                      min={0}
+                                      step={1}
+                                      onChange={(e) => {
+                                        const h = e.target.value !== '' ? parseInt(e.target.value) || 0 : 0
+                                        const oldMin = btn.discount_duration_hours != null ? Math.round((btn.discount_duration_hours % 1) * 60) : 0
+                                        const totalHours = h + oldMin / 60
+                                        const hours = totalHours > 0 ? totalHours : null
+                                        const autoText = buildDiscountButtonText(btn.discount_percent, hours, btn.discount_bonus_tokens, btn.discount_bonus_tokens_mode)
+                                        updateButton(rowIdx, btnIdx, {
+                                          discount_duration_hours: hours,
+                                          text: autoText,
+                                        })
+                                        if (onAutoFillMessage) {
+                                          onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, hours, btn.discount_bonus_tokens, btn.discount_bonus_tokens_mode))
+                                        }
+                                      }}
+                                    />
+                                    <span className={styles.durationUnit}>ч</span>
+                                  </label>
+                                  <label className={styles.durationInputGroup}>
+                                    <input
+                                      className={styles.durationInput}
+                                      type="number"
+                                      placeholder="0"
+                                      value={btn.discount_duration_hours != null ? Math.round((btn.discount_duration_hours % 1) * 60) : ''}
+                                      min={0}
+                                      max={59}
+                                      step={5}
+                                      onChange={(e) => {
+                                        const m = e.target.value !== '' ? Math.min(parseInt(e.target.value) || 0, 59) : 0
+                                        const oldH = btn.discount_duration_hours != null ? Math.floor(btn.discount_duration_hours) : 0
+                                        const totalHours = oldH + m / 60
+                                        const hours = totalHours > 0 ? totalHours : null
+                                        const autoText = buildDiscountButtonText(btn.discount_percent, hours, btn.discount_bonus_tokens, btn.discount_bonus_tokens_mode)
+                                        updateButton(rowIdx, btnIdx, {
+                                          discount_duration_hours: hours,
+                                          text: autoText,
+                                        })
+                                        if (onAutoFillMessage) {
+                                          onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, hours, btn.discount_bonus_tokens, btn.discount_bonus_tokens_mode))
+                                        }
+                                      }}
+                                    />
+                                    <span className={styles.durationUnit}>мин</span>
+                                  </label>
+                                </div>
                               </div>
                             </div>
                             <div className={styles.bonusSection}>
@@ -724,7 +770,7 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                             </div>
                             {btn.discount_percent && btn.discount_duration_hours && (
                               <div className={styles.paymentHint}>
-                                При нажатии: откроется меню тарифов со скидкой <b>{btn.discount_percent}%</b> на <b>{btn.discount_duration_hours}ч</b>
+                                При нажатии: откроется меню тарифов со скидкой <b>{btn.discount_percent}%</b> на <b>{formatDurationHours(btn.discount_duration_hours)}</b>
                                 {btn.discount_bonus_tokens ? (
                                   btn.discount_bonus_tokens_mode === 'percent'
                                     ? ` + ${btn.discount_bonus_tokens}% бонус-токенов от тарифа`

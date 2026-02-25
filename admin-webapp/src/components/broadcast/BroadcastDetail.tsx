@@ -66,6 +66,7 @@ export function BroadcastDetail({ onEdit }: Props) {
     currentRunId,
     fetchRuns,
     setCurrentRun,
+    cancelReminder,
   } = useBroadcastStore()
 
   const [showResendDialog, setShowResendDialog] = useState(false)
@@ -313,21 +314,95 @@ export function BroadcastDetail({ onEdit }: Props) {
         </div>
       )}
 
+      {/* Reminders */}
+      {broadcast.reminders && broadcast.reminders.length > 0 && (
+        <div className={styles.previewSection}>
+          <h4 className={styles.sectionTitle}>Напоминалки ({broadcast.reminders.length})</h4>
+          <div className={styles.remindersList}>
+            {broadcast.reminders.map((r, idx) => {
+              const statusLabels: Record<string, string> = {
+                pending: 'Ожидает',
+                scheduled: 'Запланирована',
+                sending: 'Отправляется',
+                sent: 'Отправлена',
+                cancelled: 'Отменена',
+                skipped: 'Пропущена',
+              }
+              const h = Math.floor(r.offset_hours)
+              const m = Math.round((r.offset_hours % 1) * 60)
+              const timeStr = m === 0 ? `${h}ч` : h === 0 ? `${m}мин` : `${h}ч ${m}мин`
+              const triggerLabel = r.trigger_type === 'before_discount_end'
+                ? `за ${timeStr} до конца скидки`
+                : `через ${timeStr} после отправки`
+
+              return (
+                <div key={r.id ?? idx} className={styles.reminderCard}>
+                  <div className={styles.reminderHeader}>
+                    <span className={styles.reminderTitle}>#{idx + 1} — {triggerLabel}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <span className={`${styles.reminderBadge} ${styles[`reminderBadge_${r.reminder_status || 'pending'}`]}`}>
+                        {statusLabels[r.reminder_status || 'pending'] || r.reminder_status}
+                      </span>
+                      {r.reminder_status === 'scheduled' && r.id && (
+                        <button
+                          className={styles.cancelBtn}
+                          style={{ fontSize: '11px', padding: '2px 8px' }}
+                          onClick={async () => {
+                            if (!confirm('Отменить напоминалку?')) return
+                            await cancelReminder(broadcast.id, r.id!)
+                          }}
+                        >
+                          Отменить
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {r.reminder_scheduled_at && (
+                    <div className={styles.reminderInfo}>
+                      Отправка: {formatDateTime(r.reminder_scheduled_at)}
+                    </div>
+                  )}
+                  {r.reminder_status === 'sent' && (
+                    <div className={styles.reminderInfo}>
+                      Доставлено: {r.sent_count ?? 0} | Ошибок: {r.failed_count ?? 0} | Всего: {r.total_recipients ?? 0}
+                    </div>
+                  )}
+                  {r.exclude_bought && (
+                    <div className={styles.reminderInfo}>Исключая купивших</div>
+                  )}
+                  {r.exclude_clicked_buttons && r.exclude_clicked_buttons.length > 0 && (
+                    <div className={styles.reminderInfo}>
+                      Исключая кликнувших: {r.exclude_clicked_buttons.join(', ')}
+                    </div>
+                  )}
+                  {r.message_text && (
+                    <div
+                      className={styles.reminderMessage}
+                      dangerouslySetInnerHTML={{ __html: r.message_text }}
+                    />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Actions */}
       <div className={styles.actions}>
+        {broadcast.status !== 'sending' && (
+          <button className={styles.editBtn} onClick={onEdit}>
+            Редактировать
+          </button>
+        )}
         {broadcast.status === 'draft' && (
-          <>
-            <button className={styles.editBtn} onClick={onEdit}>
-              Редактировать
-            </button>
-            <button
-              className={styles.sendBtn}
-              onClick={handleSend}
-              disabled={isSending}
-            >
-              {isSending ? 'Отправка...' : 'Отправить'}
-            </button>
-          </>
+          <button
+            className={styles.sendBtn}
+            onClick={handleSend}
+            disabled={isSending}
+          >
+            {isSending ? 'Отправка...' : 'Отправить'}
+          </button>
         )}
         {broadcast.status === 'scheduled' && (
           <button className={styles.cancelBtn} onClick={handleCancel}>

@@ -2,13 +2,24 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react'
 import { useBroadcastStore } from '@/store/broadcastStore'
-import type { Broadcast, BroadcastButton, BroadcastTargetType } from '@/types'
+import type { Broadcast, BroadcastButton, BroadcastReminder, BroadcastTargetType } from '@/types'
 import { RecipientSelector } from './RecipientSelector'
 import { MessageEditor } from './MessageEditor'
 import { PhotoUploader } from './PhotoUploader'
 import { PollEditor } from './PollEditor'
 import { ButtonEditor } from './ButtonEditor'
+import { ReminderEditor } from './ReminderEditor'
 import styles from './BroadcastForm.module.css'
+
+/** Safely parse a field that may come as a JSON string from the API */
+function parseJsonField<T>(value: T | string | null | undefined, fallback: T): T {
+  if (value == null) return fallback
+  if (typeof value === 'string') {
+    try { return JSON.parse(value) } catch { return fallback }
+  }
+  if (!Array.isArray(value) && typeof value !== 'object') return fallback
+  return value as T
+}
 
 interface Props {
   broadcast: Broadcast | null
@@ -39,14 +50,17 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
 
   // Poll fields
   const [pollQuestion, setPollQuestion] = useState(broadcast?.poll_question || '')
-  const [pollOptions, setPollOptions] = useState<string[]>(broadcast?.poll_options || ['', ''])
+  const [pollOptions, setPollOptions] = useState<string[]>(parseJsonField(broadcast?.poll_options, ['', '']))
   const [pollAllowsMultiple, setPollAllowsMultiple] = useState(broadcast?.poll_allows_multiple ?? false)
 
   // Inline buttons
-  const [inlineButtons, setInlineButtons] = useState<BroadcastButton[]>(broadcast?.inline_buttons || [])
+  const [inlineButtons, setInlineButtons] = useState<BroadcastButton[]>(parseJsonField(broadcast?.inline_buttons, []))
   // Последний авто-заполненный текст — если messageText совпадает с ним, разрешаем авто-обновление
   const lastAutoFilledRef = useRef<string>('')
   const [messageForceRefresh, setMessageForceRefresh] = useState(0)
+
+  // Reminders (напоминалки)
+  const [reminders, setReminders] = useState<BroadcastReminder[]>(broadcast?.reminders || [])
 
   // Schedule
   const [scheduleEnabled, setScheduleEnabled] = useState(!!broadcast?.scheduled_at)
@@ -71,9 +85,10 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
       setTargetStageKey(broadcast.target_stage_key ?? null)
       setTargetUserIds(broadcast.target_user_ids || [])
       setPollQuestion(broadcast.poll_question || '')
-      setPollOptions(broadcast.poll_options || ['', ''])
+      setPollOptions(parseJsonField(broadcast.poll_options, ['', '']))
       setPollAllowsMultiple(broadcast.poll_allows_multiple ?? false)
-      setInlineButtons(broadcast.inline_buttons || [])
+      setInlineButtons(parseJsonField(broadcast.inline_buttons, []))
+      setReminders(broadcast.reminders || [])
       setScheduleEnabled(!!broadcast.scheduled_at)
       setScheduledAt(broadcast.scheduled_at ? broadcast.scheduled_at.slice(0, 16) : '')
     }
@@ -99,6 +114,7 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
       target_stage_key: targetType === 'funnel_stage' ? targetStageKey : null,
       target_user_ids: targetType === 'manual' ? targetUserIds : null,
       scheduled_at: scheduleEnabled && scheduledAt ? scheduledAt : null,
+      reminders: reminders.length > 0 ? reminders : undefined,
     }
   }, [
     title, messageText, photoPath,
@@ -106,6 +122,7 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
     inlineButtons,
     targetType, targetInviteLinkId, targetFunnelId, targetStageKey, targetUserIds,
     scheduleEnabled, scheduledAt,
+    reminders,
   ])
 
   const hasContent = messageText.trim() || photoPath || pollQuestion.trim()
@@ -297,6 +314,16 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
             min={new Date().toISOString().slice(0, 16)}
           />
         )}
+      </div>
+
+      {/* Reminders */}
+      <div className={styles.section}>
+        <ReminderEditor
+          reminders={reminders}
+          onChange={setReminders}
+          parentButtons={inlineButtons}
+          hasDiscountButton={inlineButtons.some(b => b.type === 'discount')}
+        />
       </div>
 
       {/* Actions */}

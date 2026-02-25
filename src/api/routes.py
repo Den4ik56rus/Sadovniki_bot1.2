@@ -278,6 +278,10 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/runs/{run_id:\d+}/stats/users", broadcasts.get_run_stat_users)
     app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/runs/{run_id:\d+}/recipients", broadcasts.get_run_recipients)
 
+    # Broadcasts: Напоминалки (reminders)
+    app.router.add_get(r"/api/admin/broadcasts/{id:\d+}/reminders", broadcasts.get_broadcast_reminders)
+    app.router.add_post(r"/api/admin/broadcasts/{id:\d+}/reminders/{rid:\d+}/cancel", broadcasts.cancel_reminder)
+
     # SSE: Broadcast progress
     app.router.add_get(r"/api/admin/events/broadcast/{broadcast_id:\d+}", sse.broadcast_stream)
 

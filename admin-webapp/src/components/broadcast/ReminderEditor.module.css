@@ -1,0 +1,282 @@
+/* Reminder Editor Styles */
+
+.container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+}
+
+.addButton {
+  padding: 6px 14px;
+  border: 1px dashed var(--border-default);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--accent-primary);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.addButton:hover {
+  border-color: var(--accent-primary);
+  background: var(--bg-tertiary);
+}
+
+/* Reminder Card */
+.card {
+  border: 1px solid var(--border-default);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--bg-primary);
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  background: var(--bg-secondary);
+  cursor: pointer;
+  user-select: none;
+  gap: 10px;
+}
+
+.cardHeader:hover {
+  background: var(--bg-tertiary);
+}
+
+.cardHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.expandIcon {
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.2s;
+  flex-shrink: 0;
+}
+
+.expandIconOpen {
+  transform: rotate(90deg);
+}
+
+.cardTitle {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cardSummary {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.cardStatus {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+  flex-shrink: 0;
+}
+
+.status_pending { background: #e5e7eb; color: #6b7280; }
+.status_scheduled { background: #dbeafe; color: #1d4ed8; }
+.status_sending { background: #fef3c7; color: #d97706; }
+.status_sent { background: #d1fae5; color: #059669; }
+.status_cancelled { background: #fee2e2; color: #dc2626; }
+.status_skipped { background: #f3f4f6; color: #9ca3af; }
+
+.deleteButton {
+  padding: 4px 8px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.deleteButton:hover {
+  background: #fee2e2;
+  color: #dc2626;
+}
+
+/* Card Body (expanded) */
+.cardBody {
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-top: 1px solid var(--border-default);
+}
+
+/* Timing row */
+.timingRow {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+  flex-wrap: wrap;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.fieldLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.select {
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.select:focus {
+  border-color: var(--accent-primary);
+}
+
+.numberInput {
+  padding: 8px 12px;
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+  font-size: 13px;
+  width: 70px;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  outline: none;
+}
+
+.numberInput:focus {
+  border-color: var(--accent-primary);
+}
+
+.timeInputs {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.timeInputGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.timeUnit {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* Filters */
+.filtersSection {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.filterLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.checkboxRow input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  accent-color: var(--accent-primary);
+}
+
+.buttonChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.chip {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+  border: 1px solid var(--border-default);
+  background: var(--bg-primary);
+  color: var(--text-secondary);
+}
+
+.chipActive {
+  background: var(--accent-primary);
+  color: white;
+  border-color: var(--accent-primary);
+}
+
+/* Content section */
+.contentSection {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.contentLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.empty {
+  padding: 20px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}

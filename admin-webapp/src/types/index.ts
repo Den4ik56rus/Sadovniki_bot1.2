@@ -1225,6 +1225,7 @@ export interface Broadcast {
   created_at: string
   started_at: string | null
   completed_at: string | null
+  reminders?: BroadcastReminder[]
 }
 
 export interface BroadcastsResponse {
@@ -1275,6 +1276,7 @@ export interface CreateBroadcastDto {
   target_stage_key?: string | null
   target_user_ids?: number[] | null
   scheduled_at?: string | null
+  reminders?: BroadcastReminder[]
 }
 
 // Broadcast Stats Types
@@ -1312,6 +1314,32 @@ export interface StatUser {
 
 export interface BroadcastStatsUsersResponse {
   users: StatUser[]
+}
+
+// Broadcast Reminders (напоминалки)
+export type ReminderTriggerType = 'after_send' | 'before_discount_end'
+export type ReminderStatus = 'pending' | 'scheduled' | 'sending' | 'sent' | 'cancelled' | 'skipped'
+
+export interface BroadcastReminder {
+  id?: number
+  sort_order: number
+  message_text: string | null
+  photo_path: string | null
+  inline_buttons: BroadcastButton[] | null
+  poll_question: string | null
+  poll_options: string[] | null
+  poll_is_anonymous: boolean
+  poll_allows_multiple: boolean
+  offset_hours: number
+  trigger_type: ReminderTriggerType
+  exclude_bought: boolean
+  exclude_clicked_buttons: string[] | null
+  // Read-only status
+  reminder_status?: ReminderStatus
+  reminder_scheduled_at?: string | null
+  sent_count?: number
+  failed_count?: number
+  total_recipients?: number
 }
 
 // Broadcast Runs (повторные запуски)

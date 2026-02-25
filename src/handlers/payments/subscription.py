@@ -72,6 +72,19 @@ async def buy_subscription_handler(callback: CallbackQuery):
             )
             return
 
+        # --- Проверяем бонусные токены из рассылки ---
+        from src.services.db.discount_repo import get_user_active_broadcast_discount
+        import math
+        broadcast_disc = await get_user_active_broadcast_discount(user_id)
+        bonus_tokens = 0
+        if broadcast_disc:
+            raw_bonus = broadcast_disc.get('bonus_tokens', 0) or 0
+            bonus_mode = broadcast_disc.get('bonus_tokens_mode', 'absolute')
+            if bonus_mode == 'percent' and raw_bonus > 0:
+                bonus_tokens = math.ceil(plan.get('tokens_included', 0) * raw_bonus / 100)
+            else:
+                bonus_tokens = raw_bonus
+
         # --- Режим перенаправления на менеджера (тестовый запуск) ---
         if settings.PAYMENTS_REDIRECT_MODE:
             from urllib.parse import quote
@@ -83,11 +96,16 @@ async def buy_subscription_handler(callback: CallbackQuery):
             pre_filled = f"Здравствуйте, хочу оформить подписку «{plan['name']}» ({price}₽/мес)"
             link = f"https://t.me/{contact}?text={quote(pre_filled)}"
 
+            if bonus_tokens > 0:
+                limit_line = f"🎁 Лимит: {qty} + {bonus_tokens} бонус = <b>{qty + bonus_tokens} токенов</b> в месяц"
+            else:
+                limit_line = f"🎁 Лимит: {pluralize_questions(qty)} в месяц"
+
             sub_text = (
                 f"📅 Подписка: <b>{plan['name']}</b>\n"
                 f"💰 Цена: {price}₽/мес\n"
                 f"⏱ Срок: {plan['duration_days']} дней\n"
-                f"🎁 Лимит: {pluralize_questions(qty)} в месяц\n\n"
+                f"{limit_line}\n\n"
                 f"Для оформления подписки напишите нашему менеджеру — "
                 f"нажмите кнопку ниже."
             )
@@ -147,6 +165,11 @@ async def buy_subscription_handler(callback: CallbackQuery):
 
         qty = plan.get('tokens_included', 0)
 
+        if bonus_tokens > 0:
+            limit_line = f"🎁 Лимит: {qty} + {bonus_tokens} бонус = <b>{qty + bonus_tokens} токенов</b> в месяц"
+        else:
+            limit_line = f"🎁 Лимит: {pluralize_questions(qty)} в месяц"
+
         # Текст с учётом скидки
         if payment.get("discount_percent"):
             original = int(payment['original_amount'])
@@ -154,7 +177,7 @@ async def buy_subscription_handler(callback: CallbackQuery):
                 f"📅 Подписка: {plan['name']}\n"
                 f"💰 Цена: <s>{original}₽</s> → <b>{pay_amount}₽</b>/мес (скидка {payment['discount_percent']}%)\n"
                 f"⏱ Срок: {plan['duration_days']} дней\n"
-                f"🎁 Лимит: {pluralize_questions(qty)} в месяц\n\n"
+                f"{limit_line}\n\n"
                 f"Нажмите кнопку ниже для оплаты.\n"
                 f"После успешной оплаты подписка будет активирована автоматически.\n\n"
                 f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}"
@@ -164,7 +187,7 @@ async def buy_subscription_handler(callback: CallbackQuery):
                 f"📅 Подписка: {plan['name']}\n"
                 f"💰 Сумма: {pay_amount}₽/мес\n"
                 f"⏱ Срок: {plan['duration_days']} дней\n"
-                f"🎁 Лимит: {pluralize_questions(qty)} в месяц\n\n"
+                f"{limit_line}\n\n"
                 f"Нажмите кнопку ниже для оплаты.\n"
                 f"После успешной оплаты подписка будет активирована автоматически.\n\n"
                 f"{'⚠️ Тестовый режим' if settings.YOOKASSA_TEST_MODE else ''}"

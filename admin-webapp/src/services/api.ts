@@ -1491,6 +1491,13 @@ export const api = {
     return fetchApi<BroadcastRecipientsResponse>(`/broadcasts/${broadcastId}/runs/${runId}/recipients${query}`)
   },
 
+  // Broadcast Reminders (напоминалки)
+  async cancelReminder(broadcastId: number, reminderId: number): Promise<{ success: boolean }> {
+    return fetchApi<{ success: boolean }>(`/broadcasts/${broadcastId}/reminders/${reminderId}/cancel`, {
+      method: 'POST',
+    })
+  },
+
   // Funnel Stage Triggers
   async getFunnelTriggers(funnelId: string): Promise<FunnelTriggersResponse> {
     return fetchApi<FunnelTriggersResponse>(`/funnels/${funnelId}/triggers`)

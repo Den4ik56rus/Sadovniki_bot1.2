@@ -24,6 +24,30 @@ BROADCAST_PHOTOS_DIR = os.path.join(
 os.makedirs(BROADCAST_PHOTOS_DIR, exist_ok=True)
 
 
+def _normalize_user_ids(raw):
+    """Нормализовать target_user_ids: строка JSON → list[int], list → list[int]."""
+    if raw is None:
+        return None
+    # Может быть многократно сериализовано: '"[1]"' → '[1]' → [1]
+    while isinstance(raw, str):
+        raw = json.loads(raw)
+    if isinstance(raw, list):
+        # Фильтруем только числовые значения, дедупликация, сохраняем порядок
+        seen = set()
+        result = []
+        for x in raw:
+            val = None
+            if isinstance(x, (int, float)):
+                val = int(x)
+            elif isinstance(x, str) and x.isdigit():
+                val = int(x)
+            if val is not None and val not in seen:
+                seen.add(val)
+                result.append(val)
+        return result if result else None
+    return raw
+
+
 def _serialize_value(value):
     """Сериализация специальных типов для JSON."""
     if isinstance(value, date):
@@ -36,7 +60,22 @@ def _serialize_value(value):
 
 
 def _serialize_dict(d: dict) -> dict:
-    return {k: _serialize_value(v) for k, v in d.items()}
+    result = {k: _serialize_value(v) for k, v in d.items()}
+    # Нормализуем target_user_ids при чтении — могут быть испорчены двойной сериализацией
+    if 'target_user_ids' in result and result['target_user_ids'] is not None:
+        result['target_user_ids'] = _normalize_user_ids(result['target_user_ids'])
+    return result
+
+
+def _serialize_reminder(d: dict) -> dict:
+    """Маппит колонки broadcasts (reminder_*) в формат фронтенда."""
+    s = _serialize_dict(d)
+    s['offset_hours'] = s.pop('reminder_offset_hours', None) or 0
+    s['trigger_type'] = s.pop('reminder_trigger_type', None) or 'after_send'
+    s['exclude_bought'] = s.pop('reminder_exclude_bought', False)
+    s['exclude_clicked_buttons'] = s.pop('reminder_exclude_clicked', None)
+    s['reminder_status'] = s.get('reminder_status', 'pending')
+    return s
 
 
 async def get_broadcasts(request: web.Request) -> web.Response:
@@ -131,12 +170,21 @@ async def create_broadcast(request: web.Request) -> web.Response:
             target_invite_link_id=data.get('target_invite_link_id'),
             target_funnel_id=data.get('target_funnel_id'),
             target_stage_key=data.get('target_stage_key'),
-            target_user_ids=data.get('target_user_ids'),
+            target_user_ids=_normalize_user_ids(data.get('target_user_ids')),
             scheduled_at=data.get('scheduled_at'),
             inline_buttons=inline_buttons,
         )
 
-        return web.json_response(_serialize_dict(broadcast), status=201)
+        # Синхронизируем напоминалки если переданы
+        reminders_data = data.get('reminders')
+        result = _serialize_dict(broadcast)
+        if reminders_data and isinstance(reminders_data, list):
+            reminders = await broadcast_repo.sync_reminders(broadcast['id'], reminders_data)
+            result['reminders'] = [_serialize_reminder(r) for r in reminders]
+        else:
+            result['reminders'] = []
+
+        return web.json_response(result, status=201)
 
     except web.HTTPBadRequest:
         raise
@@ -148,7 +196,7 @@ async def create_broadcast(request: web.Request) -> web.Response:
 async def get_broadcast(request: web.Request) -> web.Response:
     """
     GET /api/admin/broadcasts/{id}
-    Детали рассылки.
+    Детали рассылки (включая напоминалки).
     """
     try:
         broadcast_id = int(request.match_info['id'])
@@ -156,7 +204,12 @@ async def get_broadcast(request: web.Request) -> web.Response:
         if not broadcast:
             raise web.HTTPNotFound(text='Broadcast not found')
 
-        return web.json_response(_serialize_dict(broadcast))
+        # Добавляем напоминалки
+        reminders = await broadcast_repo.get_reminders_for_broadcast(broadcast_id)
+        result = _serialize_dict(broadcast)
+        result['reminders'] = [_serialize_reminder(r) for r in reminders]
+
+        return web.json_response(result)
 
     except (ValueError, web.HTTPNotFound):
         raise web.HTTPNotFound(text='Broadcast not found')
@@ -211,15 +264,25 @@ async def update_broadcast(request: web.Request) -> web.Response:
             target_invite_link_id=data.get('target_invite_link_id'),
             target_funnel_id=data.get('target_funnel_id'),
             target_stage_key=data.get('target_stage_key'),
-            target_user_ids=data.get('target_user_ids'),
+            target_user_ids=_normalize_user_ids(data.get('target_user_ids')),
             scheduled_at=data.get('scheduled_at'),
             inline_buttons=inline_buttons,
         )
 
         if not broadcast:
-            raise web.HTTPNotFound(text='Broadcast not found or not in draft status')
+            raise web.HTTPNotFound(text='Broadcast not found or currently sending')
 
-        return web.json_response(_serialize_dict(broadcast))
+        # Синхронизируем напоминалки если переданы
+        result = _serialize_dict(broadcast)
+        if 'reminders' in data:
+            reminders_data = data['reminders'] or []
+            reminders = await broadcast_repo.sync_reminders(broadcast_id, reminders_data)
+            result['reminders'] = [_serialize_reminder(r) for r in reminders]
+        else:
+            existing_reminders = await broadcast_repo.get_reminders_for_broadcast(broadcast_id)
+            result['reminders'] = [_serialize_reminder(r) for r in existing_reminders]
+
+        return web.json_response(result)
 
     except web.HTTPBadRequest:
         raise
@@ -281,8 +344,12 @@ async def send_broadcast(request: web.Request) -> web.Response:
         if not broadcast:
             raise web.HTTPNotFound(text='Broadcast not found')
 
+        if broadcast['status'] == 'sending':
+            raise web.HTTPBadRequest(text="Broadcast is already being sent")
+
+        # Если рассылка уже завершена/отменена — сбрасываем на draft для повторной отправки
         if broadcast['status'] not in ('draft', 'scheduled'):
-            raise web.HTTPBadRequest(text=f"Cannot send broadcast with status '{broadcast['status']}'")
+            await broadcast_repo.update_broadcast_status(broadcast_id, 'draft')
 
         # Собираем получателей
         count = await broadcast_repo.resolve_recipients(broadcast_id)
@@ -404,6 +471,9 @@ async def cancel_broadcast(request: web.Request) -> web.Response:
 
         await broadcast_repo.update_broadcast_status(broadcast_id, 'cancelled')
 
+        # Отменяем все pending/scheduled напоминалки
+        await broadcast_repo.cancel_broadcast_reminders(broadcast_id)
+
         return web.json_response({'success': True})
 
     except web.HTTPBadRequest:
@@ -462,7 +532,7 @@ async def preview_recipient_count(request: web.Request) -> web.Response:
             target_invite_link_id=data.get('target_invite_link_id'),
             target_funnel_id=data.get('target_funnel_id'),
             target_stage_key=data.get('target_stage_key'),
-            target_user_ids=data.get('target_user_ids'),
+            target_user_ids=_normalize_user_ids(data.get('target_user_ids')),
         )
 
         return web.json_response({'count': count})
@@ -682,11 +752,10 @@ def _validate_inline_buttons(buttons: list) -> None:
             # Дефолт 24 часа если не указано
             if not dh:
                 dh = 24
-            if not isinstance(dh, (int, float)) or int(dh) < 1:
-                raise web.HTTPBadRequest(text='Discount button requires discount_duration_hours >= 1')
-            # Нормализуем к int для хранения
+            if not isinstance(dh, (int, float)) or float(dh) <= 0:
+                raise web.HTTPBadRequest(text='Discount button requires discount_duration_hours > 0')
             btn['discount_percent'] = int(dp)
-            btn['discount_duration_hours'] = int(dh)
+            btn['discount_duration_hours'] = float(dh)
             if btn.get('discount_bonus_tokens') is not None:
                 btn['discount_bonus_tokens'] = int(btn['discount_bonus_tokens'])
             # Режим бонусных токенов: absolute (число) или percent (% от тарифа)
@@ -852,7 +921,7 @@ async def resend_broadcast(request: web.Request) -> web.Response:
             target_invite_link_id=data.get('target_invite_link_id'),
             target_funnel_id=data.get('target_funnel_id'),
             target_stage_key=data.get('target_stage_key'),
-            target_user_ids=data.get('target_user_ids'),
+            target_user_ids=_normalize_user_ids(data.get('target_user_ids')),
         )
 
         # Собираем получателей для run
@@ -1004,4 +1073,52 @@ async def get_run_recipients(request: web.Request) -> web.Response:
 
     except Exception as e:
         logger.error(f'Error getting run recipients: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Database error')
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# REMINDER BROADCASTS — напоминалки
+# ═══════════════════════════════════════════════════════════════════════════════
+
+
+async def get_broadcast_reminders(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/broadcasts/{id}/reminders
+    Список напоминалок рассылки.
+    """
+    try:
+        broadcast_id = int(request.match_info['id'])
+        reminders = await broadcast_repo.get_reminders_for_broadcast(broadcast_id)
+        return web.json_response({
+            'reminders': [_serialize_reminder(r) for r in reminders],
+        })
+    except Exception as e:
+        logger.error(f'Error getting broadcast reminders: {e}', exc_info=True)
+        raise web.HTTPInternalServerError(text='Database error')
+
+
+async def cancel_reminder(request: web.Request) -> web.Response:
+    """
+    POST /api/admin/broadcasts/{id}/reminders/{rid}/cancel
+    Отменить одну напоминалку.
+    """
+    try:
+        reminder_id = int(request.match_info['rid'])
+
+        reminder = await broadcast_repo.get_broadcast(reminder_id)
+        if not reminder or not reminder.get('parent_broadcast_id'):
+            raise web.HTTPNotFound(text='Reminder not found')
+
+        if reminder.get('reminder_status') not in ('pending', 'scheduled'):
+            raise web.HTTPBadRequest(text=f"Cannot cancel reminder with status '{reminder.get('reminder_status')}'")
+
+        await broadcast_repo.update_reminder_status(reminder_id, 'cancelled')
+        return web.json_response({'success': True})
+
+    except web.HTTPBadRequest:
+        raise
+    except web.HTTPNotFound:
+        raise
+    except Exception as e:
+        logger.error(f'Error cancelling reminder: {e}', exc_info=True)
         raise web.HTTPInternalServerError(text='Database error')

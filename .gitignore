@@ -83,3 +83,6 @@ data/broadcast_photos/
 data/fonts/
 data/guides/
 data/documents/
+
+# Git worktrees
+.worktrees/

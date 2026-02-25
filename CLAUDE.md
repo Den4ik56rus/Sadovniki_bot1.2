@@ -12,7 +12,7 @@ Before making ANY changes:
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
 **Current Project State (2026-02-25):**
-- Version: 1.5.5
+- Version: 1.5.6
 - Phase: Payment reliability + broadcast buttons v3 (discount + payment types)
 - Latest changes: Graceful shutdown hardened, invite link new/existing user breakdown
 - CRITICAL: DB schemas 62-66 NOT YET APPLIED ON PRODUCTION — must apply all five before using broadcasts or funnel triggers

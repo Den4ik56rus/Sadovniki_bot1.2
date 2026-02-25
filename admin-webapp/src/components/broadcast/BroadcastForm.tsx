@@ -90,7 +90,7 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
       poll_allows_multiple: pollAllowsMultiple,
       inline_buttons: inlineButtons.length > 0 ? inlineButtons.filter((b) => {
         if (b.type === 'payment') return true
-        if (b.type === 'discount') return !!(b.discount_percent && b.discount_duration_hours)
+        if (b.type === 'discount') return true
         return b.text.trim()
       }) : null,
       target_type: targetType,

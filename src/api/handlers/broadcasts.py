@@ -676,7 +676,10 @@ def _validate_inline_buttons(buttons: list) -> None:
             dh = btn.get('discount_duration_hours')
             if not dp or not isinstance(dp, (int, float)) or not (1 <= int(dp) <= 99):
                 raise web.HTTPBadRequest(text='Discount button requires discount_percent (1-99)')
-            if not dh or not isinstance(dh, (int, float)) or int(dh) < 1:
+            # Дефолт 24 часа если не указано
+            if not dh:
+                dh = 24
+            if not isinstance(dh, (int, float)) or int(dh) < 1:
                 raise web.HTTPBadRequest(text='Discount button requires discount_duration_hours >= 1')
             # Нормализуем к int для хранения
             btn['discount_percent'] = int(dp)

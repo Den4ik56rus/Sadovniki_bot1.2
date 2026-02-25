@@ -88,7 +88,11 @@ export function BroadcastForm({ broadcast, onSaved, onCancel }: Props) {
       poll_options: pollQuestion.trim() ? pollOptions.filter((o) => o.trim()) : null,
       poll_is_anonymous: false,
       poll_allows_multiple: pollAllowsMultiple,
-      inline_buttons: inlineButtons.length > 0 ? inlineButtons.filter((b) => b.text.trim() || b.type === 'payment') : null,
+      inline_buttons: inlineButtons.length > 0 ? inlineButtons.filter((b) => {
+        if (b.type === 'payment') return true
+        if (b.type === 'discount') return !!(b.discount_percent && b.discount_duration_hours)
+        return b.text.trim()
+      }) : null,
       target_type: targetType,
       target_invite_link_id: targetType === 'invite_link' ? targetInviteLinkId : null,
       target_funnel_id: targetType === 'funnel_stage' ? targetFunnelId : null,

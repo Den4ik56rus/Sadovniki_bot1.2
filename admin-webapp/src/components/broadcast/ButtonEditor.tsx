@@ -311,6 +311,7 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                               payment_package_id: newType === 'payment' ? (btn.payment_package_id ?? null) : undefined,
                               discount_percent: newType === 'discount' ? (btn.discount_percent ?? null) : undefined,
                               discount_bonus_tokens: newType === 'discount' ? (btn.discount_bonus_tokens ?? null) : undefined,
+                              discount_bonus_tokens_mode: newType === 'discount' ? (btn.discount_bonus_tokens_mode ?? 'absolute') : undefined,
                               discount_duration_hours: newType === 'discount' ? (btn.discount_duration_hours ?? null) : undefined,
                             })
                           }}
@@ -585,7 +586,7 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                         })()}
                         {btn.type === 'discount' && (
                           <div className={styles.paymentSection}>
-                            <div className={styles.paymentFields}>
+                            <div className={styles.discountFieldsGrid}>
                               <div className={styles.paymentFieldGroup}>
                                 <label className={styles.paymentFieldLabel}>Скидка (%)</label>
                                 <input
@@ -629,73 +630,73 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                                   }}
                                 />
                               </div>
-                              <div className={styles.paymentFieldGroup} style={{ flex: '1 1 100%' }}>
-                                <label className={styles.paymentFieldLabel}>Бонус токенов</label>
-                                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', marginBottom: '6px' }}>
-                                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}>
-                                    <input
-                                      type="radio"
-                                      name={`bonus_mode_${rowIdx}_${btnIdx}`}
-                                      checked={(btn.discount_bonus_tokens_mode ?? 'absolute') === 'absolute'}
-                                      onChange={() => {
-                                        updateButton(rowIdx, btnIdx, {
-                                          discount_bonus_tokens_mode: 'absolute',
-                                          discount_bonus_tokens: null,
-                                        })
-                                        if (onAutoFillMessage) {
-                                          onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, btn.discount_duration_hours, null, 'absolute'))
-                                        }
-                                      }}
-                                    />
-                                    Число
-                                  </label>
-                                  <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '13px', cursor: 'pointer' }}>
-                                    <input
-                                      type="radio"
-                                      name={`bonus_mode_${rowIdx}_${btnIdx}`}
-                                      checked={btn.discount_bonus_tokens_mode === 'percent'}
-                                      onChange={() => {
-                                        updateButton(rowIdx, btnIdx, {
-                                          discount_bonus_tokens_mode: 'percent',
-                                          discount_bonus_tokens: null,
-                                        })
-                                        if (onAutoFillMessage) {
-                                          onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, btn.discount_duration_hours, null, 'percent'))
-                                        }
-                                      }}
-                                    />
-                                    % от тарифа
-                                  </label>
-                                </div>
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            </div>
+                            <div className={styles.bonusSection}>
+                              <label className={styles.paymentFieldLabel}>Бонус токенов</label>
+                              <div className={styles.bonusModeRow}>
+                                <label className={styles.paymentModeOption}>
                                   <input
-                                    className={styles.urlInput}
-                                    type="number"
-                                    placeholder={btn.discount_bonus_tokens_mode === 'percent' ? '20' : '0'}
-                                    value={btn.discount_bonus_tokens ?? ''}
-                                    min={0}
-                                    max={btn.discount_bonus_tokens_mode === 'percent' ? 100 : undefined}
-                                    onChange={(e) => {
-                                      const bonus = e.target.value ? Number(e.target.value) : null
-                                      const mode = btn.discount_bonus_tokens_mode ?? 'absolute'
+                                    type="radio"
+                                    name={`bonus_mode_${rowIdx}_${btnIdx}`}
+                                    checked={(btn.discount_bonus_tokens_mode ?? 'absolute') === 'absolute'}
+                                    onChange={() => {
                                       updateButton(rowIdx, btnIdx, {
-                                        discount_bonus_tokens: bonus,
+                                        discount_bonus_tokens_mode: 'absolute',
+                                        discount_bonus_tokens: null,
                                       })
                                       if (onAutoFillMessage) {
-                                        onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, btn.discount_duration_hours, bonus, mode))
+                                        onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, btn.discount_duration_hours, null, 'absolute'))
                                       }
                                     }}
                                   />
-                                  {btn.discount_bonus_tokens_mode === 'percent' && (
-                                    <span style={{ fontSize: '13px', color: '#666' }}>%</span>
-                                  )}
-                                </div>
-                                {btn.discount_bonus_tokens_mode === 'percent' && btn.discount_bonus_tokens && btn.discount_bonus_tokens > 0 && plans.length > 0 && (
-                                  <div style={{ fontSize: '12px', color: '#888', marginTop: '4px' }}>
-                                    {plans.map((p) => `${p.name}: +${Math.ceil(p.tokens_included * btn.discount_bonus_tokens! / 100)}`).join(', ')}
-                                  </div>
+                                  <span>Число</span>
+                                </label>
+                                <label className={styles.paymentModeOption}>
+                                  <input
+                                    type="radio"
+                                    name={`bonus_mode_${rowIdx}_${btnIdx}`}
+                                    checked={btn.discount_bonus_tokens_mode === 'percent'}
+                                    onChange={() => {
+                                      updateButton(rowIdx, btnIdx, {
+                                        discount_bonus_tokens_mode: 'percent',
+                                        discount_bonus_tokens: null,
+                                      })
+                                      if (onAutoFillMessage) {
+                                        onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, btn.discount_duration_hours, null, 'percent'))
+                                      }
+                                    }}
+                                  />
+                                  <span>% от тарифа</span>
+                                </label>
+                              </div>
+                              <div className={styles.bonusInputRow}>
+                                <input
+                                  className={styles.urlInput}
+                                  type="number"
+                                  placeholder={btn.discount_bonus_tokens_mode === 'percent' ? '20' : '0'}
+                                  value={btn.discount_bonus_tokens ?? ''}
+                                  min={0}
+                                  max={btn.discount_bonus_tokens_mode === 'percent' ? 100 : undefined}
+                                  onChange={(e) => {
+                                    const bonus = e.target.value ? Number(e.target.value) : null
+                                    const mode = btn.discount_bonus_tokens_mode ?? 'absolute'
+                                    updateButton(rowIdx, btnIdx, {
+                                      discount_bonus_tokens: bonus,
+                                    })
+                                    if (onAutoFillMessage) {
+                                      onAutoFillMessage(buildDiscountMessageHtml(btn.discount_percent, btn.discount_duration_hours, bonus, mode))
+                                    }
+                                  }}
+                                />
+                                {btn.discount_bonus_tokens_mode === 'percent' && (
+                                  <span className={styles.bonusPercent}>%</span>
                                 )}
                               </div>
+                              {btn.discount_bonus_tokens_mode === 'percent' && btn.discount_bonus_tokens && btn.discount_bonus_tokens > 0 && plans.length > 0 && (
+                                <div className={styles.bonusCalcHint}>
+                                  {plans.map((p) => `${p.name}: +${Math.ceil(p.tokens_included * btn.discount_bonus_tokens! / 100)}`).join(', ')}
+                                </div>
+                              )}
                             </div>
                             {btn.discount_percent && btn.discount_duration_hours && (
                               <div className={styles.paymentHint}>

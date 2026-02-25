@@ -662,8 +662,12 @@ def _validate_inline_buttons(buttons: list) -> None:
 
         if btn_type == 'payment':
             plan_id = btn.get('payment_plan_id')
-            if not plan_id or not isinstance(plan_id, int):
-                raise web.HTTPBadRequest(text='Payment button requires payment_plan_id')
+            package_id = btn.get('payment_package_id')
+            # Нужен или plan_id (подписка) или package_id > 0 (доп. токены)
+            has_plan = plan_id and isinstance(plan_id, int)
+            has_package = package_id and isinstance(package_id, int) and package_id > 0
+            if not has_plan and not has_package:
+                raise web.HTTPBadRequest(text='Payment button requires payment_plan_id or payment_package_id')
 
         if btn_type == 'discount':
             dp = btn.get('discount_percent')

@@ -307,6 +307,7 @@
 .paymentFields {
   display: flex;
   gap: 6px;
+  flex-wrap: wrap;
 }
 
 .paymentFields .urlInput {
@@ -329,6 +330,54 @@
 
 .paymentFieldGroup .urlInput {
   width: 100%;
+}
+
+/* Discount fields: скидка + срок в одну строку */
+.discountFieldsGrid {
+  display: flex;
+  gap: 6px;
+}
+
+.discountFieldsGrid .paymentFieldGroup {
+  flex: 1;
+}
+
+/* Bonus section: отдельный блок */
+.bonusSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-default);
+  border-radius: 6px;
+}
+
+.bonusModeRow {
+  display: flex;
+  gap: 12px;
+}
+
+.bonusInputRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.bonusInputRow .urlInput {
+  flex: 1;
+  max-width: 120px;
+}
+
+.bonusPercent {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.bonusCalcHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
 }
 
 .paymentHint {

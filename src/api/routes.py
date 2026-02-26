@@ -306,6 +306,11 @@ def setup_routes(app: web.Application) -> None:
     # Broadcast URL redirect (публичный, для трекинга кликов по ссылкам)
     app.router.add_get(r"/api/r/{broadcast_id:\d+}/{option_key}", broadcasts.redirect_broadcast_url)
 
+    # A/B тестирование воронок
+    from src.api.handlers.ab_test import get_ab_test_stats, set_ab_test_variant
+    app.router.add_get('/api/admin/ab-test/stats', get_ab_test_stats)
+    app.router.add_post('/api/admin/ab-test/variant', set_ab_test_variant)
+
     # Health check endpoint
     app.router.add_get("/api/health", health_check)
 

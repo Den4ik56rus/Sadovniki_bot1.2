@@ -102,6 +102,27 @@
   transform: translateX(12px);
 }
 
+/* Open trigger (arrow) button */
+.openTriggerBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s;
+}
+
+.openTriggerBtn:hover {
+  color: var(--accent-primary);
+  background: rgba(74, 124, 89, 0.08);
+}
+
 /* Delete trigger button */
 .deleteTriggerBtn {
   display: flex;

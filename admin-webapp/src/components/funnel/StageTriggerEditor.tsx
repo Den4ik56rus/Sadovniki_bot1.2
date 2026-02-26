@@ -1,10 +1,12 @@
-// Stage Trigger Editor — управление триггерами рассылок на этапе воронки
+// Stage Trigger Editor — управление триггерами на этапе воронки
+// Показывает и старые триггеры (funnel_stage_triggers), и новые автоматизации (automation_triggers).
 
 import { useState, useEffect } from 'react'
 import { useFunnelStore } from '@/store/funnelStore'
 import { api } from '@/services/api'
-import type { Broadcast, FunnelStageTrigger, TriggerPaymentConfig } from '@/types'
+import type { Broadcast, FunnelStageTrigger, TriggerPaymentConfig, AutomationTrigger } from '@/types'
 import { BroadcastForm } from '@/components/broadcast/BroadcastForm'
+import { navigate } from '@/router'
 import styles from './StageTriggerEditor.module.css'
 
 interface SubscriptionPlan {
@@ -45,6 +47,21 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
   const [bonusTokens, setBonusTokens] = useState<string>('')
   const [isAdding, setIsAdding] = useState(false)
   const [showCreateBroadcast, setShowCreateBroadcast] = useState(false)
+
+  // New automation triggers for this stage
+  const [automationTriggers, setAutomationTriggers] = useState<AutomationTrigger[]>([])
+
+  // Load automation triggers for this stage
+  useEffect(() => {
+    api.getAutomationTriggers({ event_type: 'stage_transition', funnel_id: funnelId })
+      .then(data => {
+        // Filter to only triggers matching this stage_key
+        setAutomationTriggers(
+          data.triggers.filter((t: AutomationTrigger) => t.event_config?.stage_key === stageKey)
+        )
+      })
+      .catch(() => {})
+  }, [funnelId, stageKey])
 
   // Load broadcasts and plans when opening add form
   useEffect(() => {
@@ -101,16 +118,79 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
     await toggleTrigger(trigger.id, !trigger.is_active)
   }
 
+  const handleToggleAutomation = async (trigger: AutomationTrigger) => {
+    try {
+      await api.toggleAutomationTrigger(trigger.id, !trigger.is_active)
+      setAutomationTriggers(prev =>
+        prev.map(t => t.id === trigger.id ? { ...t, is_active: !t.is_active } : t)
+      )
+    } catch {}
+  }
+
+  const handleOpenAutomationTrigger = (_triggerId: number) => {
+    // Navigate to triggers page — the user can edit there
+    navigate({ view: 'triggers' })
+  }
+
+  const handleAddAutomationTrigger = () => {
+    // Navigate to triggers page — user creates a new trigger there
+    navigate({ view: 'triggers' })
+  }
+
   const stageTriggers = triggers.filter((t) => t.stage_key === stageKey)
   const usedBroadcastIds = new Set(stageTriggers.map((t) => t.broadcast_id))
 
   return (
     <div className={styles.container}>
-      {/* Existing triggers */}
+      {/* New automation triggers */}
+      {automationTriggers.map((trigger) => (
+        <div key={`auto-${trigger.id}`} className={`${styles.triggerCard} ${!trigger.is_active ? styles.triggerCardDisabled : ''}`}>
+          <div className={styles.triggerInfo}>
+            <span className={styles.triggerIcon}>&#9889;</span>
+            <div className={styles.triggerText}>
+              <span className={styles.triggerTitle}>{trigger.name}</span>
+              <div className={styles.triggerMeta}>
+                <span className={styles.triggerStatus}>
+                  {trigger.is_active ? 'Активен' : 'Выключен'}
+                </span>
+                {trigger.actions.length > 0 && (
+                  <span className={styles.badge}>{trigger.actions.length} действ.</span>
+                )}
+                {trigger.conditions && trigger.conditions.groups.length > 0 && (
+                  <span className={styles.badge}>{trigger.conditions.groups.length} усл.</span>
+                )}
+                {!!trigger.delay_minutes && (
+                  <span className={styles.badge}>&#9201; {formatDelay(trigger.delay_minutes)}</span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className={styles.triggerActions}>
+            <button
+              className={styles.openTriggerBtn}
+              onClick={() => handleOpenAutomationTrigger(trigger.id)}
+              title="Открыть в редакторе"
+            >
+              &#8594;
+            </button>
+            <button
+              className={`${styles.toggleBtn} ${trigger.is_active ? styles.toggleBtnActive : ''}`}
+              onClick={() => handleToggleAutomation(trigger)}
+              title={trigger.is_active ? 'Выключить' : 'Включить'}
+            >
+              <div className={styles.toggleTrack}>
+                <div className={styles.toggleThumb} />
+              </div>
+            </button>
+          </div>
+        </div>
+      ))}
+
+      {/* Legacy triggers (from funnel_stage_triggers) */}
       {stageTriggers.map((trigger) => (
         <div key={trigger.id} className={`${styles.triggerCard} ${!trigger.is_active ? styles.triggerCardDisabled : ''}`}>
           <div className={styles.triggerInfo}>
-            <span className={styles.triggerIcon}>⚡</span>
+            <span className={styles.triggerIcon}>&#9889;</span>
             <div className={styles.triggerText}>
               <span className={styles.triggerTitle}>{trigger.broadcast_title}</span>
               <div className={styles.triggerMeta}>
@@ -118,11 +198,11 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
                   {trigger.is_active ? 'Активен' : 'Выключен'}
                 </span>
                 {!!trigger.delay_minutes && (
-                  <span className={styles.badge}>⏱ {formatDelay(trigger.delay_minutes)}</span>
+                  <span className={styles.badge}>&#9201; {formatDelay(trigger.delay_minutes)}</span>
                 )}
                 {trigger.payment_config && (
                   <span className={`${styles.badge} ${styles.badgePayment}`}>
-                    💳{trigger.payment_config.custom_price ? ` ${trigger.payment_config.custom_price}₽` : ''}
+                    &#128179;{trigger.payment_config.custom_price ? ` ${trigger.payment_config.custom_price}\u20BD` : ''}
                   </span>
                 )}
               </div>
@@ -143,14 +223,33 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
               onClick={() => handleDelete(trigger.id)}
               title="Удалить"
             >
-              ✕
+              &#10005;
             </button>
           </div>
         </div>
       ))}
 
-      {/* Add trigger form */}
-      {isAdding ? (
+      {/* Add buttons */}
+      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+        <button
+          className={styles.addTriggerBtn}
+          onClick={handleAddAutomationTrigger}
+        >
+          + Новый триггер
+        </button>
+        {!isAdding && (
+          <button
+            className={styles.addTriggerBtn}
+            onClick={() => setIsAdding(true)}
+            style={{ opacity: 0.7, fontSize: '11px' }}
+          >
+            + Быстрый (рассылка)
+          </button>
+        )}
+      </div>
+
+      {/* Quick add form (legacy) */}
+      {isAdding && (
         <div className={styles.addForm}>
           {loading ? (
             <div className={styles.loadingText}>Загрузка рассылок...</div>
@@ -182,7 +281,7 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
 
               {/* Delay selector */}
               <div className={styles.formRow}>
-                <label className={styles.formLabel}>⏱ Задержка</label>
+                <label className={styles.formLabel}>&#9201; Задержка</label>
                 <div className={styles.delayInputRow}>
                   <input
                     className={styles.delayValueInput}
@@ -223,7 +322,7 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
                     }
                   }}
                 />
-                <span className={styles.formLabel}>💳 Добавить кнопку оплаты</span>
+                <span className={styles.formLabel}>&#128179; Добавить кнопку оплаты</span>
               </label>
 
               {/* Payment config */}
@@ -283,12 +382,12 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
                           : 0
                         return (
                           <div className={styles.previewText}>
-                            <div>📅 Подписка: <b>{plan.name}</b></div>
+                            <div>&#128197; Подписка: <b>{plan.name}</b></div>
                             {discount > 0
-                              ? <div>💰 <s>{plan.price_rub}₽</s> → <b>{price}₽</b>/мес (скидка {discount}%)</div>
-                              : <div>💰 <b>{price}₽</b>/мес</div>
+                              ? <div>&#128176; <s>{plan.price_rub}₽</s> → <b>{price}₽</b>/мес (скидка {discount}%)</div>
+                              : <div>&#128176; <b>{price}₽</b>/мес</div>
                             }
-                            <div>🎁 {tokens} токенов/мес{bonusTokens ? ` (+${bonusTokens} бонус)` : ''}</div>
+                            <div>&#127873; {tokens} токенов/мес{bonusTokens ? ` (+${bonusTokens} бонус)` : ''}</div>
                           </div>
                         )
                       })()}
@@ -315,13 +414,6 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
             </>
           )}
         </div>
-      ) : (
-        <button
-          className={styles.addTriggerBtn}
-          onClick={() => setIsAdding(true)}
-        >
-          + Добавить триггер
-        </button>
       )}
 
       {/* Create broadcast modal */}
@@ -334,7 +426,7 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
                 className={styles.modalCloseBtn}
                 onClick={() => setShowCreateBroadcast(false)}
               >
-                ✕
+                &#10005;
               </button>
             </div>
             <div className={styles.modalBody}>

@@ -687,7 +687,9 @@ async def get_funnel_stats(funnel_id: str) -> Dict[str, int]:
 async def move_client_to_stage(
     user_id: int,
     funnel_id: str,
-    new_stage_key: str
+    new_stage_key: str,
+    _from_automation: bool = False,
+    telegram_user_id: int = None,
 ) -> bool:
     """
     Переместить клиента на другой этап внутри воронки (drag-and-drop).
@@ -718,7 +720,9 @@ async def move_client_to_stage(
         # Отменяем pending-триггеры старого этапа перед перемещением
         if old_stage_key and old_stage_key != new_stage_key:
             from src.services.db.funnel_trigger_repo import delete_pending_triggers_for_stage
+            from src.services.db.automation_trigger_repo import delete_pending_for_stage
             await delete_pending_triggers_for_stage(user_id, funnel_id, old_stage_key)
+            await delete_pending_for_stage(user_id, funnel_id, old_stage_key)
 
         result = await conn.execute(
             """
@@ -734,8 +738,7 @@ async def move_client_to_stage(
         success = result == "UPDATE 1"
 
         # Получаем telegram_user_id для триггеров
-        telegram_user_id = None
-        if success:
+        if success and not telegram_user_id:
             tg_row = await conn.fetchrow(
                 "SELECT telegram_user_id FROM users WHERE id = $1",
                 user_id,
@@ -758,12 +761,20 @@ async def move_client_to_stage(
                 logger.warning(f"Failed to broadcast SSE client_moved: {e}")
 
             # Запускаем триггеры в фоне (не блокируя ответ)
-            if telegram_user_id:
+            # Не запускаем если действие пришло из автоматизации (предотвращаем каскад)
+            if telegram_user_id and not _from_automation:
                 try:
                     import asyncio
                     from src.services.funnel_trigger_sender import execute_stage_triggers
+                    from src.services.automation.engine import emit_automation_event
                     asyncio.create_task(
                         execute_stage_triggers(user_id, telegram_user_id, funnel_id, new_stage_key)
+                    )
+                    asyncio.create_task(
+                        emit_automation_event(
+                            'stage_transition', user_id, telegram_user_id,
+                            {'funnel_id': funnel_id, 'stage_key': new_stage_key}
+                        )
                     )
                 except Exception as e:
                     logger.warning(f"Failed to launch stage triggers: {e}")
@@ -828,7 +839,9 @@ async def auto_move_client_in_crm(user_id: int, target_stage_key: str) -> bool:
 
         # Отменяем pending-триггеры текущего этапа перед перемещением
         from src.services.db.funnel_trigger_repo import delete_pending_triggers_for_stage
+        from src.services.db.automation_trigger_repo import delete_pending_for_stage
         await delete_pending_triggers_for_stage(user_id, 'crm', current_stage)
+        await delete_pending_for_stage(user_id, 'crm', current_stage)
 
         # Перемещаем (manual_override остаётся false)
         await conn.execute(
@@ -868,8 +881,15 @@ async def auto_move_client_in_crm(user_id: int, target_stage_key: str) -> bool:
         try:
             import asyncio
             from src.services.funnel_trigger_sender import execute_stage_triggers
+            from src.services.automation.engine import emit_automation_event
             asyncio.create_task(
                 execute_stage_triggers(user_id, telegram_user_id, 'crm', target_stage_key)
+            )
+            asyncio.create_task(
+                emit_automation_event(
+                    'stage_transition', user_id, telegram_user_id,
+                    {'funnel_id': 'crm', 'stage_key': target_stage_key}
+                )
             )
         except Exception as e:
             logger.warning(f"auto_move triggers failed: {e}")

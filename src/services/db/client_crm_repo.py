@@ -361,11 +361,18 @@ async def get_client_tags(user_id: int) -> List[Dict[str, Any]]:
         return [dict(row) for row in rows]
 
 
-async def set_client_tags(user_id: int, tag_ids: List[int]) -> bool:
+async def set_client_tags(user_id: int, tag_ids: List[int], _from_automation: bool = False) -> bool:
     """Установить теги клиента (полная замена)."""
     pool = get_pool()
 
+    # Получаем старые теги для определения изменений
+    old_tag_ids = set()
     async with pool.acquire() as conn:
+        old_rows = await conn.fetch(
+            "SELECT tag_id FROM client_tag_links WHERE user_id = $1", user_id
+        )
+        old_tag_ids = {row['tag_id'] for row in old_rows}
+
         async with conn.transaction():
             # Удаляем старые связи
             await conn.execute(
@@ -380,10 +387,17 @@ async def set_client_tags(user_id: int, tag_ids: List[int]) -> bool:
                     [(user_id, tag_id) for tag_id in tag_ids]
                 )
 
+    # Emit automation events для изменившихся тегов
+    if not _from_automation:
+        new_tag_ids = set(tag_ids)
+        added = new_tag_ids - old_tag_ids
+        removed = old_tag_ids - new_tag_ids
+        await _emit_tag_change_events(user_id, added, removed)
+
     return True
 
 
-async def add_client_tag(user_id: int, tag_id: int) -> bool:
+async def add_client_tag(user_id: int, tag_id: int, _from_automation: bool = False) -> bool:
     """Добавить тег клиенту."""
     pool = get_pool()
 
@@ -393,13 +407,16 @@ async def add_client_tag(user_id: int, tag_id: int) -> bool:
                 "INSERT INTO client_tag_links (user_id, tag_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",
                 user_id, tag_id
             )
+            # Emit automation event
+            if not _from_automation:
+                await _emit_tag_change_events(user_id, added={tag_id}, removed=set())
             return True
         except Exception as e:
             logger.error(f"Error adding tag: {e}")
             return False
 
 
-async def remove_client_tag(user_id: int, tag_id: int) -> bool:
+async def remove_client_tag(user_id: int, tag_id: int, _from_automation: bool = False) -> bool:
     """Удалить тег у клиента."""
     pool = get_pool()
 
@@ -408,7 +425,47 @@ async def remove_client_tag(user_id: int, tag_id: int) -> bool:
             "DELETE FROM client_tag_links WHERE user_id = $1 AND tag_id = $2",
             user_id, tag_id
         )
-        return "DELETE" in result
+        success = "DELETE" in result
+
+    # Emit automation event
+    if success and not _from_automation:
+        await _emit_tag_change_events(user_id, added=set(), removed={tag_id})
+
+    return success
+
+
+async def _emit_tag_change_events(user_id: int, added: set, removed: set) -> None:
+    """Emit tag_changed automation events."""
+    try:
+        import asyncio
+        from src.services.automation.engine import emit_automation_event
+        from src.services.db.pool import get_pool as _get_pool
+
+        _pool = _get_pool()
+        async with _pool.acquire() as conn:
+            tg_row = await conn.fetchrow(
+                "SELECT telegram_user_id FROM users WHERE id = $1", user_id
+            )
+        tg_uid = tg_row['telegram_user_id'] if tg_row else None
+        if not tg_uid:
+            return
+
+        for tag_id in added:
+            asyncio.create_task(
+                emit_automation_event(
+                    'tag_changed', user_id, tg_uid,
+                    {'tag_id': tag_id, 'action': 'added'}
+                )
+            )
+        for tag_id in removed:
+            asyncio.create_task(
+                emit_automation_event(
+                    'tag_changed', user_id, tg_uid,
+                    {'tag_id': tag_id, 'action': 'removed'}
+                )
+            )
+    except Exception as e:
+        logger.warning(f"Failed to emit tag_changed automation event: {e}")
 
 
 # =============================================================================

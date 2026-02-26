@@ -227,7 +227,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'triggers'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -1395,4 +1395,94 @@ export interface FunnelStageTrigger {
 
 export interface FunnelTriggersResponse {
   triggers: FunnelStageTrigger[]
+}
+
+// ═══════════════════════════════════════════════════════════════════
+// Automation Triggers (универсальные триггеры автоматизации)
+// ═══════════════════════════════════════════════════════════════════
+
+export type TriggerEventType = 'stage_transition' | 'payment_success' | 'tag_changed' | 'subscription_expiring'
+
+export type TriggerActionType = 'send_broadcast' | 'move_to_stage' | 'add_tag' | 'remove_tag' | 'set_custom_field' | 'send_payment_offer'
+
+export interface ConditionRule {
+  type: 'has_tag' | 'not_has_tag' | 'from_invite_link' | 'at_funnel_stage' | 'not_at_funnel_stage'
+  tag_id?: number
+  invite_link_id?: number
+  funnel_id?: string
+  stage_key?: string
+}
+
+export interface ConditionGroup {
+  operator: 'AND' | 'OR'
+  rules: ConditionRule[]
+}
+
+export interface ConditionTree {
+  operator: 'AND' | 'OR'
+  groups: ConditionGroup[]
+}
+
+export interface TriggerAction {
+  type: TriggerActionType
+  broadcast_id?: number
+  funnel_id?: string
+  stage_key?: string
+  tag_id?: number
+  field_id?: number
+  value?: string
+  plan_id?: number
+  custom_price?: number
+  bonus_tokens?: number
+}
+
+export interface AutomationTrigger {
+  id: number
+  name: string
+  description: string | null
+  event_type: TriggerEventType
+  event_config: Record<string, any>
+  conditions: ConditionTree | null
+  actions: TriggerAction[]
+  delay_minutes: number
+  is_active: boolean
+  created_at: string
+  updated_at: string
+}
+
+export interface TriggerLogEntry {
+  id: number
+  trigger_id: number
+  user_id: number
+  telegram_user_id: number
+  first_name: string | null
+  last_name: string | null
+  username: string | null
+  event_snapshot: Record<string, any> | null
+  status: 'pending' | 'sent' | 'failed' | 'skipped'
+  send_at: string
+  executed_at: string | null
+  actions_result: Record<string, any>[] | null
+  error_message: string | null
+  created_at: string
+}
+
+export interface CreateTriggerDto {
+  name: string
+  description?: string
+  event_type: TriggerEventType
+  event_config: Record<string, any>
+  conditions?: ConditionTree | null
+  actions: TriggerAction[]
+  delay_minutes?: number
+}
+
+export interface AutomationTriggersResponse {
+  triggers: AutomationTrigger[]
+}
+
+export interface TriggerLogResponse {
+  log: TriggerLogEntry[]
+  limit: number
+  offset: number
 }

@@ -19,6 +19,7 @@ const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
   stats: { title: 'Аналитика', subtitle: 'Статистика и отчёты' },
   settings: { title: 'Настройки', subtitle: 'Конфигурация системы' },
   moderation: { title: 'Модерация', subtitle: 'Очередь вопросов и база знаний' },
+  triggers: { title: 'Триггеры', subtitle: 'Автоматизация действий' },
 }
 
 export function AppLayout({ children }: AppLayoutProps) {

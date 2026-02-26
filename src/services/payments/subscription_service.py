@@ -223,13 +223,28 @@ async def expire_old_subscriptions() -> int:
     Returns:
         Количество истекших подписок
     """
+    # Получаем пользователей с истекающими подписками ДО обновления (для автоматизации days_before=0)
+    pool = get_pool()
+    expiring_users = []
+    try:
+        async with pool.acquire() as conn:
+            expiring_users = await conn.fetch(
+                """
+                SELECT us.id as subscription_id, us.user_id, u.telegram_user_id
+                FROM user_subscriptions us
+                JOIN users u ON u.id = us.user_id
+                WHERE us.status = 'active' AND us.expires_at <= NOW()
+                """,
+            )
+    except Exception as e:
+        logger.warning(f"Failed to fetch expiring users for automation: {e}")
+
     count = await user_subscription_repo.expire_old_subscriptions()
 
     if count > 0:
         logger.info(f"Expired {count} old subscriptions")
 
         # Обновить статусы пользователей
-        pool = get_pool()
         async with pool.acquire() as conn:
             await conn.execute(
                 """
@@ -239,6 +254,26 @@ async def expire_old_subscriptions() -> int:
                 AND subscription_status = 'active'
                 """
             )
+
+        # Emit automation events (subscription_expiring days_before=0)
+        try:
+            import asyncio
+            from src.services.automation.engine import emit_automation_event
+            for row in expiring_users:
+                if row['telegram_user_id']:
+                    asyncio.create_task(
+                        emit_automation_event(
+                            'subscription_expiring',
+                            row['user_id'],
+                            row['telegram_user_id'],
+                            {
+                                'days_before': 0,
+                                'subscription_id': row['subscription_id'],
+                            }
+                        )
+                    )
+        except Exception as e:
+            logger.warning(f"Failed to emit subscription_expiring automation events: {e}")
 
     return count
 

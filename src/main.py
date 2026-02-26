@@ -43,6 +43,23 @@ async def _trigger_scheduler_loop(process_fn) -> None:
         await asyncio.sleep(30)
 
 
+async def _subscription_expiring_loop(check_fn) -> None:
+    """
+    Фоновая задача для проверки «скоро истекающих» подписок.
+    Запускается каждый час.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    while True:
+        try:
+            processed = await check_fn()
+            if processed > 0:
+                logger.info(f"Subscription expiring checker: processed {processed} events")
+        except Exception as e:
+            logger.error(f"Error in subscription expiring loop: {e}", exc_info=True)
+        await asyncio.sleep(3600)
+
+
 async def _subscription_renewal_task() -> None:
     """
     Фоновая задача для автоматического продления подписок.
@@ -130,10 +147,20 @@ async def main() -> None:
     reconciliation_task = asyncio.create_task(payment_reconciliation_loop())
     print("Фоновая задача сверки платежей запущена.")
 
-    # Запускаем фоновую задачу для отложенных триггеров воронки
+    # Запускаем фоновую задачу для отложенных триггеров воронки (legacy)
     from src.services.funnel_trigger_sender import process_pending_triggers as _process_pending_triggers
     trigger_task = asyncio.create_task(_trigger_scheduler_loop(_process_pending_triggers))
     print("Фоновая задача триггеров воронки запущена.")
+
+    # Запускаем фоновую задачу для отложенных автоматизационных триггеров
+    from src.services.automation.engine import process_pending_automation_triggers
+    automation_trigger_task = asyncio.create_task(_trigger_scheduler_loop(process_pending_automation_triggers))
+    print("Фоновая задача автоматизационных триггеров запущена.")
+
+    # Запускаем фоновую задачу для проверки истекающих подписок (subscription_expiring)
+    from src.services.automation.subscription_checker import check_subscription_expiring_triggers
+    subscription_check_task = asyncio.create_task(_subscription_expiring_loop(check_subscription_expiring_triggers))
+    print("Фоновая задача проверки подписок запущена.")
 
     # Graceful shutdown: сохраняем ссылку на dispatcher и ставим свои signal handlers.
     # При SIGTERM наш handler ставит флаг + сигнализирует aiogram остановить polling.
@@ -170,6 +197,8 @@ async def main() -> None:
         background_task.cancel()
         broadcast_task.cancel()
         trigger_task.cancel()
+        automation_trigger_task.cancel()
+        subscription_check_task.cancel()
         reconciliation_task.cancel()
         try:
             await webhook_consumer_task
@@ -187,6 +216,14 @@ async def main() -> None:
             await trigger_task
         except asyncio.CancelledError:
             print("Фоновая задача триггеров воронки остановлена.")
+        try:
+            await automation_trigger_task
+        except asyncio.CancelledError:
+            print("Фоновая задача автоматизационных триггеров остановлена.")
+        try:
+            await subscription_check_task
+        except asyncio.CancelledError:
+            print("Фоновая задача проверки подписок остановлена.")
         try:
             await reconciliation_task
         except asyncio.CancelledError:

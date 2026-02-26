@@ -18,6 +18,7 @@ import { InviteLinksPage } from '@/components/inviteLinks'
 import { GuidesPage } from '@/components/guides'
 import { ModerationPage } from '@/components/moderation'
 import { BroadcastPage } from '@/components/broadcast'
+import { TriggersPage } from '@/components/triggers'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
@@ -48,6 +49,9 @@ function App() {
 
       {/* Рассылки */}
       {currentView === 'messages' && <BroadcastPage />}
+
+      {/* Триггеры автоматизации */}
+      {currentView === 'triggers' && <TriggersPage />}
 
       {/* Задачи - заглушка */}
       {currentView === 'tasks' && (

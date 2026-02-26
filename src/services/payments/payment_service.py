@@ -936,6 +936,35 @@ async def process_payment_success(
         # Создать событие в activity feed
         await create_payment_activity_event(payment["user_id"], payment["id"])
 
+        # Emit automation event: payment_success
+        try:
+            import asyncio
+            from src.services.automation.engine import emit_automation_event
+            # Получаем telegram_user_id
+            from src.services.db.pool import get_pool as _get_pool
+            _pool = _get_pool()
+            async with _pool.acquire() as _conn:
+                _tg_row = await _conn.fetchrow(
+                    "SELECT telegram_user_id FROM users WHERE id = $1",
+                    payment["user_id"],
+                )
+            tg_uid = _tg_row['telegram_user_id'] if _tg_row else None
+            if tg_uid:
+                asyncio.create_task(
+                    emit_automation_event(
+                        'payment_success',
+                        payment["user_id"],
+                        tg_uid,
+                        {
+                            'payment_type': payment.get('payment_type'),
+                            'plan_id': payment.get('subscription_plan_id'),
+                            'payment_id': payment['id'],
+                        }
+                    )
+                )
+        except Exception as _e:
+            logger.warning(f"Failed to emit payment automation event: {_e}")
+
         logger.info(f"Payment {payment['id']} processed successfully")
         return True
 

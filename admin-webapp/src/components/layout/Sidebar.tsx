@@ -132,6 +132,7 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
     submenu: [
       { id: 'stats', label: 'Статистика' },
       { id: 'invite-links', label: 'Инвайт-ссылки' },
+      { id: 'ab-test', label: 'A/B тест' },
     ],
   },
   { id: 'expenses', icon: Icons.expenses, label: 'Расходы' },

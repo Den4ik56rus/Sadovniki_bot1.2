@@ -15,6 +15,7 @@ import { PromptPreviewPage } from '@/components/promptPreview'
 import { PaymentsList } from '@/components/payments/PaymentsList'
 import { SettingsPage } from '@/components/settings'
 import { InviteLinksPage } from '@/components/inviteLinks'
+import { ABTestPage } from '@/components/abtest/ABTestPage'
 import { GuidesPage } from '@/components/guides'
 import { ModerationPage } from '@/components/moderation'
 import { BroadcastPage } from '@/components/broadcast'
@@ -72,6 +73,9 @@ function App() {
 
       {/* Инвайт-ссылки - отслеживание кампаний */}
       {currentView === 'invite-links' && <InviteLinksPage />}
+
+      {/* A/B тест воронок */}
+      {currentView === 'ab-test' && <ABTestPage />}
 
       {/* Расходы */}
       {currentView === 'expenses' && <ExpensesPage />}

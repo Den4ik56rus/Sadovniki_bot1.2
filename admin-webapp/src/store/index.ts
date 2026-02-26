@@ -936,6 +936,8 @@ export const useBuyersStore = create<BuyersState>()((set, get) => ({
 
 interface ABTestVariantStats {
   users: number
+  tried: number
+  trial_ended: number
   paid: number
   conversion: number
 }

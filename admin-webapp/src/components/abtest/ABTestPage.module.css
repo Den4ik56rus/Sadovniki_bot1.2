@@ -1,0 +1,263 @@
+.container {
+  padding: 24px;
+  height: 100%;
+  overflow-y: auto;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-primary, #111);
+}
+
+/* Toggle buttons */
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.toggleLabel {
+  font-size: 14px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.toggleButtons {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-secondary, #f3f4f6);
+  border-radius: 6px;
+  padding: 3px;
+}
+
+.toggleBtn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+  background: transparent;
+  transition: all 0.15s;
+}
+
+.toggleBtn:hover {
+  color: var(--text-primary, #111);
+}
+
+.toggleBtn.active {
+  background: var(--primary, #4A7C59);
+  color: #fff;
+}
+
+/* Funnel table */
+.funnelCard {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  overflow: hidden;
+  margin-bottom: 24px;
+}
+
+.funnelTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+/* Stage header row */
+.stageHeaderRow th {
+  padding: 0;
+  font-weight: 600;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.stageHeaderRow th:first-child {
+  width: 120px;
+  min-width: 100px;
+}
+
+.stageHeader {
+  padding: 14px 16px;
+  text-align: center;
+  border-left: 1px solid var(--border-color, #e5e7eb);
+  color: #fff;
+  font-weight: 600;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+/* Variant rows */
+.variantRow {
+  border-top: 2px solid var(--border-color, #e5e7eb);
+}
+
+.variantRow.activeVariant {
+  background: var(--bg-highlight, #f0fdf4);
+}
+
+.variantLabel {
+  padding: 16px;
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--text-primary, #111);
+  vertical-align: middle;
+  white-space: nowrap;
+  border-right: 1px solid var(--border-color, #e5e7eb);
+}
+
+.activeDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--primary, #4A7C59);
+  margin-left: 6px;
+  vertical-align: middle;
+}
+
+.stageCell {
+  padding: 16px;
+  text-align: center;
+  border-left: 1px solid var(--border-color, #e5e7eb);
+  vertical-align: middle;
+  min-width: 140px;
+}
+
+.stageCount {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary, #111);
+  display: block;
+  margin-bottom: 6px;
+}
+
+.stageCountLabel {
+  font-size: 11px;
+  color: var(--text-secondary, #9ca3af);
+  margin-bottom: 8px;
+  display: block;
+}
+
+.progressWrap {
+  height: 6px;
+  background: var(--bg-secondary, #f3f4f6);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.progressBar {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s ease;
+}
+
+.progressPercent {
+  font-size: 12px;
+  color: var(--text-secondary, #6b7280);
+  font-weight: 500;
+}
+
+/* Conversion cell (last column) */
+.conversionCell {
+  padding: 16px;
+  text-align: center;
+  border-left: 1px solid var(--border-color, #e5e7eb);
+  vertical-align: middle;
+  min-width: 120px;
+}
+
+.conversionValue {
+  font-size: 24px;
+  font-weight: 800;
+  display: block;
+  margin-bottom: 4px;
+}
+
+.conversionLabel {
+  font-size: 11px;
+  color: var(--text-secondary, #9ca3af);
+}
+
+/* Summary cards */
+.summaryRow {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 24px;
+}
+
+.summaryCard {
+  flex: 1;
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 10px;
+  padding: 20px;
+  text-align: center;
+}
+
+.summaryCard.winner {
+  border-color: var(--primary, #4A7C59);
+  background: var(--bg-highlight, #f0fdf4);
+}
+
+.summaryVariant {
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-secondary, #6b7280);
+  margin-bottom: 4px;
+}
+
+.summaryConversion {
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--text-primary, #111);
+}
+
+.summaryUnit {
+  font-size: 16px;
+  font-weight: 400;
+  color: var(--text-secondary, #6b7280);
+}
+
+.summaryUsers {
+  font-size: 13px;
+  color: var(--text-secondary, #9ca3af);
+  margin-top: 4px;
+}
+
+.winnerBadge {
+  display: inline-block;
+  background: var(--primary, #4A7C59);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-top: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.loading {
+  color: var(--text-secondary, #6b7280);
+  font-size: 14px;
+  padding: 40px 24px;
+  text-align: center;
+}

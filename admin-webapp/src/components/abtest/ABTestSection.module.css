@@ -1,0 +1,96 @@
+.section {
+  background: var(--card-bg, #fff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  padding: 20px;
+  margin-top: 16px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 16px;
+  color: var(--text-primary, #111);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+
+.label {
+  color: var(--text-secondary, #6b7280);
+  font-size: 14px;
+}
+
+.buttons {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-secondary, #f3f4f6);
+  border-radius: 6px;
+  padding: 3px;
+}
+
+.btn {
+  padding: 6px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary, #6b7280);
+  background: transparent;
+  transition: all 0.15s;
+}
+
+.btn:hover {
+  color: var(--text-primary, #111);
+}
+
+.btn.active {
+  background: var(--primary, #4A7C59);
+  color: #fff;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.table th {
+  text-align: right;
+  padding: 8px 12px;
+  color: var(--text-secondary, #6b7280);
+  font-weight: 600;
+  border-bottom: 1px solid var(--border-color, #e5e7eb);
+}
+
+.table th:first-child {
+  text-align: left;
+}
+
+.table td {
+  padding: 8px 12px;
+  text-align: right;
+  border-bottom: 1px solid var(--border-light, #f3f4f6);
+}
+
+.table td:first-child {
+  text-align: left;
+  color: var(--text-secondary, #6b7280);
+}
+
+.highlight td {
+  font-weight: 700;
+  color: var(--primary, #4A7C59);
+}
+
+.loading {
+  color: var(--text-secondary, #6b7280);
+  font-size: 14px;
+  padding: 12px 0;
+}

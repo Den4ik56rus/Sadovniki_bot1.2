@@ -3,6 +3,7 @@ import { useEffect } from 'react'
 import { useStatsStore, useCrmStore, useCurrencyStore } from '@/store'
 import { ServerMetricsPanel } from './ServerMetrics'
 import { OpenAIBalanceCard } from './OpenAIBalanceCard'
+import { ABTestSection } from '@/components/abtest/ABTestSection'
 import styles from './Dashboard.module.css'
 
 export function Dashboard() {
@@ -203,6 +204,8 @@ export function Dashboard() {
           </div>
         )}
       </div>
+
+      <ABTestSection />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import { useStatsStore, useCurrencyStore } from '@/store'
 import { getParam, setParams } from '@/router'
+import { ABTestStats } from '@/components/abtest/ABTestStats'
 import styles from './StatsPanel.module.css'
 
 const VALID_PERIODS = ['day', 'week', 'month', 'all'] as const
@@ -227,6 +228,8 @@ export function StatsPanel() {
           )}
         </div>
       ) : null}
+
+      <ABTestStats />
     </div>
   )
 }

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react'
 import { api } from '@/services/api'
 import type { SubscriptionPlan, TokenPackage } from '@/types'
+import { ABTestToggle } from '@/components/abtest/ABTestToggle'
 import styles from './SettingsPage.module.css'
 
 interface TaskConfig {
@@ -304,6 +305,11 @@ export function SettingsPage() {
       <div className={styles.header}>
         <span className={styles.headerIcon}>&#x2699;&#xFE0F;</span>
         <h1 className={styles.headerTitle}>Настройки</h1>
+      </div>
+
+      {/* A/B тест воронок */}
+      <div className={styles.toggleSection}>
+        <ABTestToggle />
       </div>
 
       {/* RAG Toggle */}

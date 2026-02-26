@@ -133,7 +133,7 @@ export function ABTestPage() {
                     {active === variant && <span className={styles.activeDot} />}
                   </td>
                   {stages.map((stage) => {
-                    const count = v[stage as keyof typeof v] as number
+                    const count = (v[stage as keyof typeof v] as number) ?? 0
                     const pct = getPercent(count, v.users)
                     return (
                       <td key={stage} className={styles.stageCell}>

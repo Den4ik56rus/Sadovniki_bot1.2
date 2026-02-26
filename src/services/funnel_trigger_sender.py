@@ -1,14 +1,15 @@
 # src/services/funnel_trigger_sender.py
 
 """
+DEPRECATED: Используйте src/services/automation/executor.py вместо этого модуля.
+
+Этот модуль заменён универсальной системой automation_triggers.
+Функции send_to_single_user и send_payment_offer ещё используются
+из executor.py, но execute_stage_triggers/process_pending_triggers
+заменены на automation engine.
+
+Старое описание:
 Отправка триггерных сообщений при смене этапа воронки.
-
-Когда пользователь перемещается на этап с привязанным триггером,
-ему отправляется контент из рассылки (текст, фото, опрос, кнопки)
-или платёжный оффер (если trigger.payment_config установлен).
-
-Отложенные триггеры (delay_minutes > 0) записываются в funnel_trigger_log
-со status='pending' и обрабатываются фоновым планировщиком в main.py.
 """
 
 import logging

@@ -1562,4 +1562,65 @@ export const api = {
       body: JSON.stringify(updates),
     })
   },
+
+  // ═══════════════════════════════════════════════════════════════
+  // Automation Triggers (универсальные триггеры автоматизации)
+  // ═══════════════════════════════════════════════════════════════
+
+  async getAutomationTriggers(params?: {
+    event_type?: string
+    funnel_id?: string
+    stage_key?: string
+  }): Promise<import('@/types').AutomationTriggersResponse> {
+    const qs = new URLSearchParams()
+    if (params?.event_type) qs.set('event_type', params.event_type)
+    if (params?.funnel_id) qs.set('funnel_id', params.funnel_id)
+    if (params?.stage_key) qs.set('stage_key', params.stage_key)
+    const query = qs.toString() ? `?${qs}` : ''
+    return fetchApi(`/triggers${query}`)
+  },
+
+  async createAutomationTrigger(data: import('@/types').CreateTriggerDto): Promise<{ trigger: import('@/types').AutomationTrigger }> {
+    return fetchApi('/triggers', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  },
+
+  async getAutomationTrigger(id: number): Promise<{ trigger: import('@/types').AutomationTrigger }> {
+    return fetchApi(`/triggers/${id}`)
+  },
+
+  async updateAutomationTrigger(id: number, data: Partial<import('@/types').CreateTriggerDto> & { is_active?: boolean }): Promise<{ trigger: import('@/types').AutomationTrigger }> {
+    return fetchApi(`/triggers/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deleteAutomationTrigger(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/triggers/${id}`, { method: 'DELETE' })
+  },
+
+  async toggleAutomationTrigger(id: number, isActive: boolean): Promise<{ trigger: import('@/types').AutomationTrigger }> {
+    return fetchApi(`/triggers/${id}/toggle`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_active: isActive }),
+    })
+  },
+
+  async getAutomationTriggerLog(id: number, limit = 50, offset = 0): Promise<import('@/types').TriggerLogResponse> {
+    return fetchApi(`/triggers/${id}/log?limit=${limit}&offset=${offset}`)
+  },
+
+  async previewAutomationTriggerUsers(conditions: import('@/types').ConditionTree | null): Promise<{ count: number }> {
+    return fetchApi('/triggers/preview-users', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ conditions }),
+    })
+  },
 }

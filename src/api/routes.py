@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation
 
 
 def setup_routes(app: web.Application) -> None:
@@ -284,6 +284,16 @@ def setup_routes(app: web.Application) -> None:
 
     # SSE: Broadcast progress
     app.router.add_get(r"/api/admin/events/broadcast/{broadcast_id:\d+}", sse.broadcast_stream)
+
+    # Automation Triggers API (универсальные триггеры автоматизации)
+    app.router.add_get("/api/admin/triggers", automation.get_triggers)
+    app.router.add_post("/api/admin/triggers", automation.create_trigger)
+    app.router.add_post("/api/admin/triggers/preview-users", automation.preview_users)
+    app.router.add_get(r"/api/admin/triggers/{id:\d+}", automation.get_trigger)
+    app.router.add_put(r"/api/admin/triggers/{id:\d+}", automation.update_trigger)
+    app.router.add_delete(r"/api/admin/triggers/{id:\d+}", automation.delete_trigger)
+    app.router.add_patch(r"/api/admin/triggers/{id:\d+}/toggle", automation.toggle_trigger)
+    app.router.add_get(r"/api/admin/triggers/{id:\d+}/log", automation.get_trigger_log)
 
     # Webhooks (платежные системы)
     app.router.add_post("/api/webhooks/yookassa", webhooks.yookassa_webhook)

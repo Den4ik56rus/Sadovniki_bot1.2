@@ -28,6 +28,8 @@ from src.handlers.consultation.entry import _log_bot_msg, _log_user_callback, se
 
 # Импортируем список админов
 from src.handlers.admin import ADMIN_IDS
+from src.services.db.bot_settings_repo import get_setting
+from src.handlers.funnel_b import start_funnel_b
 
 # Создаём роутер для этого модуля
 router = Router()
@@ -237,6 +239,20 @@ async def cmd_start(message: Message) -> None:
 
         from src.services.db.client_funnel_repo import set_initial_source
         await set_initial_source(user_id, source_name)
+
+    # Назначить вариант воронки новому пользователю и направить в нужный флоу
+    if is_new_user:
+        active_variant = await get_setting('active_funnel_variant', 'A')
+        from src.services.db.pool import get_pool
+        _pool = get_pool()
+        async with _pool.acquire() as _conn:
+            await _conn.execute(
+                "UPDATE users SET funnel_variant = $1 WHERE id = $2",
+                active_variant, user_id
+            )
+        if active_variant == 'B':
+            await start_funnel_b(message, user_id)
+            return  # Воронка Б управляет своим флоу
 
     # При команде /start закрываем все старые топики и создаём новый
     from src.services.db.topics_repo import close_open_topics

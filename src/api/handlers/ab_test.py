@@ -16,6 +16,8 @@ async def get_ab_test_stats(request: web.Request) -> web.Response:
             SELECT
                 u.funnel_variant,
                 COUNT(DISTINCT u.id) AS users,
+                COUNT(DISTINCT CASE WHEN u.crm_status IN ('tried','trial_ended','paid') THEN u.id END) AS tried,
+                COUNT(DISTINCT CASE WHEN u.crm_status IN ('trial_ended','paid') THEN u.id END) AS trial_ended,
                 COUNT(DISTINCT p.user_id) AS paid
             FROM users u
             LEFT JOIN payments p ON p.user_id = u.id AND p.status = 'paid'
@@ -29,9 +31,13 @@ async def get_ab_test_stats(request: web.Request) -> web.Response:
             variant = row['funnel_variant']
             users = row['users']
             paid = row['paid']
+            tried = row['tried']
+            trial_ended = row['trial_ended']
             conversion = round(paid / users * 100, 1) if users > 0 else 0.0
             variants[variant] = {
                 'users': users,
+                'tried': tried,
+                'trial_ended': trial_ended,
                 'paid': paid,
                 'conversion': conversion
             }
@@ -39,7 +45,7 @@ async def get_ab_test_stats(request: web.Request) -> web.Response:
         # Гарантировать наличие обоих вариантов в ответе
         for v in ('A', 'B'):
             if v not in variants:
-                variants[v] = {'users': 0, 'paid': 0, 'conversion': 0.0}
+                variants[v] = {'users': 0, 'tried': 0, 'trial_ended': 0, 'paid': 0, 'conversion': 0.0}
 
         return web.json_response({
             'active_variant': active_variant,

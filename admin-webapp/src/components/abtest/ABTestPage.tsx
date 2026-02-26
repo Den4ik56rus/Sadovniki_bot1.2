@@ -6,13 +6,15 @@ const STAGE_COLORS = {
   users:       '#3B82F6',
   tried:       '#8B5CF6',
   trial_ended: '#F59E0B',
+  saw_pricing: '#F97316',
   paid:        '#22C55E',
 }
 
 const STAGE_LABELS = {
   users:       'Новые',
-  tried:       'Попробовали',
-  trial_ended: 'Триал закончился',
+  tried:       'Получил консультацию',
+  trial_ended: 'Закончился пробный',
+  saw_pricing: 'Смотрел тарифы',
   paid:        'Оплатили',
 }
 
@@ -41,10 +43,10 @@ export function ABTestPage() {
   }
 
   const active = stats?.active_variant ?? 'A'
-  const a = stats?.variants.A ?? { users: 0, tried: 0, trial_ended: 0, paid: 0, conversion: 0 }
-  const b = stats?.variants.B ?? { users: 0, tried: 0, trial_ended: 0, paid: 0, conversion: 0 }
+  const a = stats?.variants.A ?? { users: 0, tried: 0, trial_ended: 0, saw_pricing: 0, paid: 0, conversion: 0 }
+  const b = stats?.variants.B ?? { users: 0, tried: 0, trial_ended: 0, saw_pricing: 0, paid: 0, conversion: 0 }
 
-  const stages: StageKey[] = ['users', 'tried', 'trial_ended', 'paid']
+  const stages: StageKey[] = ['users', 'tried', 'trial_ended', 'saw_pricing', 'paid']
 
   const getPercent = (count: number, total: number) =>
     total > 0 ? Math.round((count / total) * 100) : 0

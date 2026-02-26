@@ -938,6 +938,7 @@ interface ABTestVariantStats {
   users: number
   tried: number
   trial_ended: number
+  saw_pricing: number
   paid: number
   conversion: number
 }

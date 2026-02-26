@@ -930,6 +930,58 @@ export const useBuyersStore = create<BuyersState>()((set, get) => ({
   },
 }))
 
+// =============================================================================
+// A/B Test Store
+// =============================================================================
+
+interface ABTestVariantStats {
+  users: number
+  paid: number
+  conversion: number
+}
+
+interface ABTestStats {
+  active_variant: 'A' | 'B'
+  variants: {
+    A: ABTestVariantStats
+    B: ABTestVariantStats
+  }
+}
+
+interface ABTestState {
+  stats: ABTestStats | null
+  loading: boolean
+  fetchStats: () => Promise<void>
+  setVariant: (variant: 'A' | 'B') => Promise<void>
+}
+
+export const useABTestStore = create<ABTestState>((set) => ({
+  stats: null,
+  loading: false,
+
+  fetchStats: async () => {
+    set({ loading: true })
+    try {
+      const res = await fetch('/api/admin/ab-test/stats')
+      const data = await res.json()
+      set({ stats: data })
+    } catch (error) {
+      console.error('Error fetching AB test stats:', error)
+    } finally {
+      set({ loading: false })
+    }
+  },
+
+  setVariant: async (variant: 'A' | 'B') => {
+    await fetch('/api/admin/ab-test/variant', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ variant }),
+    })
+  },
+}))
+
+
 // OpenAI Balance Store
 interface OpenAIBalanceState {
   balance: OpenAIBalance | null

@@ -37,18 +37,34 @@ function formatDate(dateStr: string | null | undefined): string {
   }
 }
 
+const LS_KEY = 'articles_form_prefs'
+
+function loadPrefs() {
+  try {
+    return JSON.parse(localStorage.getItem(LS_KEY) || '{}')
+  } catch { return {} }
+}
+
+function savePrefs(patch: Record<string, unknown>) {
+  try {
+    const current = loadPrefs()
+    localStorage.setItem(LS_KEY, JSON.stringify({ ...current, ...patch }))
+  } catch { /* ignore */ }
+}
+
 export function ArticlesPage() {
   const [mode, setMode] = useState<Mode>('list')
   const [selectedArticleId, setSelectedArticleId] = useState<number | null>(null)
 
-  // Form state
+  // Form state — defaults from localStorage
+  const prefs = loadPrefs()
   const [topic, setTopic] = useState('')
-  const [category, setCategory] = useState('')
-  const [culture, setCulture] = useState('')
-  const [modelOverride, setModelOverride] = useState('')
-  const [useScripts, setUseScripts] = useState(true)
-  const [useConsultationPrompt, setUseConsultationPrompt] = useState(false)
-  const [useRag, setUseRag] = useState(true)
+  const [category, setCategory] = useState<string>(prefs.category ?? '')
+  const [culture, setCulture] = useState<string>(prefs.culture ?? '')
+  const [modelOverride, setModelOverride] = useState<string>(prefs.modelOverride ?? '')
+  const [useScripts, setUseScripts] = useState<boolean>(prefs.useScripts ?? true)
+  const [useConsultationPrompt, setUseConsultationPrompt] = useState<boolean>(prefs.useConsultationPrompt ?? false)
+  const [useRag, setUseRag] = useState<boolean>(prefs.useRag ?? true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
 
@@ -167,7 +183,7 @@ export function ArticlesPage() {
             <select
               className={styles.select}
               value={category}
-              onChange={e => setCategory(e.target.value)}
+              onChange={e => { setCategory(e.target.value); savePrefs({ category: e.target.value }) }}
               disabled={isGenerating}
             >
               {CATEGORIES.map(c => (
@@ -181,7 +197,7 @@ export function ArticlesPage() {
             <select
               className={styles.select}
               value={culture}
-              onChange={e => setCulture(e.target.value)}
+              onChange={e => { setCulture(e.target.value); savePrefs({ culture: e.target.value }) }}
               disabled={isGenerating}
             >
               {CULTURES.map(c => (
@@ -200,7 +216,7 @@ export function ArticlesPage() {
             <select
               className={styles.select}
               value={modelOverride}
-              onChange={e => setModelOverride(e.target.value)}
+              onChange={e => { setModelOverride(e.target.value); savePrefs({ modelOverride: e.target.value }) }}
               disabled={isGenerating}
             >
               <option value="">По умолчанию из настроек</option>
@@ -217,7 +233,7 @@ export function ArticlesPage() {
               type="checkbox"
               className={styles.checkbox}
               checked={useScripts}
-              onChange={e => setUseScripts(e.target.checked)}
+              onChange={e => { setUseScripts(e.target.checked); savePrefs({ useScripts: e.target.checked }) }}
               disabled={isGenerating}
             />
             <span>Article prompt</span>
@@ -227,7 +243,7 @@ export function ArticlesPage() {
               type="checkbox"
               className={styles.checkbox}
               checked={useConsultationPrompt}
-              onChange={e => setUseConsultationPrompt(e.target.checked)}
+              onChange={e => { setUseConsultationPrompt(e.target.checked); savePrefs({ useConsultationPrompt: e.target.checked }) }}
               disabled={isGenerating}
             />
             <span>Consultation prompt</span>
@@ -237,7 +253,7 @@ export function ArticlesPage() {
               type="checkbox"
               className={styles.checkbox}
               checked={useRag}
-              onChange={e => setUseRag(e.target.checked)}
+              onChange={e => { setUseRag(e.target.checked); savePrefs({ useRag: e.target.checked }) }}
               disabled={isGenerating}
             />
             <span>RAG поиск</span>

@@ -11,12 +11,26 @@ Endpoints:
 """
 
 import logging
+from decimal import Decimal
 from aiohttp import web
 
 from src.services.db import article_repo
 from src.services.llm.article_llm import generate_article
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_article(article: dict) -> dict:
+    """Конвертирует non-serializable типы (Decimal, datetime) в JSON-совместимые."""
+    result = {}
+    for k, v in article.items():
+        if isinstance(v, Decimal):
+            result[k] = float(v)
+        elif hasattr(v, 'isoformat'):
+            result[k] = v.isoformat()
+        else:
+            result[k] = v
+    return result
 
 
 async def generate_article_api(request: web.Request) -> web.Response:
@@ -66,12 +80,9 @@ async def generate_article_api(request: web.Request) -> web.Response:
         if not article:
             return web.json_response({"error": "Article not found after generation"}, status=500)
 
-        if article.get("created_at"):
-            article["created_at"] = article["created_at"].isoformat()
-
         return web.json_response({
             "article_id": article_id,
-            "article": article,
+            "article": _serialize_article(article),
         })
     except Exception as e:
         logger.error(f"Error generating article via webapp: {e}", exc_info=True)
@@ -103,13 +114,8 @@ async def get_articles(request: web.Request) -> web.Response:
 
         total = await article_repo.get_articles_count(admin_telegram_id)
 
-        # Сериализуем datetime
-        for article in articles:
-            if article.get("created_at"):
-                article["created_at"] = article["created_at"].isoformat()
-
         return web.json_response({
-            "articles": articles,
+            "articles": [_serialize_article(a) for a in articles],
             "total": total,
             "limit": limit,
             "offset": offset
@@ -129,11 +135,7 @@ async def get_article(request: web.Request) -> web.Response:
         if not article:
             return web.json_response({"error": "Article not found"}, status=404)
 
-        # Сериализуем datetime
-        if article.get("created_at"):
-            article["created_at"] = article["created_at"].isoformat()
-
-        return web.json_response(article)
+        return web.json_response(_serialize_article(article))
     except Exception as e:
         logger.error(f"Error getting article {article_id}: {e}")
         return web.json_response({"error": str(e)}, status=500)
@@ -155,13 +157,8 @@ async def get_articles_by_admin(request: web.Request) -> web.Response:
 
         total = await article_repo.get_articles_count(admin_telegram_id)
 
-        # Сериализуем datetime
-        for article in articles:
-            if article.get("created_at"):
-                article["created_at"] = article["created_at"].isoformat()
-
         return web.json_response({
-            "articles": articles,
+            "articles": [_serialize_article(a) for a in articles],
             "total": total,
             "admin_telegram_id": admin_telegram_id
         })

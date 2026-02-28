@@ -44,6 +44,8 @@ import type {
   // Admin Articles
   AdminArticle,
   AdminArticlesResponse,
+  GenerateArticleDto,
+  GenerateArticleResponse,
   // Expenses
   Expense,
   ExpenseCategory,
@@ -768,6 +770,17 @@ export const api = {
 
   async getArticle(articleId: number): Promise<AdminArticle> {
     return fetchApi<AdminArticle>(`/articles/${articleId}`)
+  },
+
+  async generateArticle(dto: GenerateArticleDto): Promise<GenerateArticleResponse> {
+    return fetchApi<GenerateArticleResponse>('/articles/generate', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    })
+  },
+
+  async getLlmConfig(): Promise<{ models: string[]; tasks: Record<string, { model: string; temperature: number | null; reasoning_effort: string | null; env_model: string; env_temp: number | null; label: string }> }> {
+    return fetchApi('/settings/llm')
   },
 
   // =============================================================================

@@ -98,6 +98,14 @@ const Icons = {
       <path d="M13 2L5 12H11L9 20L17 10H11L13 2Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
     </svg>
   ),
+  articles: (
+    <svg width="22" height="22" viewBox="0 0 22 22" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 2H14L18 6V20C18 20.5523 17.5523 21 17 21H5C4.44772 21 4 20.5523 4 20V3C4 2.44772 4.44772 2 5 2H6Z" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+      <path d="M14 2V6H18" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round"/>
+      <path d="M8 10H14" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+      <path d="M8 14H12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+    </svg>
+  ),
   plus: (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
       <path d="M7 1V13M1 7H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
@@ -118,6 +126,7 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
   { id: 'messages', icon: Icons.messages, label: 'Рассылки' },
   { id: 'triggers', icon: Icons.triggers, label: 'Триггеры' },
   { id: 'tasks', icon: Icons.tasks, label: 'Задачи' },
+  { id: 'articles', icon: Icons.articles, label: 'Статьи' },
   { id: 'moderation', icon: Icons.moderation, label: 'Модерация' },
   {
     id: 'lists-group',

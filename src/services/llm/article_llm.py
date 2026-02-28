@@ -8,8 +8,9 @@ LLM сервис для генерации статей в режиме адми
 - НЕ вызывает deduct_tokens() - бесплатно для админа
 - Сохраняет статью в admin_articles для просмотра в админке
 - НЕ загружает историю через get_last_messages() - нет диалога
-- Использует category=None в RAG-поиске - поиск по всей базе
+- По умолчанию category=None (поиск по всей базе), поддерживает фильтрацию
 - Увеличенные лимиты документов для RAG
+- Тогглы: use_scripts, skip_rag, model_override (для webapp)
 """
 
 import logging
@@ -19,6 +20,7 @@ from src.services.rag.unified_retriever import retrieve_unified_snippets
 from src.services.llm.gemini_embeddings import get_gemini_embedding_with_usage
 from src.services.llm.core_llm import create_chat_completion_with_usage, calculate_cost
 from src.prompts.article_prompt import build_article_system_prompt
+from src.prompts.consultation_prompts import build_consultation_system_prompt
 from src.services.db.article_repo import save_article
 from src.config import settings
 from src.services.db.settings_repo import get_model_for_task, get_temperature_for_task, get_reasoning_effort_for_task
@@ -30,93 +32,115 @@ async def generate_article(
     *,
     topic: str,
     telegram_user_id: int,
+    category: Optional[str] = None,
+    culture: Optional[str] = None,
+    use_scripts: bool = True,
+    use_consultation_prompt: bool = False,
+    skip_rag: bool = False,
+    model_override: Optional[str] = None,
 ) -> Tuple[str, int]:
     """
-    Генерирует статью по заданной теме с использованием всей базы знаний.
-
-    Особенности режима статей:
-    - Поиск по ВСЕЙ базе знаний (без фильтрации по category/subcategory)
-    - Увеличенные лимиты документов для RAG
-    - Специальный промпт с обязательной структурой
-    - БЕЗ списания токенов
-    - БЕЗ сохранения в БД
+    Генерирует статью по заданной теме.
 
     Параметры:
         topic: Тема статьи от администратора
         telegram_user_id: ID администратора (для логирования)
+        category: Категория для фильтрации RAG (None = вся база)
+        culture: Культура для фильтрации RAG subcategory (None = без фильтра)
+        use_scripts: Использовать article_prompt
+        use_consultation_prompt: Использовать consultation_prompt (как при обычной консультации)
+        skip_rag: Пропустить RAG-поиск и embedding
+        model_override: Переопределить модель из настроек
 
     Возвращает:
         Tuple[str, int]: (текст статьи, ID статьи в БД)
-
-    Raises:
-        Exception: При ошибках генерации или вызова API
     """
     print(f"\n[article_llm] ========== НАЧАЛО ГЕНЕРАЦИИ СТАТЬИ ==========")
     print(f"[article_llm] Тема: {topic}")
     print(f"[article_llm] Admin ID: {telegram_user_id}")
+    print(f"[article_llm] category={category}, culture={culture}, use_scripts={use_scripts}, skip_rag={skip_rag}, model_override={model_override}")
 
     try:
-        # ============================================================
-        # ШАГ 1: Получение embedding для темы статьи
-        # ============================================================
-        print(f"[article_llm] ШАГ 1: Получение embedding...")
+        embed_tokens = 0
+        kb_snippets = []
+        qa_found = False
 
-        query_embedding, embed_tokens, embed_model = await get_gemini_embedding_with_usage(topic)
+        if not skip_rag:
+            # ============================================================
+            # ШАГ 1: Получение embedding для темы статьи
+            # ============================================================
+            print(f"[article_llm] ШАГ 1: Получение embedding...")
 
-        print(f"[article_llm] Embedding получен:")
-        print(f"  - Размерность: {len(query_embedding)}")
-        print(f"  - Токены: {embed_tokens}")
-        print(f"  - Модель: {embed_model}")
+            query_embedding, embed_tokens, embed_model = await get_gemini_embedding_with_usage(topic)
 
-        # ============================================================
-        # ШАГ 2: RAG-поиск БЕЗ фильтрации по категориям
-        # ============================================================
-        print(f"\n[article_llm] ШАГ 2: RAG-поиск по ВСЕЙ базе знаний...")
-        print(f"[article_llm] Параметры поиска:")
-        print(f"  - category=None (поиск по всей базе)")
-        print(f"  - qa_limit=5")
-        print(f"  - doc_limit=50")
-        print(f"  - priority_doc_limit=20")
-        print(f"  - qa_distance_threshold=0.6")
-        print(f"  - doc_distance_threshold=0.75")
+            print(f"[article_llm] Embedding получен:")
+            print(f"  - Размерность: {len(query_embedding)}")
+            print(f"  - Токены: {embed_tokens}")
+            print(f"  - Модель: {embed_model}")
 
-        kb_snippets, qa_found = await retrieve_unified_snippets(
-            category=None,  # КРИТИЧНО: None для поиска по всей базе
-            query_embedding=query_embedding,
-            subcategory=None,
-            qa_limit=5,              # Увеличено для статей (обычно 2)
-            doc_limit=50,            # Увеличено для статей (обычно 5)
-            priority_doc_limit=20,   # Увеличено для статей (обычно 3)
-            qa_distance_threshold=0.6,    # Более мягкий порог (обычно 0.4)
-            doc_distance_threshold=0.75,  # Более мягкий порог (обычно 0.35)
-        )
+            # ============================================================
+            # ШАГ 2: RAG-поиск
+            # ============================================================
+            print(f"\n[article_llm] ШАГ 2: RAG-поиск...")
+            print(f"  - category={category}, subcategory={culture}")
+            print(f"  - qa_limit=5, doc_limit=50, priority_doc_limit=20")
 
-        print(f"[article_llm] Результаты RAG-поиска:")
-        print(f"  - Найдено фрагментов: {len(kb_snippets)}")
-        print(f"  - Q&A найдены: {qa_found}")
+            kb_snippets, qa_found = await retrieve_unified_snippets(
+                category=category,
+                query_embedding=query_embedding,
+                subcategory=culture,
+                qa_limit=5,
+                doc_limit=50,
+                priority_doc_limit=20,
+                qa_distance_threshold=0.6,
+                doc_distance_threshold=0.75,
+            )
 
-        if not kb_snippets:
-            print(f"[article_llm] WARNING: Релевантные фрагменты не найдены!")
-            print(f"[article_llm] Статья будет сгенерирована на основе знаний LLM")
+            print(f"[article_llm] Результаты RAG-поиска:")
+            print(f"  - Найдено фрагментов: {len(kb_snippets)}")
+            print(f"  - Q&A найдены: {qa_found}")
+
+            if not kb_snippets:
+                print(f"[article_llm] WARNING: Релевантные фрагменты не найдены!")
+                print(f"[article_llm] Статья будет сгенерирована на основе знаний LLM")
+            else:
+                level1 = [s for s in kb_snippets if s.get("priority_level") == 1]
+                level2 = [s for s in kb_snippets if s.get("priority_level") == 2]
+                level3 = [s for s in kb_snippets if s.get("priority_level") == 3]
+                print(f"  - Уровень 1 (Q&A): {len(level1)}")
+                print(f"  - Уровень 2 (приоритетные docs): {len(level2)}")
+                print(f"  - Уровень 3 (обычные docs): {len(level3)}")
         else:
-            # Подробная статистика по уровням
-            level1 = [s for s in kb_snippets if s.get("priority_level") == 1]
-            level2 = [s for s in kb_snippets if s.get("priority_level") == 2]
-            level3 = [s for s in kb_snippets if s.get("priority_level") == 3]
-            print(f"  - Уровень 1 (Q&A): {len(level1)}")
-            print(f"  - Уровень 2 (приоритетные docs): {len(level2)}")
-            print(f"  - Уровень 3 (обычные docs): {len(level3)}")
+            print(f"[article_llm] ШАГ 1-2: ПРОПУЩЕНЫ (skip_rag=True)")
 
         # ============================================================
         # ШАГ 3: Формирование системного промпта
         # ============================================================
-        print(f"\n[article_llm] ШАГ 3: Формирование промпта для статьи...")
+        print(f"\n[article_llm] ШАГ 3: Формирование промпта (use_scripts={use_scripts}, use_consultation_prompt={use_consultation_prompt})...")
 
-        system_prompt = build_article_system_prompt(
-            topic=topic,
-            kb_snippets=kb_snippets,
-            qa_found=qa_found,
-        )
+        parts = []
+
+        if use_scripts:
+            article_part = build_article_system_prompt(
+                topic=topic,
+                kb_snippets=kb_snippets,
+                qa_found=qa_found,
+            )
+            parts.append(article_part)
+
+        if use_consultation_prompt:
+            consultation_part = await build_consultation_system_prompt(
+                culture=culture or "не определено",
+                kb_snippets=kb_snippets,
+                qa_found=qa_found,
+                consultation_category=category or "",
+            )
+            parts.append(consultation_part)
+
+        if parts:
+            system_prompt = "\n\n---\n\n".join(parts)
+        else:
+            system_prompt = f"Ты — профессиональный агроном, специализирующийся на ягодных культурах. Напиши подробную статью на тему: {topic}"
 
         print(f"[article_llm] Системный промпт сформирован:")
         print(f"  - Длина: {len(system_prompt)} символов")
@@ -131,7 +155,7 @@ async def generate_article(
             {"role": "user", "content": f"Напиши подробную статью на тему: {topic}"}
         ]
 
-        article_model = await get_model_for_task("article")
+        article_model = model_override if model_override else await get_model_for_task("article")
         article_temp = await get_temperature_for_task("article")
 
         print(f"[article_llm] Параметры LLM:")
@@ -154,7 +178,6 @@ async def generate_article(
         completion_tokens = response["completion_tokens"]
         model_used = response["model"]
 
-        # Вычисляем стоимость
         llm_cost = calculate_cost(model_used, prompt_tokens, completion_tokens)
 
         print(f"[article_llm] Статья сгенерирована:")
@@ -167,7 +190,7 @@ async def generate_article(
         # ШАГ 5: Сохранение в БД
         # ============================================================
         total_tokens = embed_tokens + llm_tokens
-        total_cost = llm_cost  # Стоимость embedding очень мала, можно не учитывать
+        total_cost = llm_cost
 
         print(f"\n[article_llm] ШАГ 5: Сохранение статьи в БД...")
 

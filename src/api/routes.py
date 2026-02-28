@@ -154,6 +154,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_patch(r"/api/admin/funnels/triggers/{id:\d+}", funnels.toggle_stage_trigger)
 
     # Admin Articles API (статьи, сгенерированные админом)
+    app.router.add_post("/api/admin/articles/generate", articles.generate_article_api)
     app.router.add_get("/api/admin/articles", articles.get_articles)
     app.router.add_get("/api/admin/articles/by-admin/{telegram_id}", articles.get_articles_by_admin)
     app.router.add_get(r"/api/admin/articles/{id:\d+}", articles.get_article)

@@ -20,6 +20,7 @@ import { GuidesPage } from '@/components/guides'
 import { ModerationPage } from '@/components/moderation'
 import { BroadcastPage } from '@/components/broadcast'
 import { TriggersPage } from '@/components/triggers'
+import { ArticlesPage } from '@/components/articles'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
@@ -53,6 +54,9 @@ function App() {
 
       {/* Триггеры автоматизации */}
       {currentView === 'triggers' && <TriggersPage />}
+
+      {/* Статьи — генерация и просмотр статей */}
+      {currentView === 'articles' && <ArticlesPage />}
 
       {/* Задачи - заглушка */}
       {currentView === 'tasks' && (

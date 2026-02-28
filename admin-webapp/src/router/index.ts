@@ -6,7 +6,7 @@ const SIMPLE_VIEWS = new Set([
   'dashboard', 'messages', 'tasks', 'payments', 'prompts',
   'prompt-preview', 'rag-docs', 'stats', 'invite-links',
   'expenses', 'guides', 'settings', 'users', 'live', 'documents',
-  'moderation', 'ab-test', 'triggers',
+  'moderation', 'ab-test', 'triggers', 'articles',
 ])
 
 export interface RouteMatch {

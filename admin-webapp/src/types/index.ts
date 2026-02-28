@@ -227,7 +227,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'ab-test' | 'triggers'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'ab-test' | 'triggers' | 'articles'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -574,6 +574,21 @@ export interface AdminArticlesResponse {
   total: number
   limit: number
   offset: number
+}
+
+export interface GenerateArticleDto {
+  topic: string
+  category?: string | null
+  culture?: string | null
+  model_override?: string | null
+  use_scripts: boolean
+  use_consultation_prompt: boolean
+  use_rag: boolean
+}
+
+export interface GenerateArticleResponse {
+  article_id: number
+  article: AdminArticle
 }
 
 // =============================================================================

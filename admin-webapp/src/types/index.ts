@@ -582,7 +582,7 @@ export interface GenerateArticleDto {
   culture?: string | null
   model_override?: string | null
   use_scripts: boolean
-  use_consultation_prompt: boolean
+  use_problem_solving: boolean
   use_rag: boolean
 }
 

@@ -59,7 +59,7 @@ async def generate_article_api(request: web.Request) -> web.Response:
         culture = data.get("culture") or None
         model_override = data.get("model_override") or None
         use_scripts = bool(data.get("use_scripts", True))
-        use_consultation_prompt = bool(data.get("use_consultation_prompt", False))
+        use_problem_solving = bool(data.get("use_problem_solving", False))
         use_rag = bool(data.get("use_rag", True))
 
         # Webapp-генерация — admin_telegram_id = 0 (не привязана к конкретному Telegram аккаунту)
@@ -71,7 +71,7 @@ async def generate_article_api(request: web.Request) -> web.Response:
             category=category,
             culture=culture,
             use_scripts=use_scripts,
-            use_consultation_prompt=use_consultation_prompt,
+            use_problem_solving=use_problem_solving,
             skip_rag=not use_rag,
             model_override=model_override,
         )

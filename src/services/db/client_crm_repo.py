@@ -1101,6 +1101,27 @@ async def get_client_full_data(user_id: int, funnel_id: Optional[str] = None) ->
 
         client = dict(row)
 
+        # Добавляем вариант воронки и ответы квиза
+        quiz_row = await conn.fetchrow(
+            """
+            SELECT u.funnel_variant, qa.culture, qa.region, qa.problem
+            FROM users u
+            LEFT JOIN user_quiz_answers qa ON qa.user_id = u.id
+            WHERE u.id = $1
+            """,
+            user_id
+        )
+        if quiz_row:
+            client['funnel_variant'] = quiz_row['funnel_variant']
+            client['quiz_culture'] = quiz_row['culture']
+            client['quiz_region'] = quiz_row['region']
+            client['quiz_problem'] = quiz_row['problem']
+        else:
+            client['funnel_variant'] = 'A'
+            client['quiz_culture'] = None
+            client['quiz_region'] = None
+            client['quiz_problem'] = None
+
         # Добавляем теги
         client['tags'] = await get_client_tags(user_id)
 

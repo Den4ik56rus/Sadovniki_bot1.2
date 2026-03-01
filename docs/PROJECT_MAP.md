@@ -1,8 +1,8 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2026-02-25
-**Project:** Sadovniki-bot v1.5.5
-**Status:** Active development — broadcasts v2 + funnel triggers + graceful shutdown; DB migrations 62-66 pending on production; payment reliability + discount/payment broadcast buttons planned
+**Last Updated:** 2026-03-01
+**Project:** Sadovniki-bot v1.8.0
+**Status:** Active development — Funnel B quiz onboarding implemented (schemas 81-83 NOT YET APPLIED); PDF solution delivery infrastructure ready (data/quiz_solutions/ empty); CRM quiz data display added
 
 ## Quick Navigation
 
@@ -172,6 +172,8 @@ User Question
 | Broadcast Payment Button | ❌ Planned | docs/plans/2026-02-23-broadcast-payment-button-and-create-modal.md | Personal YooKassa URL per recipient |
 | Payment Webhook Reliability | ❌ Planned | docs/plans/2026-02-23-payment-reliability.md | Async queue, reconciliation, alerts |
 | Funnel Stage Triggers | ⏳ Implemented, DB migrations pending | - | Auto-send broadcast when client moves to kanban stage |
+| Funnel B (Quiz Onboarding) | ⏳ Implemented, DB schemas 81-83 NOT applied | docs/features/FUNNEL_B.md | Full 4-step quiz, YooKassa 99 RUB, PDF or LLM delivery |
+| Quiz Plan Payment (quiz_plan) | ⏳ Implemented, not tested end-to-end | - | YooKassa payment_type=quiz_plan, PDF or LLM fallback |
 | Article Writing Mode | ✅ Production | - | Admin feature, needs docs |
 | Document Upload | ✅ Production | [DOCUMENT_PIPELINE.md](features/DOCUMENT_PIPELINE.md) | PDF/TXT/MD/DOCX |
 | CRM Deals Kanban | ✅ Production | - | Sales funnel management, needs docs |
@@ -213,31 +215,35 @@ User Question
 
 ## Active Context
 
-### Current Phase: Payment Reliability + Broadcast Buttons v3
+### Current Phase: Funnel B Launch + Content Creation
 
-**Focus Areas:**
-1. Payment webhook reliability (async queue + periodic reconciliation)
-2. Broadcast `discount` button type (personal time-limited discount on all plans)
-3. Broadcast `payment` button type (personal YooKassa URL per recipient)
-4. "Create broadcast" modal inside StageTriggerEditor
+**CRITICAL — Must Do Before Next Session:**
+1. Apply DB schemas 81, 82, 83 on production (in order: 82 → 83 → 81)
+2. Verify CRM quiz API routes are registered in router
+3. Test quiz flow end-to-end with test Telegram account
 
-**Last Session Changes (2026-02-25 — v1.5.5, documentation only):**
-- No code changes — session closed immediately after opening
-- Three implementation plan docs staged for commit (created 2026-02-23):
-  - `docs/plans/2026-02-23-payment-reliability.md`
-  - `docs/plans/2026-02-23-broadcast-payment-button-and-create-modal.md`
-  - `docs/plans/2026-02-23-broadcast-discount-button.md`
+**Last Session Changes (2026-03-01 — v1.8.0):**
+- Funnel B full quiz implementation (funnel_b.py: stub → 1255 lines)
+- Quiz plan payment (create_quiz_plan_payment, _process_quiz_plan_payment_success)
+- PDF solution delivery infrastructure (quiz_solutions.py, pdf_preview.py)
+- DB schemas 81 (activate B), 82 (user_quiz_answers), 83 (problem_key column)
+- CRM admin panel: quiz data display and edit in client card (MainTab.tsx)
+- CRM API: new quiz PATCH/DELETE endpoints
+- consultation_llm.py: quiz_focus_instructions parameter added
 
-**Previous Session Changes (2026-02-25 — v1.5.5):**
-- Graceful shutdown hardened: `close_bot_session=False` + `handle_signals=False`, finally block waits for handler tasks
-- Invite link analytics: new vs existing user breakdown in invite link stats
-- Invite link tracking: always tracks even after `member_limit` reached
-- CLAUDE.md: deploy commands and graceful shutdown notes added
+**Previous Session Changes (2026-02-25 — v1.8.0 articles page):**
+- Articles page added to admin-webapp
+- Decimal serialization fix in articles API
 
-**Pending Implementation (Plans Ready — see docs/plans/):**
-- `payment-reliability.md` — webhook queue, reconciliation, alerts, activity feed fix
-- `broadcast-payment-button-and-create-modal.md` — `payment` button type, create-in-trigger modal
-- `broadcast-discount-button.md` — `discount` button type, `user_broadcast_discounts` table, discount menu
+**Pending — Plans Ready (see docs/plans/):**
+- `payment-reliability.md` — webhook queue, reconciliation, alerts
+- `broadcast-payment-button-and-create-modal.md` — payment button type
+- `broadcast-discount-button.md` — discount button type
+
+**Content Needed (for PDF delivery path):**
+- `data/quiz_solutions/{culture}/{problem}/solution.pdf` — ready-made plans
+- `data/quiz_solutions/{culture}/{problem}/preview.jpg` — blurred previews
+- `data/quiz_solutions/{culture}/{problem}/offer.txt` — custom offer copy (optional)
 
 ### Constraints & Invariants
 

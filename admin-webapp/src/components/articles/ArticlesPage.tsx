@@ -8,6 +8,7 @@ import { ru } from 'date-fns/locale'
 import styles from './ArticlesPage.module.css'
 
 type Mode = 'list' | 'detail'
+type GenerationMode = 'article' | 'problem_solving'
 
 const CATEGORIES = [
   { value: '', label: 'Не указано (вся база)' },
@@ -20,12 +21,15 @@ const CATEGORIES = [
 
 const CULTURES = [
   { value: '', label: 'Не указано' },
-  { value: 'малина', label: 'Малина' },
-  { value: 'клубника', label: 'Клубника' },
+  { value: 'клубника летняя', label: 'Клубника летняя' },
+  { value: 'клубника ремонтантная', label: 'Клубника ремонтантная' },
+  { value: 'малина летняя', label: 'Малина летняя' },
+  { value: 'малина ремонтантная', label: 'Малина ремонтантная' },
   { value: 'голубика', label: 'Голубика' },
   { value: 'смородина', label: 'Смородина' },
   { value: 'крыжовник', label: 'Крыжовник' },
   { value: 'ежевика', label: 'Ежевика' },
+  { value: 'жимолость', label: 'Жимолость' },
 ]
 
 function formatDate(dateStr: string | null | undefined): string {
@@ -58,12 +62,12 @@ export function ArticlesPage() {
 
   // Form state — defaults from localStorage
   const prefs = loadPrefs()
+  const [generationMode, setGenerationMode] = useState<GenerationMode>(prefs.generationMode ?? 'article')
   const [topic, setTopic] = useState('')
   const [category, setCategory] = useState<string>(prefs.category ?? '')
   const [culture, setCulture] = useState<string>(prefs.culture ?? '')
   const [modelOverride, setModelOverride] = useState<string>(prefs.modelOverride ?? '')
   const [useScripts, setUseScripts] = useState<boolean>(prefs.useScripts ?? true)
-  const [useConsultationPrompt, setUseConsultationPrompt] = useState<boolean>(prefs.useConsultationPrompt ?? false)
   const [useRag, setUseRag] = useState<boolean>(prefs.useRag ?? true)
   const [isGenerating, setIsGenerating] = useState(false)
   const [generateError, setGenerateError] = useState<string | null>(null)
@@ -110,14 +114,16 @@ export function ArticlesPage() {
     setIsGenerating(true)
     setGenerateError(null)
 
+    const isProblemSolving = generationMode === 'problem_solving'
+
     const dto: GenerateArticleDto = {
       topic: topic.trim(),
       category: category || null,
       culture: culture || null,
       model_override: modelOverride || null,
-      use_scripts: useScripts,
-      use_consultation_prompt: useConsultationPrompt,
-      use_rag: useRag,
+      use_scripts: isProblemSolving ? false : useScripts,
+      use_problem_solving: isProblemSolving,
+      use_rag: isProblemSolving ? true : useRag,
     }
 
     try {
@@ -156,21 +162,44 @@ export function ArticlesPage() {
   return (
     <div className={styles.container}>
       <div className={styles.header}>
-        <h2 className={styles.title}>Статьи</h2>
-        <p className={styles.subtitle}>Генерация и просмотр статей из базы знаний</p>
+        <h2 className={styles.title}>Генерация контента</h2>
+        <p className={styles.subtitle}>Статьи и решения проблем на основе базы знаний</p>
       </div>
 
       {/* Generation Form */}
       <div className={styles.formSection}>
-        <h3 className={styles.sectionTitle}>Новая статья</h3>
+        <h3 className={styles.sectionTitle}>
+          {generationMode === 'problem_solving' ? 'Решение проблемы' : 'Новая статья'}
+        </h3>
+
+        <div className={styles.modeSwitcher}>
+          <button
+            className={`${styles.modeButton} ${generationMode === 'article' ? styles.modeButtonActive : ''}`}
+            onClick={() => { setGenerationMode('article'); savePrefs({ generationMode: 'article' }) }}
+            disabled={isGenerating}
+          >
+            Статья
+          </button>
+          <button
+            className={`${styles.modeButton} ${generationMode === 'problem_solving' ? styles.modeButtonActive : ''}`}
+            onClick={() => { setGenerationMode('problem_solving'); savePrefs({ generationMode: 'problem_solving' }) }}
+            disabled={isGenerating}
+          >
+            Решение проблемы
+          </button>
+        </div>
 
         <div className={styles.field}>
-          <label className={styles.label}>Тема статьи</label>
+          <label className={styles.label}>
+            {generationMode === 'problem_solving' ? 'Описание проблемы' : 'Тема статьи'}
+          </label>
           <input
             className={styles.textInput}
             type="text"
             value={topic}
-            placeholder="Например: Хлороз малины — причины и лечение"
+            placeholder={generationMode === 'problem_solving'
+              ? 'Опишите проблему: Хлороз малины — листья желтеют'
+              : 'Например: Хлороз малины — причины и лечение'}
             onChange={e => setTopic(e.target.value)}
             disabled={isGenerating}
             onKeyDown={e => { if (e.key === 'Enter') handleGenerate() }}
@@ -227,38 +256,30 @@ export function ArticlesPage() {
           </div>
         </div>
 
-        <div className={styles.togglesRow}>
-          <label className={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              className={styles.checkbox}
-              checked={useScripts}
-              onChange={e => { setUseScripts(e.target.checked); savePrefs({ useScripts: e.target.checked }) }}
-              disabled={isGenerating}
-            />
-            <span>Article prompt</span>
-          </label>
-          <label className={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              className={styles.checkbox}
-              checked={useConsultationPrompt}
-              onChange={e => { setUseConsultationPrompt(e.target.checked); savePrefs({ useConsultationPrompt: e.target.checked }) }}
-              disabled={isGenerating}
-            />
-            <span>Consultation prompt</span>
-          </label>
-          <label className={styles.toggleLabel}>
-            <input
-              type="checkbox"
-              className={styles.checkbox}
-              checked={useRag}
-              onChange={e => { setUseRag(e.target.checked); savePrefs({ useRag: e.target.checked }) }}
-              disabled={isGenerating}
-            />
-            <span>RAG поиск</span>
-          </label>
-        </div>
+        {generationMode === 'article' && (
+          <div className={styles.togglesRow}>
+            <label className={styles.toggleLabel}>
+              <input
+                type="checkbox"
+                className={styles.checkbox}
+                checked={useScripts}
+                onChange={e => { setUseScripts(e.target.checked); savePrefs({ useScripts: e.target.checked }) }}
+                disabled={isGenerating}
+              />
+              <span>Article prompt</span>
+            </label>
+            <label className={styles.toggleLabel}>
+              <input
+                type="checkbox"
+                className={styles.checkbox}
+                checked={useRag}
+                onChange={e => { setUseRag(e.target.checked); savePrefs({ useRag: e.target.checked }) }}
+                disabled={isGenerating}
+              />
+              <span>RAG поиск</span>
+            </label>
+          </div>
+        )}
 
         {generateError && (
           <div className={styles.error}>{generateError}</div>
@@ -275,7 +296,7 @@ export function ArticlesPage() {
               Генерация... (30–90 сек)
             </>
           ) : (
-            'Сгенерировать статью'
+            generationMode === 'problem_solving' ? 'Сгенерировать решение' : 'Сгенерировать статью'
           )}
         </button>
       </div>

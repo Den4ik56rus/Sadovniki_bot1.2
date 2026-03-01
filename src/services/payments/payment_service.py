@@ -70,6 +70,11 @@ async def create_payment_activity_event(user_id: int, payment_id: int):
         elif payment['payment_type'] == 'guide':
             guide_order = await guide_repo.get_by_payment_id(payment['id'])
             product_name = f"Готовое решение: {guide_order['culture_display']}" if guide_order else 'Готовое решение'
+        elif payment['payment_type'] == 'quiz_plan':
+            meta = payment.get('metadata', {})
+            if isinstance(meta, str):
+                meta = json.loads(meta)
+            product_name = f"Персональный план: {meta.get('problem_display', 'квиз')}"
 
         event_data = {
             'payment_id': payment_id,
@@ -730,6 +735,100 @@ async def create_guide_payment(
         raise
 
 
+async def create_quiz_plan_payment(
+    user_id: int,
+    telegram_user_id: int,
+    culture_display: str,
+    problem_display: str,
+    problem_key: str = "",
+    return_url: Optional[str] = None,
+    user_email: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Создает платеж за персональный план из квиза (99₽).
+
+    Args:
+        user_id: Внутренний ID пользователя
+        telegram_user_id: Telegram ID пользователя
+        culture_display: Название культуры (напр. "летней клубники")
+        problem_display: Название проблемы (напр. "мелкие ягоды")
+        problem_key: Ключ проблемы для lookup PDF-решения
+        return_url: URL для возврата
+        user_email: Email для чека
+
+    Returns:
+        Словарь с данными платежа: payment_id, confirmation_url, amount
+    """
+    price_rub = Decimal("99.00")
+
+    idempotency_key = f"quiz_plan_{user_id}_{int(datetime.now().timestamp())}"
+
+    description_text = f"Персональный план: {problem_display} ({culture_display})"
+
+    receipt_items = yookassa_client.create_receipt_items(
+        description=description_text,
+        amount_rub=price_rub,
+        quantity=1,
+    )
+
+    metadata = {
+        "user_id": str(user_id),
+        "telegram_user_id": str(telegram_user_id),
+        "payment_type": "quiz_plan",
+        "culture_display": culture_display,
+        "problem_display": problem_display,
+        "problem_key": problem_key,
+    }
+
+    try:
+        yookassa_payment = await yookassa_client.create_payment(
+            amount_rub=price_rub,
+            description=description_text,
+            return_url=return_url or settings.YOOKASSA_RETURN_URL,
+            user_telegram_id=telegram_user_id,
+            user_email=user_email,
+            receipt_items=receipt_items if settings.YOOKASSA_SEND_RECEIPT else None,
+            metadata=metadata,
+            idempotence_key=idempotency_key,
+        )
+
+        payment = await payment_repo.create_payment(
+            user_id=user_id,
+            yookassa_payment_id=yookassa_payment["id"],
+            idempotency_key=idempotency_key,
+            payment_type="quiz_plan",
+            amount_rub=float(price_rub),
+            description=description_text,
+            confirmation_url=yookassa_payment["confirmation"]["confirmation_url"],
+            metadata=metadata,
+        )
+
+        await create_payment_activity_event(user_id, payment["id"])
+
+        logger.info(
+            f"Quiz plan payment created: payment_id={payment['id']}, "
+            f"yookassa_id={yookassa_payment['id']}, user={user_id}"
+        )
+
+        return {
+            "payment_id": payment["id"],
+            "yookassa_payment_id": yookassa_payment["id"],
+            "confirmation_url": yookassa_payment["confirmation"]["confirmation_url"],
+            "amount": float(price_rub),
+            "description": description_text,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to create quiz plan payment: {e}", exc_info=True)
+        await payment_repo.log_payment_error(
+            user_id=user_id,
+            payment_id=None,
+            error_code="quiz_plan_payment_creation_failed",
+            error_message=str(e),
+        )
+        raise
+
+
 async def create_recurrent_subscription_payment(
     user_id: int,
     subscription_id: int,
@@ -918,6 +1017,8 @@ async def process_payment_success(
             await _process_subscription_renewal_success(payment, verified_payment)
         elif payment["payment_type"] == "guide":
             await _process_guide_payment_success(payment, verified_payment)
+        elif payment["payment_type"] == "quiz_plan":
+            await _process_quiz_plan_payment_success(payment, verified_payment)
         else:
             raise ValueError(f"Unknown payment type: {payment['payment_type']}")
 
@@ -1639,3 +1740,140 @@ async def _send_guide_error_notification(
 
     except Exception as e:
         logger.error(f"[guide] Ошибка отправки уведомления об ошибке: {e}", exc_info=True)
+
+
+async def _process_quiz_plan_payment_success(
+    payment: Dict[str, Any],
+    yookassa_payment: Dict[str, Any],
+) -> None:
+    """Обрабатывает успешный платеж за персональный план из квиза — запускает генерацию."""
+    metadata = payment.get("metadata", {})
+    if isinstance(metadata, str):
+        metadata = json.loads(metadata)
+
+    # Уведомляем пользователя и запускаем генерацию в фоне
+    asyncio.create_task(
+        _generate_quiz_plan_after_payment(payment, metadata)
+    )
+
+
+async def _deliver_quiz_pdf_solution(
+    bot,
+    payment: Dict[str, Any],
+    telegram_user_id: int,
+    solution: Dict[str, Any],
+) -> None:
+    """Отправляет готовое PDF-решение пользователю после оплаты."""
+    from aiogram.types import FSInputFile
+    from src.services.db.messages_repo import log_message
+
+    session_id = f"tg:{telegram_user_id}"
+
+    # 1. Подтверждение оплаты
+    confirm_text = "Оплата подтверждена! Отправляю Ваш персональный план..."
+    await bot.send_message(chat_id=telegram_user_id, text=confirm_text)
+    try:
+        await log_message(user_id=payment["user_id"], direction="bot", text=confirm_text, session_id=session_id)
+    except Exception:
+        pass
+
+    # 2. Отправляем PDF
+    document = FSInputFile(solution["pdf_path"], filename=f"{solution['title']}.pdf")
+    caption = solution["delivery_caption"]
+    await bot.send_document(chat_id=telegram_user_id, document=document, caption=caption)
+    try:
+        await log_message(user_id=payment["user_id"], direction="bot", text=f"[PDF] {caption}", session_id=session_id)
+    except Exception:
+        pass
+
+    # 3. Переводим в состояние консультации для follow-up вопросов
+    from src.handlers.common import set_consultation_state
+    await set_consultation_state(telegram_user_id, "waiting_consultation_question")
+
+    logger.info(
+        f"[quiz_plan] PDF-решение доставлено: problem_key={solution['problem_key']}, "
+        f"user_id={payment['user_id']}"
+    )
+
+
+async def _generate_quiz_plan_after_payment(
+    payment: Dict[str, Any],
+    metadata: Dict[str, Any],
+) -> None:
+    """Фоновая задача: доставка PDF-решения или генерация LLM-плана после оплаты."""
+    try:
+        from src.bot import get_bot
+        from src.services.quiz_solutions import get_quiz_solution
+
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            telegram_user_id = await conn.fetchval(
+                "SELECT telegram_user_id FROM users WHERE id = $1",
+                payment["user_id"],
+            )
+
+        if not telegram_user_id:
+            logger.error(f"[quiz_plan] Telegram user not found for user_id={payment['user_id']}")
+            return
+
+        bot = get_bot()
+
+        # Проверяем наличие готового PDF-решения
+        problem_key = metadata.get("problem_key", "")
+        solution = get_quiz_solution(problem_key) if problem_key else None
+
+        if solution:
+            # === PDF-решение ===
+            await _deliver_quiz_pdf_solution(bot, payment, telegram_user_id, solution)
+        else:
+            # === LLM-генерация (старый путь) ===
+            from src.handlers.funnel_b import _generate_auto_consultation
+
+            text = (
+                "Оплата подтверждена! Готовлю Ваш персональный план...\n\n"
+                "Это займёт около минуты."
+            )
+            msg = await bot.send_message(chat_id=telegram_user_id, text=text)
+
+            try:
+                from src.services.db.messages_repo import log_message
+                await log_message(
+                    user_id=payment["user_id"],
+                    direction="bot",
+                    text=text,
+                    session_id=f"tg:{telegram_user_id}",
+                )
+            except Exception:
+                pass
+
+            class _TgUser:
+                def __init__(self, uid, uname=None, fname=None, lname=None):
+                    self.id = uid
+                    self.username = uname
+                    self.first_name = fname
+                    self.last_name = lname
+
+            async with pool.acquire() as conn:
+                user_row = await conn.fetchrow(
+                    "SELECT telegram_user_id, username, first_name, last_name FROM users WHERE id = $1",
+                    payment["user_id"],
+                )
+
+            tg_user = _TgUser(
+                uid=telegram_user_id,
+                uname=user_row["username"] if user_row else None,
+                fname=user_row["first_name"] if user_row else None,
+                lname=user_row["last_name"] if user_row else None,
+            )
+
+            await _generate_auto_consultation(msg, tg_user, payment["user_id"])
+
+        # Перемещаем в CRM-воронку (покупатели)
+        try:
+            from src.services.db.client_funnel_repo import update_client_status
+            await update_client_status(payment["user_id"], "paid")
+        except Exception as e:
+            logger.error(f"[quiz_plan] Ошибка перемещения в воронке: {e}")
+
+    except Exception as e:
+        logger.error(f"[quiz_plan] Ошибка после оплаты quiz_plan: {e}", exc_info=True)

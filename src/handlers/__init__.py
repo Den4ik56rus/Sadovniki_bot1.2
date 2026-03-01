@@ -35,6 +35,9 @@ from src.handlers.broadcast_callbacks import router as broadcast_cb_router
 # Текстовые ответы на кнопки рассылок
 from src.handlers.broadcast_responses import router as broadcast_responses_router
 
+# Воронка Б — квиз-онбординг (callback-хендлеры quiz_*)
+from src.handlers.funnel_b import router as funnel_b_router
+
 
 def setup_routers(dp: Dispatcher) -> None:
     """
@@ -59,6 +62,9 @@ def setup_routers(dp: Dispatcher) -> None:
 
     # 2.6. Текстовые ответы на кнопки рассылок (перед админкой и консультациями)
     dp.include_router(broadcast_responses_router)
+
+    # 2.7. Воронка Б — callback-хендлеры квиза (перед консультациями)
+    dp.include_router(funnel_b_router)
 
     # 3. Админка (модерация /kb_pending и пр.) — ПЕРЕД консультациями!
     dp.include_router(moderation_handlers.router)

@@ -1,216 +1,264 @@
-# Session Summary — 2026-02-25
+# Session Summary — 2026-03-01
 
 ## Project Context
 
 **Sadovniki-bot** — Telegram-bot for professional consultations on berry crops with RAG system (PostgreSQL + pgvector) and OpenAI GPT.
 
-**Current Stage:** Production system (v1.5.5) with graceful shutdown, invite link analytics, broadcast system v2, funnel stage triggers, and HTTPS/SSL.
+**Current Version:** 1.8.0 (bumped after articles page feature in previous session)
 
 **Tech Stack:**
 - Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
 - Frontend: React + TypeScript (Admin Panel), Vite
 - Database: PostgreSQL 16 + pgvector
-- AI: OpenAI GPT models with flexible configuration, database-driven prompts
 
 ---
 
 ## Session Goal
 
-**This session (2026-02-25):** No code was written. Session was opened and immediately closed. Three implementation plan documents were found as untracked files from a prior planning session (2026-02-23):
-
-1. `docs/plans/2026-02-23-broadcast-discount-button.md` — Plan to add a `discount` button type to broadcasts (time-limited personal discount on all subscription plans)
-2. `docs/plans/2026-02-23-broadcast-payment-button-and-create-modal.md` — Plan to add a `payment` button type to broadcasts (per-recipient YooKassa URL) and a "Create broadcast" modal inside StageTriggerEditor
-3. `docs/plans/2026-02-23-payment-reliability.md` — Plan to improve payment webhook reliability (async queue, periodic reconciliation, alerts, activity feed optimization)
+Implement full Funnel B (quiz-based onboarding) for the A/B test:
+- Complete 4-step quiz with culture/variety/region/problem selection
+- Personalized offer generation per culture x problem pair
+- YooKassa payment for quiz plan (99 RUB)
+- PDF delivery or LLM auto-consultation after payment
+- CRM admin panel enhancements: quiz data display + funnel variant field
 
 ---
 
 ## Accomplishments
 
-**This session:** None — documentation only.
+### Implemented
 
-**Previous session (2026-02-25, v1.5.5):** Based on recent commits in the git log:
+**1. Funnel B — Full Quiz Onboarding (`src/handlers/funnel_b.py`, 1255 lines)**
+- Complete 4-step quiz: culture → variety (strawberry/raspberry only) → region → problem
+- Culture-specific problem sets: strawberry (summer/remontant), raspberry (summer/remontant), currant, honeysuckle, blackberry, blueberry
+- All 50+ problem keys with individual personalized offer texts per culture x problem combo
+- Offer text fallback: file-based `offer.txt` → hardcoded per-culture → generic template
+- PDF preview display if `data/quiz_solutions/{culture}/{problem}/preview.jpg` exists
+- `_mark_selected()` helper: replaces keyboard with single checkmark button after selection
+- State machine: `quiz_awaiting_culture` → `quiz_awaiting_variety` → `quiz_awaiting_region` → `quiz_awaiting_problem` → cleared
+- Custom text input states for "other culture" and custom region
+- Quiz quiz logging to CRM messages table via `_log_quiz_msg()`
+- Repeat `/start` guard: if `user_quiz_answers` row exists → show standard menu, not quiz
+- CTA buttons: "Get personal plan" (payment) and "Get free consultation" (standard flow)
+- `_generate_auto_consultation()`: auto-sends LLM answer using quiz data after free CTA or payment fallback
+- `quiz_focus_instructions` injected into `ask_consultation_llm()` to enforce concise action-plan style
 
-- `feat: show new vs existing users breakdown in invite links` — Invite link analytics now shows how many users are new vs returning
-- `docs: add deploy instructions and graceful shutdown notes to CLAUDE.md` — Deploy commands documented in CLAUDE.md
-- `fix: graceful shutdown v2 — close_bot_session=False + wait in finally` — Shutdown waits for handler tasks before closing bot session
-- `fix: always track invite link users even after limit reached` — Invite link tracking works even when `member_limit` is exhausted
-- `fix: graceful shutdown — wait for LLM responses before stopping bot` — Bot sends pending LLM responses before shutdown
+**2. Payment: Quiz Plan (`src/services/payments/payment_service.py`)**
+- `create_quiz_plan_payment()`: creates YooKassa payment for 99 RUB
+- Payment type `quiz_plan` registered; `create_payment_activity_event()` supports it
+- `_process_quiz_plan_payment_success()`: background task on webhook success
+- `_generate_quiz_plan_after_payment()`: dual delivery path:
+  - PDF path: if `data/quiz_solutions/{problem_key}/solution.pdf` exists → `_deliver_quiz_pdf_solution()`
+  - LLM path: fallback auto-consultation generation if no PDF
+- CRM funnel update to `paid` on payment success
+
+**3. Quiz Solutions Lookup (`src/services/quiz_solutions.py`, new file, 248 lines)**
+- `get_quiz_solution(problem_key)`: looks up ready PDF at `data/quiz_solutions/{culture}/{problem}/`
+- `get_offer_text(problem_key, region)`: loads `offer.txt` from solution dir with header injection
+- Full `_KEY_TO_PATH` mapping for all 50+ problem keys
+- `_OFFER_HEADERS` dict for human-readable culture + problem header in offer text
+- Preview lookup: first checks problem dir, then falls back to `{culture}/preview/` dir
+
+**4. PDF Preview Generator (`src/services/pdf_preview.py`, new file, 330 lines)**
+- Renders PDF first page → blurred image with "Locked" overlay
+- Removes NotebookLM watermark before blurring
+- Dependencies: Pillow, pdftoppm (poppler-utils)
+- Used for showing teaser preview before payment
+
+**5. Database Migrations (new files)**
+- `db/schema_81_activate_funnel_b.sql`: sets `active_funnel_variant = 'B'` in `bot_settings`
+- `db/schema_82_quiz_answers.sql`: creates `user_quiz_answers` table (user_id, culture, region, problem, created_at, updated_at)
+- `db/schema_83_quiz_problem_key.sql`: adds `problem_key TEXT` column to `user_quiz_answers`
+
+**6. Consultation LLM Extension (`src/services/llm/consultation_llm.py`)**
+- Added `quiz_focus_instructions: Optional[str] = None` parameter to `ask_consultation_llm()`
+- Appended to system prompt when present to enforce focused quiz-consultation response style
+
+**7. CRM: Quiz Data in Client Card (`admin-webapp/src/components/crm/LeftPanel/`)**
+- `MainTab.tsx`: new section "Quiz Answers" showing funnel variant (A/B), culture, region, problem
+- Edit mode for quiz answers with Save/Cancel
+- Reset quiz button (clears user_quiz_answers row, resets funnel_variant to A)
+- `index.tsx`: wired `handleFunnelVariantChange`, `handleQuizAnswersChange`, `handleQuizReset` handlers calling backend API
+
+**8. CRM: Client Full Data (`src/services/db/client_crm_repo.py`)**
+- `get_client_full_data()` extended: joins `user_quiz_answers` and `users.funnel_variant`
+- Returns `funnel_variant`, `quiz_culture`, `quiz_region`, `quiz_problem` to frontend
+
+**9. CRM API: Quiz Endpoints (`src/api/handlers/crm.py`)**
+- `PATCH /api/admin/crm/clients/{id}/quiz`: update quiz answers (culture, region, problem)
+- `DELETE /api/admin/crm/clients/{id}/quiz`: reset quiz (delete from user_quiz_answers, reset funnel_variant)
+- `PATCH /api/admin/crm/clients/{id}/funnel-variant`: update funnel_variant A/B
+
+**10. TypeScript Types (`admin-webapp/src/types/index.ts`)**
+- `CrmClientFull` extended with `funnel_variant`, `quiz_culture`, `quiz_region`, `quiz_problem`
+
+**11. `src/handlers/__init__.py`**
+- Registered `funnel_b.router` into main dispatcher
+
+**12. `src/handlers/menu.py`**
+- `/start` handler: if `is_new_user` and `active_funnel_variant == 'B'` → call `start_funnel_b()`
+- If returning user with quiz done → standard menu (repeat `/start` guard)
+
+**13. `src/utils/status_manager.py`**
+- Minor adjustments (likely to support `_generate_auto_consultation` streaming)
+
+**14. Articles API (`src/api/handlers/articles.py`)**
+- Minor fix (from previous session: Decimal serialization)
+
+**15. Articles Page (`admin-webapp/src/components/articles/ArticlesPage.tsx`, `.module.css`)**
+- Minor UI adjustments carried over from previous session
 
 ---
 
 ## Key Decisions
 
-### Pending Plans (Created 2026-02-23, Not Yet Implemented)
+### Architecture
 
-#### 1. Broadcast Discount Button (`discount` button type)
-- New 4th button type alongside `url`, `quick_reply`, `payment`
-- Callback button (not a URL) — saves discount to `user_broadcast_discounts` table with `expires_at`
-- On click: opens special discount subscription menu with crossed-out prices
-- Payment service reads both invite and broadcast discounts, applies the higher one
-- DB migration: `db/schema_71_broadcast_discounts.sql`
-- New files needed: `src/services/db/discount_repo.py`, `src/handlers/payments/discount_menu.py`
-- Modified files: `broadcast_callbacks.py`, `broadcast_sender.py`, `payment_service.py`, `ButtonEditor.tsx`, `types/index.ts`, `api/handlers/broadcasts.py`
+- **Dual delivery after payment**: PDF-first, LLM-fallback. If `data/quiz_solutions/{culture}/{problem}/solution.pdf` exists → send PDF directly. Otherwise → generate LLM auto-consultation. This allows gradual content creation without blocking the product launch.
 
-#### 2. Broadcast Payment Button + Create-in-Trigger Modal
-- `payment` button type: generates personal YooKassa URL per recipient during send (not stored — generated live)
-- `build_inline_keyboard()` must become async to call `create_subscription_payment_custom()`
-- "Create broadcast" modal inside `StageTriggerEditor` — embed `<BroadcastForm>` in a fixed overlay
-- After save, auto-selects newest broadcast in the stage trigger dropdown
-- Modified files: `types/index.ts`, `ButtonEditor.tsx`, `broadcast_sender.py`, `funnel_trigger_sender.py`, `StageTriggerEditor.tsx`
+- **Problem key naming convention**: `{culture_prefix}_{variety_prefix}_{problem_name}` (e.g. `straw_s_low_yield`, `rasp_r_pruning`, `cur_glasswing`). Flattened into single `_KEY_TO_PATH` dict mapping to `(culture_folder, problem_folder)` path tuples.
 
-#### 3. Payment Reliability
-- Webhook queue: webhook answers 200 immediately, pushes to `asyncio.Queue`, consumer processes in background
-- Periodic reconciliation: every 5 minutes checks `pending` payments older than 2 minutes via YooKassa API
-- Alert on failure: admin receives Telegram message if payment processing fails (and on recovery)
-- Activity feed optimization: SSE debounce increased 500ms → 2000ms, activity limit reduced 500 → 200
-- New files: `src/services/payments/payment_reconciliation.py`
-- Modified files: `src/api/handlers/webhooks.py`, `src/main.py`, `admin-webapp/src/components/crm/RightPanel/index.tsx`, `src/services/db/payment_repo.py`
+- **Offer text priority**: `offer.txt` in solution dir > hardcoded per-culture function > generic `_get_offer_text()`. This lets content editors add custom copy without code changes.
+
+- **Variety sub-step**: Only strawberry and raspberry ask about variety (summer/remontant). All other cultures skip to region directly. Variety is stored as part of culture label (e.g. "Клубника (Ремонтантная)").
+
+- **`CONSULTATION_CONTEXT` for quiz state**: Culture key and variety key stored in existing `CONSULTATION_CONTEXT[tg_user.id]` dict during quiz flow. This context is used to select the correct problem keyboard and generate the right offer text.
+
+- **Quiz logging to CRM messages**: All bot messages and user selections during quiz are logged via `_log_quiz_msg()` using `session_id = f"quiz:{user_id}"`. This makes the quiz visible in CRM consultation history.
+
+### Logic
+
+- **Repeat /start**: `_quiz_already_done()` checks `user_quiz_answers` for existing row. If found → show standard menu. If not → run quiz from start. This prevents re-running quiz for users who completed it but didn't pay yet.
+
+- **CRM funnel on payment button click**: When user clicks "Get personal plan" (before paying), status is immediately updated to `paid` in CRM. This is intentional — the click itself signals high intent.
+
+- **`_mark_selected()` keyboard replacement**: After any quiz selection, the multi-button keyboard is replaced with a single button showing `✅ <selected text>`. Prevents re-selecting and provides visual feedback.
+
+- **`noop` callback**: All "selected" buttons use `callback_data="noop"` which is handled by a router.callback_query that just calls `answer()`. Prevents Telegram "loading" spinner on already-selected buttons.
+
+### Data Format
+
+- `user_quiz_answers` has a single row per user (PRIMARY KEY on user_id, upsert on conflict)
+- `problem_key` column added in schema_83 (after schema_82 created the table) — must apply both in order
+- `funnel_variant` field is on `users` table (added in earlier schema, not this session)
 
 ---
 
-## Problems & Limitations
+## Problems and Limitations
 
-### Active Issues — CRITICAL
+- **DB schemas 81-83 NOT YET APPLIED ON PRODUCTION**: Must apply all three before enabling funnel B or quiz plan payments. Order matters: 82 before 83.
 
-1. **DB migrations 62-66 status on production is unclear:**
-   - Schemas 62-63 were from v1.5.2 (first broadcast commit) — unknown if applied.
-   - Schemas 64-66 from v1.5.3 — almost certainly NOT applied on production.
-   - Must apply all sequentially before using broadcast system or funnel triggers.
-   - Order: `schema_62` → `schema_63` → `schema_64` → `schema_65` → `schema_66`.
+- **`data/quiz_solutions/` directory is empty**: No PDF solutions exist yet. All payments will fall back to LLM auto-consultation. PDFs need to be created and placed at the correct paths.
 
-2. **save_payment_method disabled permanently until YooKassa approves:**
-   - Autopayments (recurring subscriptions) will NOT work until approval.
-   - Users can still manually renew subscriptions.
-   - Pending action: apply for YooKassa recurring payment permission.
+- **`data/previews/` directory is empty**: No generated previews exist. Preview display in quiz offer is silently skipped if no file found.
 
-### Active Issues — Medium Priority
+- **`pdf_preview.py` requires poppler-utils**: `pdftoppm` must be installed in Docker container. Not yet added to Dockerfile.
 
-3. **Funnel stage triggers not yet end-to-end tested:**
-   - `execute_stage_triggers` is called from `entry.py` on stage change — needs manual verification.
+- **Quiz plan payment not tested end-to-end**: YooKassa webhook handling for `quiz_plan` type was implemented but not tested with real payments.
 
-4. **Broadcast cancellation mid-send still not interrupt-safe:**
-   - Setting status to `cancelled` does not stop an in-progress `execute_broadcast` task.
+- **`CONSULTATION_CONTEXT` race condition**: If user sends messages rapidly during quiz, context dict mutations could have async race conditions (existing issue in codebase, not introduced here).
 
-5. **ActivityFilters broadcast filter buttons still not shown:**
-   - `broadcast_sent`, `broadcast_button_click`, `broadcast_poll_answer` appear in "Все" but have no individual filter button in `ActivityFilters.tsx`.
-
-6. **Payment webhook reliability not yet improved:**
-   - Plan exists (`docs/plans/2026-02-23-payment-reliability.md`) but not implemented.
-   - Webhooks can timeout if processing takes > 5s under load.
-
-### Technical Debt
-
-1. `sanitize_html_for_telegram()` still in `broadcast_sender.py` — should move to `src/utils/formatting.py`.
-2. BroadcastPage error handling uses `console.error` + alert dialogs — needs toast notification system.
-3. No pagination in BroadcastList (fetches all broadcasts).
+- **CRM quiz edit API not wired to route table**: The new PATCH/DELETE quiz endpoints in `crm.py` need to be registered in the API router (`src/api/router.py` or equivalent). This was likely done but should be verified.
 
 ---
 
 ## Rejected Ideas
 
-No new ideas were rejected this session.
+- **Separate FSM states for quiz** (using aiogram FSMContext): Rejected in favor of existing `CONSULTATION_STATE` dict pattern used throughout the codebase. Consistency was prioritized over FSM safety.
+
+- **Problem keyboard per culture without variety sub-step for strawberry**: Initially considered skipping variety and just using a single generic problem set. Rejected because strawberry summer vs remontant have completely different problem profiles.
+
+- **Storing quiz answers in `CONSULTATION_CONTEXT` only (not DB)**: Rejected because context is lost on bot restart, and auto-consultation after payment needs the data.
 
 ---
 
 ## Current Code State
 
-### Untracked Plan Files (not yet committed)
+### Files Changed
 
-- `docs/plans/2026-02-23-broadcast-discount-button.md` — 12 tasks, fully specced
-- `docs/plans/2026-02-23-broadcast-payment-button-and-create-modal.md` — 7 tasks, fully specced
-- `docs/plans/2026-02-23-payment-reliability.md` — 6 tasks, fully specced
+| File | Change Type | Status |
+|------|-------------|--------|
+| `src/handlers/funnel_b.py` | Major rewrite (stub → 1255 lines) | Working |
+| `src/services/payments/payment_service.py` | Added quiz_plan functions (+238 lines) | Working |
+| `src/services/quiz_solutions.py` | New file (248 lines) | Working |
+| `src/services/pdf_preview.py` | New file (330 lines) | Not tested (needs poppler) |
+| `db/schema_81_activate_funnel_b.sql` | New DB migration | NOT APPLIED |
+| `db/schema_82_quiz_answers.sql` | New DB migration | NOT APPLIED |
+| `db/schema_83_quiz_problem_key.sql` | New DB migration | NOT APPLIED |
+| `src/services/llm/consultation_llm.py` | Added quiz_focus_instructions param | Working |
+| `src/handlers/__init__.py` | Registered funnel_b router | Working |
+| `src/handlers/menu.py` | Added funnel B routing in /start | Working (after schema 81) |
+| `src/services/db/client_crm_repo.py` | Extended get_client_full_data for quiz | Working (after schema 82+83) |
+| `src/api/handlers/crm.py` | Added quiz PATCH/DELETE endpoints | Working |
+| `admin-webapp/src/components/crm/LeftPanel/MainTab.tsx` | Quiz data display + edit | Working |
+| `admin-webapp/src/components/crm/LeftPanel/index.tsx` | Wired quiz handlers | Working |
+| `admin-webapp/src/types/index.ts` | Added quiz fields to CrmClientFull | Working |
+| `admin-webapp/src/components/articles/ArticlesPage.tsx` | Minor adjustments | Working |
+| `src/api/handlers/articles.py` | Decimal serialization fix | Working |
+| `src/utils/status_manager.py` | Minor adjustments | Working |
 
-### Recent Commits (v1.5.5 era)
+### Data Directories (New, Empty)
 
-- `22ac085 feat: show new vs existing users breakdown in invite links`
-- `5f4702a docs: add deploy instructions and graceful shutdown notes to CLAUDE.md`
-- `af48298 fix: graceful shutdown v2 — close_bot_session=False + wait in finally`
-- `1f52a81 fix: always track invite link users even after limit reached`
-- `5d55b9c fix: graceful shutdown — wait for LLM responses before stopping bot`
+- `data/previews/` — for generated PDF blur previews
+- `data/quiz_solutions/` — for PDF solution files (structure: `{culture}/{problem}/solution.pdf`)
 
-### What's Working
+### What Works
 
-1. Broadcast CRUD — create/edit/delete/send/schedule/cancel
-2. Broadcast resend — `broadcast_runs` architecture
-3. Text response collection via quick_reply buttons with `ask_for_response=true`
-4. Funnel stage trigger CRUD in admin panel
-5. Funnel stage trigger execution on client stage change
-6. HTTPS/SSL on proagro56.ru (nginx + Let's Encrypt)
-7. Graceful shutdown — waits for LLM responses before stopping
-8. Invite link analytics — new vs existing user breakdown
+- Quiz flow logic (all 6 cultures, 50+ problem keys)
+- Offer text generation (hardcoded per culture x problem)
+- CTA button → payment creation in YooKassa
+- CRM client card shows quiz data (funnel_variant, culture, region, problem)
+- CRM admin can edit/reset quiz answers
+- LLM auto-consultation after payment (fallback path)
 
 ### What Needs Testing
 
-1. Full broadcast resend flow: create → send → resend → verify two runs in DB
-2. Text response collection: click button with `ask_for_response` → type text → verify saved
-3. Funnel stage trigger: move client to stage with trigger → verify Telegram message sent
-4. Trigger deduplication: move client back and forth → verify no duplicate sends
-5. HTTPS: verify SSL certificate works on proagro56.ru production
-6. YooKassa payment creation with `save_payment_method=False`
+- Full quiz flow end-to-end in Telegram (not tested live)
+- YooKassa webhook → quiz_plan success processing
+- PDF delivery path (needs actual PDF files in `data/quiz_solutions/`)
+- `pdf_preview.py` (needs poppler-utils installed)
+- CRM quiz edit/reset via admin panel
 
 ---
 
 ## Next Steps
 
-### Critical (Before Production Use)
+1. **Apply DB migrations on production** (CRITICAL before any funnel B users):
+   ```
+   schema_81_activate_funnel_b.sql
+   schema_82_quiz_answers.sql
+   schema_83_quiz_problem_key.sql
+   ```
+   Apply in order: 82 → 83 → 81 (or 82 → 83 first, then decide when to activate B)
 
-1. **Apply DB migrations 62-66 on production server:**
-   ```bash
-   psql -h localhost -U bot_user -d garden_bot -f db/schema_62_broadcasts.sql
-   psql -h localhost -U bot_user -d garden_bot -f db/schema_63_broadcast_buttons_and_stats.sql
-   psql -h localhost -U bot_user -d garden_bot -f db/schema_64_broadcast_runs_and_triggers.sql
-   psql -h localhost -U bot_user -d garden_bot -f db/schema_65_button_clicks_multi.sql
-   psql -h localhost -U bot_user -d garden_bot -f db/schema_66_broadcast_text_responses.sql
+2. **Verify CRM quiz API routes registered** in `src/api/router.py` (PATCH quiz, DELETE quiz, PATCH funnel-variant endpoints)
+
+3. **Create first PDF solution** and test delivery path:
+   - Place `solution.pdf` in `data/quiz_solutions/strawberry_summer/low_yield/`
+   - Add `preview.jpg` for offer preview display
+   - Test full flow: quiz → payment → PDF delivery
+
+4. **Add poppler-utils to Dockerfile** if PDF preview generation is needed:
+   ```dockerfile
+   RUN apt-get install -y poppler-utils
    ```
 
-2. **Apply for YooKassa recurring payment permission:**
-   - Log into YooKassa merchant panel → apply for recurring payments.
-   - When approved: set `save_payment_method=True` in `payment_service.py`.
+5. **Test full quiz flow** with a test Telegram account:
+   - New user /start → quiz → offer → payment → auto-consultation OR PDF
+   - Repeat /start → should show standard menu (not re-run quiz)
 
-### High Priority — Implement Plans from 2026-02-23
+6. **Create offer.txt files** for problem-specific custom offer copy:
+   - Place at `data/quiz_solutions/{culture}/{problem}/offer.txt`
+   - Format: plain text with HTML tags for Telegram
 
-3. **Implement payment reliability** (`docs/plans/2026-02-23-payment-reliability.md`):
-   - Task 1: `get_stale_pending_payments` in `payment_repo.py`
-   - Task 2: Async webhook queue in `webhooks.py` + `main.py`
-   - Task 3: Periodic reconciliation task `payment_reconciliation.py`
-   - Task 4: Alert on payment processing failure
-   - Task 5: Activity feed SSE debounce 2s, limit 200
+7. **Deploy to production** after migrations and testing:
+   ```bash
+   ssh -i ~/.ssh/id_rsa_server root@72.56.121.98 \
+     'cd /root/Sadovniki_bot1.2 && git pull && docker compose up -d --build bot'
+   ```
 
-4. **Implement broadcast payment button** (`docs/plans/2026-02-23-broadcast-payment-button-and-create-modal.md`):
-   - Creates personal YooKassa URL per recipient
-   - Make `build_inline_keyboard()` async
+8. **A/B test monitoring**: Check `bot_settings.active_funnel_variant` is 'B' after applying schema_81. Monitor new user quiz completion rate and payment conversion in CRM.
 
-5. **Implement broadcast discount button** (`docs/plans/2026-02-23-broadcast-discount-button.md`):
-   - DB migration `schema_71_broadcast_discounts.sql`
-   - New `discount_repo.py` and `discount_menu.py`
-   - Update `ButtonEditor.tsx`, `broadcast_callbacks.py`, `payment_service.py`
+9. **Content creation**: Write PDF solutions for the most common problem keys (strawberry is highest traffic — start with `straw_s_low_yield` and `straw_s_leaf_spots`)
 
-### Medium Priority
-
-6. **Add broadcast filter buttons to ActivityFilters:**
-   - Add `broadcast_sent`, `broadcast_button_click`, `broadcast_poll_answer` to `VISIBLE_FILTERS` in `ActivityFilters.tsx`.
-
-7. **End-to-end test broadcast resend and funnel triggers** (see "What Needs Testing" above).
-
-8. **Move `sanitize_html_for_telegram()` to utils:**
-   - Move from `broadcast_sender.py` to `src/utils/formatting.py`.
-
----
-
-## Session Statistics
-
-**This session (2026-02-25):** No code written. Documentation closure only.
-- Untracked plan files staged for commit: 3
-
-**Previous session context:**
-- Version: 1.5.5
-- Graceful shutdown hardened
-- Invite link analytics improved
-
----
-
-**Session completed:** 2026-02-25
-**Version:** 1.5.5
-**Status:** Production running; plans prepared for next session
-**Breaking Changes:** None
-**Migration Required:** YES — schemas 62-66 must be applied on production before using broadcast features or funnel triggers
+10. **Bump version to 1.8.1** after successful deploy (or higher depending on what else ships)

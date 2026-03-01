@@ -184,9 +184,26 @@ class StatusMessageManager:
                     display += "\n\n▌"
 
                 try:
-                    await self._streaming_message.edit_text(display)
-                except Exception:
-                    pass  # message not modified
+                    await self._streaming_message.edit_text(display, parse_mode="HTML")
+                except Exception as e:
+                    err_str = str(e)
+                    if "message is not modified" in err_str.lower():
+                        pass  # Нормально — текст не изменился
+                    elif "can't parse" in err_str.lower() or "bad request" in err_str.lower():
+                        # HTML сломан — отправляем plain text без форматирования
+                        try:
+                            plain = raw_text[:MAX_STREAMING_DISPLAY] + "\n\n▌"
+                            await self._streaming_message.edit_text(plain)
+                        except Exception:
+                            pass
+                    elif "retry after" in err_str.lower():
+                        # Rate limit — ждём
+                        import re
+                        m = re.search(r"retry after (\d+)", err_str.lower())
+                        if m:
+                            await asyncio.sleep(int(m.group(1)))
+                    else:
+                        logger.warning(f"[StatusManager] edit_text error: {type(e).__name__}: {e}")
         except asyncio.CancelledError:
             pass
         except Exception as e:

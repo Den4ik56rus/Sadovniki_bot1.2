@@ -253,6 +253,19 @@ async def cmd_start(message: Message) -> None:
         if active_variant == 'B':
             await start_funnel_b(message, user_id)
             return  # Воронка Б управляет своим флоу
+    else:
+        # Существующий пользователь — проверяем, может он из воронки Б
+        from src.services.db.pool import get_pool as _gp
+        _pool2 = _gp()
+        async with _pool2.acquire() as _conn2:
+            funnel_variant = await _conn2.fetchval(
+                "SELECT funnel_variant FROM users WHERE id = $1",
+                user_id,
+            )
+        if funnel_variant == 'B':
+            # Пользователь из воронки Б — всегда запускаем quiz заново
+            await start_funnel_b(message, user_id)
+            return
 
     # При команде /start закрываем все старые топики и создаём новый
     from src.services.db.topics_repo import close_open_topics

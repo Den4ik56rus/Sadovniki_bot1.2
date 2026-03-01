@@ -1418,3 +1418,102 @@ async def reorder_funnel_columns(request: web.Request) -> web.Response:
     except Exception as e:
         logger.error(f"Error reordering funnel columns: {e}")
         raise web.HTTPInternalServerError(text="Database error")
+
+
+async def update_client_funnel_variant(request: web.Request) -> web.Response:
+    """
+    PATCH /api/admin/crm/clients/{id}/funnel-variant
+    Обновить вариант воронки (A/B) для клиента.
+    Body: {"funnel_variant": "A"} или {"funnel_variant": "B"}
+    """
+    try:
+        user_id = int(request.match_info["id"])
+        data = await request.json()
+        variant = data.get("funnel_variant", "").upper()
+
+        if variant not in ("A", "B"):
+            raise web.HTTPBadRequest(text="funnel_variant must be 'A' or 'B'")
+
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "UPDATE users SET funnel_variant = $1 WHERE id = $2",
+                variant, user_id
+            )
+
+        return web.json_response({"funnel_variant": variant})
+
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid client ID")
+    except web.HTTPBadRequest:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating funnel_variant for {user_id}: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
+
+
+async def update_client_quiz_answers(request: web.Request) -> web.Response:
+    """
+    PATCH /api/admin/crm/clients/{id}/quiz-answers
+    Обновить ответы квиза клиента.
+    Body: {"culture": "...", "region": "...", "problem": "..."}
+    """
+    try:
+        user_id = int(request.match_info["id"])
+        data = await request.json()
+
+        culture = data.get("culture") or None
+        region = data.get("region") or None
+        problem = data.get("problem") or None
+
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO user_quiz_answers (user_id, culture, region, problem)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (user_id) DO UPDATE
+                    SET culture = EXCLUDED.culture,
+                        region = EXCLUDED.region,
+                        problem = EXCLUDED.problem,
+                        updated_at = NOW()
+                """,
+                user_id, culture, region, problem
+            )
+
+        return web.json_response({
+            "quiz_culture": culture,
+            "quiz_region": region,
+            "quiz_problem": problem,
+        })
+
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid client ID")
+    except web.HTTPBadRequest:
+        raise
+    except Exception as e:
+        logger.error(f"Error updating quiz answers for {user_id}: {e}")
+        raise web.HTTPInternalServerError(text="Database error")
+
+
+async def reset_client_quiz(request: web.Request) -> web.Response:
+    """
+    DELETE /api/admin/crm/clients/{id}/quiz-answers
+    Сбросить ответы квиза — удалить запись из user_quiz_answers.
+    При следующем /start пользователь пройдёт квиз заново.
+    """
+    try:
+        user_id = int(request.match_info["id"])
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await conn.execute(
+                "DELETE FROM user_quiz_answers WHERE user_id = $1",
+                user_id
+            )
+        return web.json_response({"success": True})
+
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid client ID")
+    except Exception as e:
+        logger.error(f"Error resetting quiz for {user_id}: {e}")
+        raise web.HTTPInternalServerError(text="Database error")

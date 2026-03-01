@@ -182,6 +182,45 @@ export function LeftPanel({ client, allTags, funnelId, onUpdate, onTopicClick: _
     }
   }
 
+  const handleFunnelVariantChange = async (variant: 'A' | 'B') => {
+    if (isUpdating) return
+    setIsUpdating(true)
+    try {
+      await api.updateClientFunnelVariant(client.id, variant)
+      onUpdate()
+    } catch (e) {
+      console.error('Failed to update funnel variant:', e)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleQuizAnswersChange = async (data: { culture?: string | null; region?: string | null; problem?: string | null }) => {
+    if (isUpdating) return
+    setIsUpdating(true)
+    try {
+      await api.updateClientQuizAnswers(client.id, data)
+      onUpdate()
+    } catch (e) {
+      console.error('Failed to update quiz answers:', e)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
+  const handleQuizReset = async () => {
+    if (isUpdating) return
+    setIsUpdating(true)
+    try {
+      await api.resetClientQuiz(client.id)
+      onUpdate()
+    } catch (e) {
+      console.error('Failed to reset quiz:', e)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
   const renderTabContent = () => {
     switch (activeTab) {
       case 'main':
@@ -193,6 +232,9 @@ export function LeftPanel({ client, allTags, funnelId, onUpdate, onTopicClick: _
             onPriorityChange={handlePriorityChange}
             onSourceChange={handleSourceChange}
             onTagsChange={handleTagsChange}
+            onFunnelVariantChange={handleFunnelVariantChange}
+            onQuizAnswersChange={handleQuizAnswersChange}
+            onQuizReset={handleQuizReset}
           />
         )
       case 'additional':

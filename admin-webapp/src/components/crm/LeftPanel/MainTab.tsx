@@ -1,4 +1,5 @@
 // Main Tab - Basic client info, status fields, tags (no hero section)
+import { useState } from 'react'
 import type {
   CrmClientFull,
   ClientPriority,
@@ -16,6 +17,9 @@ interface MainTabProps {
   onPriorityChange: (priority: ClientPriority) => void
   onSourceChange: (source: string) => void
   onTagsChange: (tagIds: number[]) => void
+  onFunnelVariantChange: (variant: 'A' | 'B') => void
+  onQuizAnswersChange: (data: { culture?: string | null; region?: string | null; problem?: string | null }) => void
+  onQuizReset: () => void
 }
 
 const PRIORITY_LABELS: Record<ClientPriority, string> = {
@@ -39,7 +43,15 @@ export function MainTab({
   onPriorityChange,
   onSourceChange,
   onTagsChange,
+  onFunnelVariantChange,
+  onQuizAnswersChange,
+  onQuizReset,
 }: MainTabProps) {
+  const [editingQuiz, setEditingQuiz] = useState(false)
+  const [quizCulture, setQuizCulture] = useState(client.quiz_culture ?? '')
+  const [quizRegion, setQuizRegion] = useState(client.quiz_region ?? '')
+  const [quizProblem, setQuizProblem] = useState(client.quiz_problem ?? '')
+
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-'
     try {
@@ -48,6 +60,25 @@ export function MainTab({
       return '-'
     }
   }
+
+  const handleSaveQuiz = () => {
+    onQuizAnswersChange({
+      culture: quizCulture || null,
+      region: quizRegion || null,
+      problem: quizProblem || null,
+    })
+    setEditingQuiz(false)
+  }
+
+  const handleCancelQuiz = () => {
+    setQuizCulture(client.quiz_culture ?? '')
+    setQuizRegion(client.quiz_region ?? '')
+    setQuizProblem(client.quiz_problem ?? '')
+    setEditingQuiz(false)
+  }
+
+  const currentVariant = client.funnel_variant ?? 'A'
+  const quizDone = !!(client.quiz_culture || client.quiz_region || client.quiz_problem)
 
   return (
     <div className={styles.content}>
@@ -106,6 +137,113 @@ export function MainTab({
             disabled={isUpdating}
           />
         </div>
+      </div>
+
+      {/* Funnel variant + quiz */}
+      <div className={styles.section}>
+        <h4 className={styles.sectionTitle}>Воронка A/B</h4>
+
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>Тип воронки</span>
+          <div className={styles.toggleGroup}>
+            <button
+              className={`${styles.toggleBtn} ${currentVariant === 'A' ? styles.toggleActive : ''}`}
+              onClick={() => currentVariant !== 'A' && onFunnelVariantChange('A')}
+              disabled={isUpdating}
+            >
+              A
+            </button>
+            <button
+              className={`${styles.toggleBtn} ${currentVariant === 'B' ? styles.toggleActive : ''}`}
+              onClick={() => currentVariant !== 'B' && onFunnelVariantChange('B')}
+              disabled={isUpdating}
+            >
+              B
+            </button>
+          </div>
+        </div>
+
+        <div className={styles.field}>
+          <span className={styles.fieldLabel}>Квиз пройден</span>
+          <span className={`${styles.quizBadge} ${quizDone ? styles.quizBadgeDone : styles.quizBadgeNo}`}>
+            {quizDone ? 'Да' : 'Нет'}
+          </span>
+        </div>
+
+        {/* Quiz answers block */}
+        {currentVariant === 'B' && (
+          <div className={styles.quizBlock}>
+            {editingQuiz ? (
+              <>
+                <div className={styles.quizField}>
+                  <span className={styles.quizLabel}>Культура</span>
+                  <input
+                    className={styles.input}
+                    value={quizCulture}
+                    onChange={(e) => setQuizCulture(e.target.value)}
+                    placeholder="Не указано"
+                  />
+                </div>
+                <div className={styles.quizField}>
+                  <span className={styles.quizLabel}>Регион</span>
+                  <input
+                    className={styles.input}
+                    value={quizRegion}
+                    onChange={(e) => setQuizRegion(e.target.value)}
+                    placeholder="Не указано"
+                  />
+                </div>
+                <div className={styles.quizField}>
+                  <span className={styles.quizLabel}>Проблема</span>
+                  <input
+                    className={styles.input}
+                    value={quizProblem}
+                    onChange={(e) => setQuizProblem(e.target.value)}
+                    placeholder="Не указано"
+                  />
+                </div>
+                <div className={styles.quizActions}>
+                  <button className={styles.quizSaveBtn} onClick={handleSaveQuiz} disabled={isUpdating}>
+                    Сохранить
+                  </button>
+                  <button className={styles.quizCancelBtn} onClick={handleCancelQuiz}>
+                    Отмена
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className={styles.quizField}>
+                  <span className={styles.quizLabel}>Культура</span>
+                  <span className={styles.quizValue}>{client.quiz_culture || '—'}</span>
+                </div>
+                <div className={styles.quizField}>
+                  <span className={styles.quizLabel}>Регион</span>
+                  <span className={styles.quizValue}>{client.quiz_region || '—'}</span>
+                </div>
+                <div className={styles.quizField}>
+                  <span className={styles.quizLabel}>Проблема</span>
+                  <span className={styles.quizValue}>{client.quiz_problem || '—'}</span>
+                </div>
+                <div className={styles.quizActions}>
+                  <button className={styles.quizEditBtn} onClick={() => setEditingQuiz(true)}>
+                    Редактировать
+                  </button>
+                  {quizDone && (
+                    <button
+                      className={styles.quizResetBtn}
+                      onClick={onQuizReset}
+                      disabled={isUpdating}
+                      title="Удалить ответы — при следующем /start пользователь пройдёт квиз заново"
+                    >
+                      Сбросить
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Referral Program */}

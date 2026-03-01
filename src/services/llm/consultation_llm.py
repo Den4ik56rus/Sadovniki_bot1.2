@@ -224,6 +224,8 @@ async def ask_consultation_llm(
     complexity_metadata: Optional[dict] = None,
     complexity_classification_cost_usd: float = 0.0,
     complexity_classification_tokens: int = 0,
+    # Quiz focus (авто-консультация из funnel B)
+    quiz_focus_instructions: Optional[str] = None,  # Инструкции для узкого фокуса ответа
     # Phase mode (Тип B/C)
     phase_mode: Optional[str] = None,       # "single_phase" | "seasonal_phase" | None
     phase_key: Optional[str] = None,        # "весна-цветение" и т.д.
@@ -464,6 +466,10 @@ async def ask_consultation_llm(
         system_prompt += short_instruction
         user_downgraded = complexity_metadata.get("user_downgraded", False)
         print(f"[ask_consultation_llm] Short answer instruction injected (user_downgraded={user_downgraded})")
+
+    # Инъекция quiz focus инструкций (авто-консультация из funnel B)
+    if quiz_focus_instructions:
+        system_prompt += quiz_focus_instructions
 
     messages.append(
         {

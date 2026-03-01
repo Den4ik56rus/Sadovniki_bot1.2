@@ -40,6 +40,44 @@
   margin: 0 0 16px 0;
 }
 
+/* Mode switcher */
+.modeSwitcher {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  background: var(--surface-primary, #fff);
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.modeButton {
+  padding: 8px 20px;
+  font-size: 13px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.modeButton:not(:last-child) {
+  border-right: 1px solid var(--border-color, #e8e8e8);
+}
+
+.modeButton:hover:not(.modeButtonActive) {
+  background: var(--surface-secondary, #f8f8f8);
+}
+
+.modeButtonActive {
+  background: var(--accent-color, #4A7C59);
+  color: #fff;
+}
+
 /* Fields */
 .field {
   display: flex;

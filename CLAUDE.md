@@ -11,11 +11,12 @@ Before making ANY changes:
 2. Read `session-summary.md` — contains latest session changes
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
-**Current Project State (2026-02-25):**
-- Version: 1.5.6
-- Phase: Payment reliability + broadcast buttons v3 (discount + payment types)
-- Latest changes: Graceful shutdown hardened, invite link new/existing user breakdown
-- CRITICAL: DB schemas 62-66 NOT YET APPLIED ON PRODUCTION — must apply all five before using broadcasts or funnel triggers
+**Current Project State (2026-03-01):**
+- Version: 1.8.0
+- Phase: Funnel B quiz onboarding launched, awaiting DB migration + testing
+- Latest changes: Full quiz flow (funnel_b.py 1255 lines), YooKassa 99 RUB quiz_plan payment, PDF delivery infrastructure
+- CRITICAL: DB schemas 81-83 NOT YET APPLIED ON PRODUCTION — must apply in order (82 → 83 → 81) before any funnel B users
+- DATA NEEDED: `data/quiz_solutions/` is empty — all quiz payments fall back to LLM until PDFs are created
 - PENDING PLANS: 3 implementation plans ready in `docs/plans/` — payment reliability, broadcast payment button, broadcast discount button
 - See: `session-summary.md` for details
 

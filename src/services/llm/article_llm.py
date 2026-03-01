@@ -21,6 +21,7 @@ from src.services.llm.gemini_embeddings import get_gemini_embedding_with_usage
 from src.services.llm.core_llm import create_chat_completion_with_usage, calculate_cost
 from src.prompts.article_prompt import build_article_system_prompt
 from src.prompts.consultation_prompts import build_consultation_system_prompt
+from src.prompts.problem_solving_prompt import build_problem_solving_system_prompt
 from src.services.db.article_repo import save_article
 from src.config import settings
 from src.services.db.settings_repo import get_model_for_task, get_temperature_for_task, get_reasoning_effort_for_task
@@ -35,7 +36,7 @@ async def generate_article(
     category: Optional[str] = None,
     culture: Optional[str] = None,
     use_scripts: bool = True,
-    use_consultation_prompt: bool = False,
+    use_problem_solving: bool = False,
     skip_rag: bool = False,
     model_override: Optional[str] = None,
 ) -> Tuple[str, int]:
@@ -47,8 +48,8 @@ async def generate_article(
         telegram_user_id: ID администратора (для логирования)
         category: Категория для фильтрации RAG (None = вся база)
         culture: Культура для фильтрации RAG subcategory (None = без фильтра)
-        use_scripts: Использовать article_prompt
-        use_consultation_prompt: Использовать consultation_prompt (как при обычной консультации)
+        use_scripts: Использовать article_prompt (структура статьи)
+        use_problem_solving: Использовать problem_solving_prompt (диагностика проблем)
         skip_rag: Пропустить RAG-поиск и embedding
         model_override: Переопределить модель из настроек
 
@@ -58,7 +59,7 @@ async def generate_article(
     print(f"\n[article_llm] ========== НАЧАЛО ГЕНЕРАЦИИ СТАТЬИ ==========")
     print(f"[article_llm] Тема: {topic}")
     print(f"[article_llm] Admin ID: {telegram_user_id}")
-    print(f"[article_llm] category={category}, culture={culture}, use_scripts={use_scripts}, skip_rag={skip_rag}, model_override={model_override}")
+    print(f"[article_llm] category={category}, culture={culture}, use_scripts={use_scripts}, use_problem_solving={use_problem_solving}, skip_rag={skip_rag}, model_override={model_override}")
 
     try:
         embed_tokens = 0
@@ -116,10 +117,22 @@ async def generate_article(
         # ============================================================
         # ШАГ 3: Формирование системного промпта
         # ============================================================
-        print(f"\n[article_llm] ШАГ 3: Формирование промпта (use_scripts={use_scripts}, use_consultation_prompt={use_consultation_prompt})...")
+        print(f"\n[article_llm] ШАГ 3: Формирование промпта (use_scripts={use_scripts}, use_problem_solving={use_problem_solving})...")
 
         parts = []
 
+        # БАЗА: всегда подтягиваем consultation_system_prompt
+        # (category-specific промпты, references, terminology, KB context)
+        consultation_base = await build_consultation_system_prompt(
+            culture=culture or "не определено",
+            kb_snippets=kb_snippets,
+            qa_found=qa_found,
+            consultation_category=category or "",
+        )
+        parts.append(consultation_base)
+        print(f"[article_llm] Consultation base prompt подключён (category={category}, culture={culture})")
+
+        # СТРУКТУРА ОТВЕТА: добавляем поверх базы
         if use_scripts:
             article_part = build_article_system_prompt(
                 topic=topic,
@@ -128,19 +141,11 @@ async def generate_article(
             )
             parts.append(article_part)
 
-        if use_consultation_prompt:
-            consultation_part = await build_consultation_system_prompt(
-                culture=culture or "не определено",
-                kb_snippets=kb_snippets,
-                qa_found=qa_found,
-                consultation_category=category or "",
-            )
-            parts.append(consultation_part)
+        if use_problem_solving:
+            problem_part = build_problem_solving_system_prompt(topic=topic)
+            parts.append(problem_part)
 
-        if parts:
-            system_prompt = "\n\n---\n\n".join(parts)
-        else:
-            system_prompt = f"Ты — профессиональный агроном, специализирующийся на ягодных культурах. Напиши подробную статью на тему: {topic}"
+        system_prompt = "\n\n---\n\n".join(parts)
 
         print(f"[article_llm] Системный промпт сформирован:")
         print(f"  - Длина: {len(system_prompt)} символов")
@@ -150,9 +155,14 @@ async def generate_article(
         # ============================================================
         print(f"\n[article_llm] ШАГ 4: Вызов LLM для генерации статьи...")
 
+        if use_problem_solving:
+            user_message = f"Дай практическое решение проблемы: {topic}"
+        else:
+            user_message = f"Напиши подробную статью на тему: {topic}"
+
         messages = [
             {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Напиши подробную статью на тему: {topic}"}
+            {"role": "user", "content": user_message}
         ]
 
         article_model = model_override if model_override else await get_model_for_task("article")

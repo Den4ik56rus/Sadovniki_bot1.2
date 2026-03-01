@@ -46,6 +46,7 @@ services:
       - ./data/guides:/app/data/guides
       - ./data/documents:/app/data/documents
       - ./data/prompt_documents:/app/data/prompt_documents
+      - ./data/quiz_solutions:/app/data/quiz_solutions
     logging:
       driver: "json-file"
       options:
@@ -65,7 +66,7 @@ services:
       - bot
     ports:
       - "80:80"
-      - "443:443"
+      - "8443:8443"
     volumes:
       - /etc/letsencrypt:/etc/letsencrypt:ro
     logging:

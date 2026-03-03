@@ -2,7 +2,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { api } from '@/services/api'
 import { useBatchStore } from '@/store/batchStore'
-import { usePresentationStore } from '@/store/presentationStore'
 import { useSSE } from '@/hooks/useSSE'
 import type {
   CultureDef,

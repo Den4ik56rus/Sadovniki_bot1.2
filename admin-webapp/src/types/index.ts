@@ -361,6 +361,11 @@ export interface CrmClientFull extends CrmClient {
   personal_discount_valid_until?: string | null
   subscription_token_balance?: number
   purchased_token_balance?: number
+  // Funnel & Quiz
+  funnel_variant?: string | null
+  quiz_culture?: string | null
+  quiz_region?: string | null
+  quiz_problem?: string | null
 }
 
 // Create/Update DTOs

@@ -413,6 +413,27 @@ export const api = {
     })
   },
 
+  // CRM: Funnel & Quiz
+  async updateClientFunnelVariant(clientId: number, variant: string): Promise<{ funnel_variant: string }> {
+    return fetchApi(`/crm/clients/${clientId}/funnel-variant`, {
+      method: 'PATCH',
+      body: JSON.stringify({ funnel_variant: variant }),
+    })
+  },
+
+  async updateClientQuizAnswers(clientId: number, data: { culture?: string | null; region?: string | null; problem?: string | null }): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/clients/${clientId}/quiz-answers`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async resetClientQuiz(clientId: number): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/clients/${clientId}/quiz-answers`, {
+      method: 'DELETE',
+    })
+  },
+
   // CRM: Tasks
   async getClientTasks(clientId: number, includeCompleted = true): Promise<ClientTask[]> {
     const query = `?include_completed=${includeCompleted}`

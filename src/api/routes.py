@@ -77,6 +77,11 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/api/admin/crm/clients/{id}/notes", crm.create_note)
     app.router.add_delete("/api/admin/crm/notes/{id}", crm.delete_note)
 
+    # CRM: Funnel & Quiz
+    app.router.add_patch("/api/admin/crm/clients/{id}/funnel-variant", crm.update_client_funnel_variant)
+    app.router.add_put("/api/admin/crm/clients/{id}/quiz-answers", crm.update_client_quiz_answers)
+    app.router.add_delete("/api/admin/crm/clients/{id}/quiz-answers", crm.reset_client_quiz)
+
     # CRM: Рефералы
     app.router.add_get("/api/admin/crm/clients/{id}/referrals", crm.get_client_referrals)
 

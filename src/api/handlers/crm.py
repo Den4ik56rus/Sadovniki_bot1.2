@@ -282,6 +282,20 @@ async def get_client_full(request: web.Request) -> web.Response:
             result["subscription_token_balance"] = billing_row["subscription_token_balance"]
             result["purchased_token_balance"] = billing_row["purchased_token_balance"]
 
+        # Funnel variant & quiz answers
+        async with pool.acquire() as conn:
+            fv = await conn.fetchval(
+                "SELECT funnel_variant FROM users WHERE id = $1", user_id
+            )
+            quiz = await conn.fetchrow(
+                "SELECT culture, region, problem FROM user_quiz_answers WHERE user_id = $1",
+                user_id
+            )
+        result["funnel_variant"] = fv
+        result["quiz_culture"] = quiz["culture"] if quiz else None
+        result["quiz_region"] = quiz["region"] if quiz else None
+        result["quiz_problem"] = quiz["problem"] if quiz else None
+
         return web.json_response(result)
 
     except ValueError:

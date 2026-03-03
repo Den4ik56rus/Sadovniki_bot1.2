@@ -74,7 +74,7 @@ export function BatchPage() {
   // Settings
   const [styleId, setStyleId] = useState<number | null>(null)
   const [templateId, setTemplateId] = useState<number | null>(null)
-  const [llmModel, setLlmModel] = useState<string>('gpt-4o')
+  const [llmModel, setLlmModel] = useState<string>('gpt-5.1')
   const [imageModel, setImageModel] = useState<string>('')
 
   // Batch state
@@ -107,7 +107,8 @@ export function BatchPage() {
         setTemplatesList(templatesRes.templates)
         setImageModels(modelsRes.models)
         if (modelsRes.models.length > 0) {
-          setImageModel(modelsRes.models[0].id)
+          const preferred = modelsRes.models.find(m => m.id.includes('3.1'))
+          setImageModel(preferred ? preferred.id : modelsRes.models[0].id)
         }
         // Expand all cultures by default
         const allKeys = new Set<string>()
@@ -523,6 +524,9 @@ export function BatchPage() {
                 value={llmModel}
                 onChange={e => setLlmModel(e.target.value)}
               >
+                <option value="gpt-5.1">GPT-5.1</option>
+                <option value="gpt-4.1">GPT-4.1</option>
+                <option value="gpt-4.1-mini">GPT-4.1-mini</option>
                 <option value="gpt-4o">GPT-4o</option>
                 <option value="gpt-4o-mini">GPT-4o-mini</option>
               </select>

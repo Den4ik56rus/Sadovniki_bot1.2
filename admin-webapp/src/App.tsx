@@ -21,6 +21,7 @@ import { ModerationPage } from '@/components/moderation'
 import { BroadcastPage } from '@/components/broadcast'
 import { TriggersPage } from '@/components/triggers'
 import { ArticlesPage } from '@/components/articles'
+import { PresentationsPage } from '@/components/presentations'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
@@ -57,6 +58,9 @@ function App() {
 
       {/* Статьи — генерация и просмотр статей */}
       {currentView === 'articles' && <ArticlesPage />}
+
+      {/* Презентации — AI-генерация слайдов */}
+      {currentView === 'presentations' && <PresentationsPage />}
 
       {/* Задачи - заглушка */}
       {currentView === 'tasks' && (

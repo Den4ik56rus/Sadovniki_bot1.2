@@ -46,6 +46,16 @@ import type {
   AdminArticlesResponse,
   GenerateArticleDto,
   GenerateArticleResponse,
+  // Presentations
+  Presentation,
+  PresentationsResponse,
+  PresentationStyle,
+  PresentationStylesResponse,
+  PresentationTemplate,
+  PresentationTemplatesResponse,
+  CreatePresentationDto,
+  SlideVersion,
+  ImageModelInfo,
   // Expenses
   Expense,
   ExpenseCategory,
@@ -781,6 +791,128 @@ export const api = {
 
   async getLlmConfig(): Promise<{ models: string[]; tasks: Record<string, { model: string; temperature: number | null; reasoning_effort: string | null; env_model: string; env_temp: number | null; label: string }> }> {
     return fetchApi('/settings/llm')
+  },
+
+  // =============================================================================
+  // Presentations (AI-генерация слайдов)
+  // =============================================================================
+
+  async getPresentations(params?: {
+    limit?: number
+    offset?: number
+    status?: string
+  }): Promise<PresentationsResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    if (params?.status) searchParams.set('status', params.status)
+    const query = searchParams.toString()
+    return fetchApi<PresentationsResponse>(`/presentations${query ? `?${query}` : ''}`)
+  },
+
+  async getPresentation(id: number): Promise<Presentation> {
+    return fetchApi<Presentation>(`/presentations/${id}`)
+  },
+
+  async createPresentation(dto: CreatePresentationDto): Promise<{ id: number; presentation: Presentation }> {
+    return fetchApi(`/presentations`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    })
+  },
+
+  async generatePresentation(id: number): Promise<{ status: string; presentation_id: number }> {
+    return fetchApi(`/presentations/${id}/generate`, {
+      method: 'POST',
+    })
+  },
+
+  async deletePresentation(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/presentations/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async editSlide(slideId: number, instruction: string): Promise<SlideVersion> {
+    return fetchApi<SlideVersion>(`/presentations/slides/${slideId}/edit`, {
+      method: 'POST',
+      body: JSON.stringify({ instruction }),
+    })
+  },
+
+  async rebuildPdf(presentationId: number): Promise<{ success: boolean; pdf_path: string }> {
+    return fetchApi(`/presentations/${presentationId}/pdf/rebuild`, {
+      method: 'POST',
+    })
+  },
+
+  getPresentationPdfUrl(id: number): string {
+    return `${API_BASE}/presentations/${id}/pdf`
+  },
+
+  getSlideImageUrl(versionId: number): string {
+    return `${API_BASE}/presentations/slides/versions/${versionId}/image`
+  },
+
+  async getPresentationStyles(): Promise<PresentationStylesResponse> {
+    return fetchApi<PresentationStylesResponse>('/presentations/styles')
+  },
+
+  async createPresentationStyle(data: { name: string; description?: string; style_xml: string }): Promise<PresentationStyle> {
+    return fetchApi<PresentationStyle>('/presentations/styles', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updatePresentationStyle(id: number, data: { name?: string; description?: string; style_xml?: string }): Promise<PresentationStyle> {
+    return fetchApi<PresentationStyle>(`/presentations/styles/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deletePresentationStyle(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/presentations/styles/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  // Presentation Templates
+  async getPresentationTemplates(): Promise<PresentationTemplatesResponse> {
+    return fetchApi<PresentationTemplatesResponse>('/presentations/templates')
+  },
+
+  async createPresentationTemplate(data: { name: string; description?: string; template_text: string }): Promise<PresentationTemplate> {
+    return fetchApi<PresentationTemplate>('/presentations/templates', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async updatePresentationTemplate(id: number, data: { name?: string; description?: string; template_text?: string }): Promise<PresentationTemplate> {
+    return fetchApi<PresentationTemplate>(`/presentations/templates/${id}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    })
+  },
+
+  async deletePresentationTemplate(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/presentations/templates/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  async getImageModels(): Promise<{ models: ImageModelInfo[] }> {
+    return fetchApi<{ models: ImageModelInfo[] }>('/presentations/image-models')
+  },
+
+  async getPresentationProblems(): Promise<{ cultures: import('@/types').CultureDef[] }> {
+    return fetchApi<{ cultures: import('@/types').CultureDef[] }>('/presentations/problems')
+  },
+
+  async getDefaultSystemPrompt(): Promise<{ system_prompt: string }> {
+    return fetchApi<{ system_prompt: string }>('/presentations/default-system-prompt')
   },
 
   // =============================================================================

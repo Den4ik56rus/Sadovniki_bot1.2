@@ -83,6 +83,13 @@ data/broadcast_photos/
 data/fonts/
 data/guides/
 data/documents/
+data/presentations/*/
+data/previews/
+data/quiz_solutions/**/*.pdf
+data/prompt_documents/
+
+# Google Cloud credentials
+vertex-ai-key.json
 
 # Git worktrees
 .worktrees/

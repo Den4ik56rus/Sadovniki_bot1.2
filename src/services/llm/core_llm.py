@@ -375,6 +375,26 @@ def calculate_cost(model: str, prompt_tokens: int, completion_tokens: int) -> fl
     return input_cost + output_cost
 
 
+# Цены NBP / Gemini Image (USD за 1K токенов)
+NBP_PRICING = {
+    "google/gemini-3.1-flash-image-preview": {"input": 0.03, "output": 0.175},
+}
+
+
+def calculate_nbp_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    """
+    Рассчитывает стоимость NBP (Nano Banana Pro) запроса в USD.
+
+    Цены (за 1K токенов):
+        - input: $0.03/1K
+        - output: $0.175/1K
+    """
+    rates = NBP_PRICING.get(model, NBP_PRICING["google/gemini-3.1-flash-image-preview"])
+    input_cost = (input_tokens / 1000) * rates["input"]
+    output_cost = (output_tokens / 1000) * rates["output"]
+    return input_cost + output_cost
+
+
 # Цены embeddings (USD за 1M токенов)
 EMBEDDING_PRICING = {
     "text-embedding-3-small": 0.02,   # $0.02/1M tokens

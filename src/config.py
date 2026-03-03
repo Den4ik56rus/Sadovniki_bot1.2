@@ -165,6 +165,20 @@ class Settings(BaseSettings):
         description="Система налогообложения (1 = УСН доход)",
     )
 
+    # --- Google Vertex AI (image generation) ---
+    google_application_credentials: str = Field(
+        "",
+        description="Путь к JSON ключу service account Google Cloud",
+    )
+    google_cloud_project: str = Field(
+        "",
+        description="Google Cloud Project ID",
+    )
+    google_cloud_location: str = Field(
+        "global",
+        description="Google Cloud region для Vertex AI",
+    )
+
     # --- Перенаправление оплаты на менеджера (тестовый запуск) ---
     PAYMENTS_REDIRECT_MODE: bool = Field(
         False,

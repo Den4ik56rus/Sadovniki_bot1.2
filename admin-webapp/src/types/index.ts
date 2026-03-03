@@ -227,7 +227,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'ab-test' | 'triggers' | 'articles'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'ab-test' | 'triggers' | 'articles' | 'presentations'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -589,6 +589,176 @@ export interface GenerateArticleDto {
 export interface GenerateArticleResponse {
   article_id: number
   article: AdminArticle
+}
+
+// =============================================================================
+// Presentations Types (AI-генерация слайдов)
+// =============================================================================
+
+export interface PresentationStyle {
+  id: number
+  name: string
+  description: string | null
+  style_xml: string
+  created_at: string
+  updated_at: string
+}
+
+export interface PresentationTemplate {
+  id: number
+  name: string
+  description: string | null
+  template_text: string
+  created_at: string
+  updated_at: string
+}
+
+export interface SlideVersion {
+  id: number
+  slide_id: number
+  version_number: number
+  image_path: string | null
+  edit_instruction: string | null
+  nbp_prompt: string
+  nbp_input_tokens: number
+  nbp_output_tokens: number
+  nbp_cost_usd: number
+  status: 'pending' | 'generating' | 'completed' | 'failed'
+  error_message: string | null
+  created_at: string
+}
+
+export interface PresentationSlide {
+  id: number
+  presentation_id: number
+  slide_index: number
+  slide_title: string | null
+  slide_prompt: string
+  slide_notes: string | null
+  created_at: string
+  versions: SlideVersion[]
+}
+
+export interface Presentation {
+  id: number
+  title: string
+  source_text: string
+  style_id: number | null
+  template_id: number | null
+  status: 'draft' | 'generating' | 'completed' | 'failed'
+  slide_count: number
+  llm_model: string | null
+  reasoning_effort: string | null
+  text_prompt_tokens: number
+  text_completion_tokens: number
+  text_cost_usd: number
+  image_input_tokens: number
+  image_output_tokens: number
+  image_cost_usd: number
+  total_cost_usd: number
+  generation_mode?: 'article' | 'problem'
+  culture_key?: string | null
+  variety_key?: string | null
+  problem_key?: string | null
+  article_cost_usd?: number
+  article_prompt_tokens?: number
+  article_completion_tokens?: number
+  custom_system_prompt?: string | null
+  pdf_path: string | null
+  error_message: string | null
+  created_at: string
+  updated_at: string
+  slides?: PresentationSlide[]
+}
+
+export interface PresentationListItem {
+  id: number
+  title: string
+  status: string
+  slide_count: number
+  llm_model: string | null
+  total_cost_usd: number
+  pdf_path: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface PresentationsResponse {
+  presentations: PresentationListItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface CreatePresentationDto {
+  title: string
+  source_text: string
+  style_id?: number | null
+  template_id?: number | null
+  llm_model?: string | null
+  reasoning_effort?: string | null
+  image_model?: string | null
+  test_slide_index?: number | null
+  generation_mode?: 'article' | 'problem'
+  culture_key?: string | null
+  variety_key?: string | null
+  problem_key?: string | null
+  custom_system_prompt?: string | null
+}
+
+export interface ProblemDef {
+  key: string
+  label: string
+  hint?: string | null
+}
+
+export interface CultureDef {
+  key: string
+  label: string
+  has_varieties: boolean
+  varieties: { key: string; label: string }[]
+  problems: Record<string, ProblemDef[]>
+}
+
+export interface PresentationStylesResponse {
+  styles: PresentationStyle[]
+}
+
+export interface PresentationTemplatesResponse {
+  templates: PresentationTemplate[]
+}
+
+export interface CompletedSlideInfo {
+  slide_index: number
+  version_id: number
+  slide_id: number
+  slide_title: string
+}
+
+export interface PresentationProgressEvent {
+  type: string
+  presentation_id?: number
+  slide_index?: number
+  slide_count?: number
+  slide_title?: string
+  slide_cost_usd?: number
+  total_image_cost_usd?: number
+  text_cost_usd?: number
+  total_cost_usd?: number
+  message?: string
+  error?: string
+  version_id?: number
+  slide_id?: number
+  article_cost_usd?: number
+  article_length?: number
+}
+
+export interface ImageModelInfo {
+  id: string
+  name: string
+  input_price_per_1m: number
+  output_price_per_1m: number
+  cost_per_image: number
 }
 
 // =============================================================================

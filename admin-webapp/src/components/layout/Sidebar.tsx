@@ -13,7 +13,7 @@ interface SubmenuItem {
 }
 
 interface MenuItem {
-  id: View | 'deals-group' | 'lists-group' | 'stats-group'
+  id: View | 'deals-group' | 'lists-group' | 'stats-group' | 'content-group'
   icon: React.ReactNode
   label: string
   badge?: number
@@ -126,7 +126,15 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
   { id: 'messages', icon: Icons.messages, label: 'Рассылки' },
   { id: 'triggers', icon: Icons.triggers, label: 'Триггеры' },
   { id: 'tasks', icon: Icons.tasks, label: 'Задачи' },
-  { id: 'articles', icon: Icons.articles, label: 'Статьи' },
+  {
+    id: 'content-group',
+    icon: Icons.articles,
+    label: 'Контент',
+    submenu: [
+      { id: 'articles', label: 'Статьи' },
+      { id: 'presentations', label: 'Презентации' },
+    ],
+  },
   { id: 'moderation', icon: Icons.moderation, label: 'Модерация' },
   {
     id: 'lists-group',

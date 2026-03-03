@@ -47,6 +47,7 @@ services:
       - ./data/documents:/app/data/documents
       - ./data/prompt_documents:/app/data/prompt_documents
       - ./data/quiz_solutions:/app/data/quiz_solutions
+      - ./data/presentations:/app/data/presentations
     logging:
       driver: "json-file"
       options:

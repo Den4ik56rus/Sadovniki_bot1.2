@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation, presentations
 
 
 def setup_routes(app: web.Application) -> None:
@@ -159,6 +159,28 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/api/admin/articles/by-admin/{telegram_id}", articles.get_articles_by_admin)
     app.router.add_get(r"/api/admin/articles/{id:\d+}", articles.get_article)
 
+    # Presentations API (AI-генерация слайдов)
+    app.router.add_post("/api/admin/presentations", presentations.create_presentation_api)
+    app.router.add_get("/api/admin/presentations", presentations.get_presentations)
+    app.router.add_get("/api/admin/presentations/styles", presentations.get_styles)
+    app.router.add_post("/api/admin/presentations/styles", presentations.create_style_api)
+    app.router.add_put(r"/api/admin/presentations/styles/{id:\d+}", presentations.update_style_api)
+    app.router.add_delete(r"/api/admin/presentations/styles/{id:\d+}", presentations.delete_style_api)
+    app.router.add_get("/api/admin/presentations/problems", presentations.get_problem_definitions)
+    app.router.add_get("/api/admin/presentations/default-system-prompt", presentations.get_default_system_prompt)
+    app.router.add_get("/api/admin/presentations/templates", presentations.get_templates)
+    app.router.add_post("/api/admin/presentations/templates", presentations.create_template_api)
+    app.router.add_put(r"/api/admin/presentations/templates/{id:\d+}", presentations.update_template_api)
+    app.router.add_delete(r"/api/admin/presentations/templates/{id:\d+}", presentations.delete_template_api)
+    app.router.add_get(r"/api/admin/presentations/slides/versions/{id:\d+}/image", presentations.get_slide_image)
+    app.router.add_post(r"/api/admin/presentations/slides/{id:\d+}/edit", presentations.edit_slide_api)
+    app.router.add_get(r"/api/admin/presentations/{id:\d+}", presentations.get_presentation)
+    app.router.add_delete(r"/api/admin/presentations/{id:\d+}", presentations.delete_presentation_api)
+    app.router.add_post(r"/api/admin/presentations/{id:\d+}/generate", presentations.generate_presentation_api)
+    app.router.add_get(r"/api/admin/presentations/{id:\d+}/pdf", presentations.download_pdf)
+    app.router.add_post(r"/api/admin/presentations/{id:\d+}/pdf/rebuild", presentations.rebuild_pdf_api)
+    app.router.add_get("/api/admin/presentations/image-models", presentations.get_image_models)
+
     # Expenses API (учёт расходов проекта)
     app.router.add_get("/api/admin/expenses", expenses.get_expenses)
     app.router.add_post("/api/admin/expenses", expenses.create_expense)
@@ -285,6 +307,9 @@ def setup_routes(app: web.Application) -> None:
 
     # SSE: Broadcast progress
     app.router.add_get(r"/api/admin/events/broadcast/{broadcast_id:\d+}", sse.broadcast_stream)
+
+    # SSE: Presentation generation progress
+    app.router.add_get(r"/api/admin/events/presentation/{presentation_id:\d+}", sse.presentation_stream)
 
     # Automation Triggers API (универсальные триггеры автоматизации)
     app.router.add_get("/api/admin/triggers", automation.get_triggers)

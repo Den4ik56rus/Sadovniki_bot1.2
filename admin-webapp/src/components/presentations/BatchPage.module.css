@@ -1,0 +1,472 @@
+/* Batch Presentations Page */
+
+.container {
+  padding: 24px;
+  max-width: 1100px;
+  margin: 0 auto;
+  min-height: 100%;
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px 0;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 24px;
+  border-bottom: 1px solid var(--border-color, #e8e8e8);
+  padding-bottom: 0;
+}
+
+.tab {
+  padding: 8px 16px;
+  font-size: 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab:hover {
+  color: var(--text-primary);
+}
+
+.tabActive {
+  color: var(--accent-color, #4A7C59);
+  border-bottom-color: var(--accent-color, #4A7C59);
+  font-weight: 500;
+}
+
+/* Culture accordion */
+.cultureGroup {
+  margin-bottom: 12px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.cultureHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--bg-secondary, #f8f8f8);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.cultureHeader:hover {
+  background: var(--bg-hover, #f0f0f0);
+}
+
+.cultureTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.cultureCount {
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-left: 8px;
+  font-weight: 400;
+}
+
+.cultureCheckAll {
+  font-size: 12px;
+  color: var(--accent-color, #4A7C59);
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: inherit;
+  padding: 2px 8px;
+}
+
+.cultureCheckAll:hover {
+  text-decoration: underline;
+}
+
+.problemsList {
+  padding: 8px 16px 12px;
+}
+
+.problemItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 0;
+}
+
+.problemItem input[type="checkbox"] {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  cursor: pointer;
+}
+
+.problemItem label {
+  font-size: 14px;
+  color: var(--text-primary);
+  cursor: pointer;
+  flex: 1;
+  line-height: 1.4;
+}
+
+.problemHint {
+  font-size: 12px;
+  color: var(--text-tertiary, #999);
+  margin-left: 4px;
+}
+
+/* Settings panel */
+.settingsPanel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin-bottom: 24px;
+  padding: 16px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 8px;
+  background: var(--bg-secondary, #f8f8f8);
+}
+
+.settingField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.settingLabel {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settingSelect {
+  padding: 8px 12px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  background: #fff;
+  color: var(--text-primary);
+}
+
+/* Selection bar */
+.selectionBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  padding: 12px 16px;
+  background: var(--accent-color-light, #e8f5e9);
+  border-radius: 8px;
+}
+
+.selectionCount {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.selectionActions {
+  display: flex;
+  gap: 8px;
+}
+
+.btnSelectAll,
+.btnClearAll {
+  font-size: 13px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid var(--border-color, #ccc);
+  background: #fff;
+  cursor: pointer;
+  font-family: inherit;
+  color: var(--text-secondary);
+}
+
+.btnClearAll:hover,
+.btnSelectAll:hover {
+  border-color: var(--accent-color, #4A7C59);
+  color: var(--text-primary);
+}
+
+/* Launch button */
+.launchButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 28px;
+  background: var(--accent-color, #4A7C59);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s, opacity 0.15s;
+}
+
+.launchButton:hover {
+  opacity: 0.9;
+}
+
+.launchButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Progress section */
+.progressSection {
+  margin-top: 24px;
+  padding: 20px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 8px;
+}
+
+.progressHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.progressTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-secondary, #eee);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progressFillSuccess {
+  background: var(--accent-color, #4A7C59);
+}
+
+.progressFillError {
+  background: var(--error-color, #C75B5B);
+}
+
+.progressStats {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.progressStats span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.currentItem {
+  padding: 10px 14px;
+  background: var(--bg-secondary, #f8f8f8);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+/* Items list */
+.itemsList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  transition: background 0.1s;
+}
+
+.item:hover {
+  background: var(--bg-hover, #f5f5f5);
+}
+
+.itemStatus {
+  font-size: 16px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.itemTitle {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.itemLink {
+  font-size: 12px;
+  color: var(--accent-color, #4A7C59);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.itemLink:hover {
+  text-decoration: underline;
+}
+
+.itemError {
+  font-size: 12px;
+  color: var(--error-color, #C75B5B);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Cancel button */
+.cancelButton {
+  padding: 8px 20px;
+  background: none;
+  border: 1px solid var(--error-color, #C75B5B);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--error-color, #C75B5B);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.cancelButton:hover {
+  background: rgba(199, 91, 91, 0.05);
+}
+
+/* Batch history */
+.batchList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.batchCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s;
+}
+
+.batchCard:hover {
+  border-color: var(--accent-color, #4A7C59);
+}
+
+.batchInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.batchId {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.batchMeta {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.batchStatus {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.statusRunning {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.statusCompleted {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.statusCancelled {
+  background: #fce4ec;
+  color: #c62828;
+}
+
+.statusPending {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+.emptyState {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  margin-bottom: 16px;
+  background: none;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.backButton:hover {
+  border-color: var(--accent-color, #4A7C59);
+  color: var(--text-primary);
+}

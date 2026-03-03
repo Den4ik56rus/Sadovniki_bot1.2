@@ -936,6 +936,38 @@ export const api = {
     return fetchApi<{ system_prompt: string }>('/presentations/default-system-prompt')
   },
 
+  // Presentation Batches (пакетная генерация)
+  async createBatch(dto: import('@/types').CreateBatchDto): Promise<{ id: number; batch: import('@/types').Batch }> {
+    return fetchApi(`/presentations/batches`, {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    })
+  },
+
+  async getBatches(params?: { limit?: number; offset?: number }): Promise<import('@/types').BatchesResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return fetchApi(`/presentations/batches${query ? `?${query}` : ''}`)
+  },
+
+  async getBatch(id: number): Promise<import('@/types').Batch> {
+    return fetchApi(`/presentations/batches/${id}`)
+  },
+
+  async cancelBatch(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/presentations/batches/${id}/cancel`, {
+      method: 'POST',
+    })
+  },
+
+  async deleteBatch(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/presentations/batches/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
   // =============================================================================
   // Expenses (Расходы проекта)
   // =============================================================================

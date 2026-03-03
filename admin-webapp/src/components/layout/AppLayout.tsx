@@ -21,6 +21,8 @@ const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
   moderation: { title: 'Модерация', subtitle: 'Очередь вопросов и база знаний' },
   triggers: { title: 'Триггеры', subtitle: 'Автоматизация действий' },
   articles: { title: 'Статьи', subtitle: 'Генерация статей из базы знаний' },
+  presentations: { title: 'Презентации', subtitle: 'Генерация и управление презентациями' },
+  'batch-presentations': { title: 'Пакетная генерация', subtitle: 'Генерация презентаций по проблемам' },
 }
 
 export function AppLayout({ children }: AppLayoutProps) {

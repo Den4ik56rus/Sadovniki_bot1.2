@@ -227,7 +227,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'ab-test' | 'triggers' | 'articles' | 'presentations'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'ab-test' | 'triggers' | 'articles' | 'presentations' | 'batch-presentations'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -764,6 +764,99 @@ export interface ImageModelInfo {
   input_price_per_1m: number
   output_price_per_1m: number
   cost_per_image: number
+}
+
+// =============================================================================
+// Presentation Batch Types (Пакетная генерация)
+// =============================================================================
+
+export interface BatchItem {
+  id: number
+  batch_id: number
+  culture_key: string
+  variety_key: string | null
+  problem_key: string
+  status: 'pending' | 'generating' | 'completed' | 'failed' | 'skipped'
+  presentation_id: number | null
+  content_pdf_path: string | null
+  error_message: string | null
+  retry_count: number
+  started_at: string | null
+  finished_at: string | null
+  sort_order: number
+}
+
+export interface Batch {
+  id: number
+  status: 'pending' | 'running' | 'completed' | 'cancelled'
+  style_id: number | null
+  template_id: number | null
+  llm_model: string | null
+  reasoning_effort: string | null
+  image_model: string | null
+  custom_system_prompt: string | null
+  total_items: number
+  completed_items: number
+  failed_items: number
+  current_item_index: number | null
+  total_cost_usd: number
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  error_message: string | null
+  items?: BatchItem[]
+}
+
+export interface BatchListItem {
+  id: number
+  status: string
+  total_items: number
+  completed_items: number
+  failed_items: number
+  current_item_index: number | null
+  total_cost_usd: number
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  llm_model: string | null
+  image_model: string | null
+  style_id: number | null
+}
+
+export interface BatchesResponse {
+  batches: BatchListItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface CreateBatchDto {
+  items: { culture_key: string; variety_key?: string | null; problem_key: string }[]
+  style_id?: number | null
+  template_id?: number | null
+  llm_model?: string | null
+  reasoning_effort?: string | null
+  image_model?: string | null
+  custom_system_prompt?: string | null
+}
+
+export interface BatchProgressEvent {
+  batch_id: number
+  item_id?: number
+  index?: number
+  total?: number
+  title?: string
+  culture?: string
+  problem?: string
+  presentation_id?: number
+  cost?: number
+  error?: string
+  // Inherited from presentation progress
+  type?: string
+  slide_index?: number
+  slide_count?: number
+  slide_title?: string
+  message?: string
 }
 
 // =============================================================================

@@ -727,6 +727,93 @@ async def presentation_stream(request: web.Request) -> web.StreamResponse:
     return response
 
 
+async def batch_stream(request: web.Request) -> web.StreamResponse:
+    """
+    SSE endpoint для прогресса пакетной генерации презентаций.
+
+    Отправляет события:
+    - batch_started — пакет запущен
+    - batch_item_started — начало генерации элемента
+    - batch_item_progress — прогресс внутри презентации
+    - batch_item_completed — элемент готов
+    - batch_item_failed — ошибка элемента
+    - batch_completed — пакет завершён
+    - batch_cancelled — пакет отменён
+
+    Path params:
+        batch_id (int): ID пакета
+    """
+    try:
+        batch_id = int(request.match_info['batch_id'])
+    except (KeyError, ValueError) as e:
+        logger.error(f"Invalid batch_id in path: {e}")
+        raise web.HTTPBadRequest(text="Invalid batch_id")
+
+    response = web.StreamResponse(
+        status=200,
+        reason='OK',
+        headers={
+            'Content-Type': 'text/event-stream; charset=utf-8',
+            'Cache-Control': 'no-cache, no-transform',
+            'Connection': 'keep-alive',
+            'X-Accel-Buffering': 'no',
+        }
+    )
+
+    await response.prepare(request)
+
+    client_id = str(uuid.uuid4())
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+
+    logger.info(
+        f"New SSE client connected: {client_id} "
+        f"(batch, batch_id={batch_id})"
+    )
+
+    await sse_manager.add_client(
+        client_id=client_id,
+        queue=queue,
+        endpoint_type='batch',
+        entity_id=batch_id,
+    )
+
+    try:
+        while True:
+            event = await queue.get()
+
+            if event is None:
+                logger.info(f"Received shutdown signal for {client_id}")
+                break
+
+            await send_sse_event(
+                response,
+                event['type'],
+                event['data'],
+                event.get('id')
+            )
+
+    except asyncio.CancelledError:
+        logger.info(f"SSE client {client_id} cancelled")
+    except ConnectionResetError:
+        logger.info(f"SSE client {client_id} connection reset")
+    except Exception as e:
+        logger.error(f"Error in batch_stream for {client_id}: {e}")
+    finally:
+        await sse_manager.remove_client(client_id)
+
+        try:
+            await response.write_eof()
+        except Exception as e:
+            logger.error(f"Error closing response for {client_id}: {e}")
+
+        logger.info(
+            f"SSE client {client_id} disconnected "
+            f"(batch, batch_id={batch_id})"
+        )
+
+    return response
+
+
 async def sse_stats(request: web.Request) -> web.Response:
     """
     Endpoint для получения статистики по SSE подключениям.

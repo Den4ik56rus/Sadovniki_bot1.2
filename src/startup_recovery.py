@@ -51,6 +51,15 @@ async def run_startup_recovery(bot: Bot) -> None:
     await _reprocess_unanswered_questions(bot)
     await _restore_states_from_db()
 
+    # Возобновляем незавершённые пакеты презентаций
+    try:
+        from src.services.presentations.batch_processor import resume_running_batches
+        resumed = await resume_running_batches(bot)
+        if resumed:
+            logger.info(f"[recovery] Возобновлено {resumed} пакетов презентаций")
+    except Exception as e:
+        logger.error(f"[recovery] Ошибка возобновления пакетов: {e}")
+
     logger.info("[recovery] Восстановление завершено.")
 
 

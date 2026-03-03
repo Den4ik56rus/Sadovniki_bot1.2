@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation, presentations
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation, presentations, batch_presentations
 
 
 def setup_routes(app: web.Application) -> None:
@@ -179,6 +179,12 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_delete(r"/api/admin/presentations/templates/{id:\d+}", presentations.delete_template_api)
     app.router.add_get(r"/api/admin/presentations/slides/versions/{id:\d+}/image", presentations.get_slide_image)
     app.router.add_post(r"/api/admin/presentations/slides/{id:\d+}/edit", presentations.edit_slide_api)
+    # Presentation Batches API (пакетная генерация)
+    app.router.add_post("/api/admin/presentations/batches", batch_presentations.create_batch_api)
+    app.router.add_get("/api/admin/presentations/batches", batch_presentations.get_batches)
+    app.router.add_get(r"/api/admin/presentations/batches/{id:\d+}", batch_presentations.get_batch)
+    app.router.add_post(r"/api/admin/presentations/batches/{id:\d+}/cancel", batch_presentations.cancel_batch_api)
+    app.router.add_delete(r"/api/admin/presentations/batches/{id:\d+}", batch_presentations.delete_batch_api)
     app.router.add_get(r"/api/admin/presentations/{id:\d+}", presentations.get_presentation)
     app.router.add_delete(r"/api/admin/presentations/{id:\d+}", presentations.delete_presentation_api)
     app.router.add_post(r"/api/admin/presentations/{id:\d+}/generate", presentations.generate_presentation_api)
@@ -315,6 +321,9 @@ def setup_routes(app: web.Application) -> None:
 
     # SSE: Presentation generation progress
     app.router.add_get(r"/api/admin/events/presentation/{presentation_id:\d+}", sse.presentation_stream)
+
+    # SSE: Batch generation progress
+    app.router.add_get(r"/api/admin/events/batch/{batch_id:\d+}", sse.batch_stream)
 
     # Automation Triggers API (универсальные триггеры автоматизации)
     app.router.add_get("/api/admin/triggers", automation.get_triggers)

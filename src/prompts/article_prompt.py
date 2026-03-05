@@ -19,6 +19,7 @@ def build_article_system_prompt(
     topic: str,
     kb_snippets: List[Dict[str, Any]],
     qa_found: bool,
+    full_season: bool = False,
 ) -> str:
     """
     Формирует системный промпт для генерации статьи.
@@ -149,12 +150,22 @@ def build_article_system_prompt(
 Используй свои знания профессионального агронома по ягодным культурам.
 Сохраняй структуру и стиль, указанные выше."""
 
+    # Режим полного сезона (для пакетной генерации)
+    season_override = ""
+    if full_season:
+        season_override = """
+РЕЖИМ СТАТЬИ — ПОЛНЫЙ СЕЗОН:
+- Описывай рекомендации для ВСЕГО сезона (ранняя весна → весна → лето → осень → подготовка к зиме)
+- НЕ дели на фазы, НЕ предлагай продолжение
+- Правило "РАЗБИЕНИЕ СЕЗОННЫХ ВОПРОСОВ" НЕ ПРИМЕНЯЕТСЯ к статьям
+- Каждый раздел решений должен быть привязан к конкретным срокам в рамках всего сезона
+- Дай полную картину от начала до конца — читатель должен получить исчерпывающее руководство"""
+
     # Собираем полный промпт
-    full_prompt = "\n\n".join([
-        base_role,
-        task_description,
-        style_guidelines,
-        kb_section,
-    ])
+    parts = [base_role, task_description, style_guidelines, kb_section]
+    if season_override:
+        parts.append(season_override)
+
+    full_prompt = "\n\n".join(parts)
 
     return full_prompt.strip()

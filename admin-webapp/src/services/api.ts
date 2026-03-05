@@ -43,6 +43,7 @@ import type {
   ClientFunnelInfo,
   // Admin Articles
   AdminArticle,
+  AdminArticleListItem,
   AdminArticlesResponse,
   GenerateArticleDto,
   GenerateArticleResponse,
@@ -808,6 +809,50 @@ export const api = {
       method: 'POST',
       body: JSON.stringify(dto),
     })
+  },
+
+  async updateArticle(articleId: number, articleText: string): Promise<AdminArticle> {
+    return fetchApi<AdminArticle>(`/articles/${articleId}`, {
+      method: 'PUT',
+      body: JSON.stringify({ article_text: articleText }),
+    })
+  },
+
+  async getArticlesByCulture(cultureKey: string, varietyKey?: string | null): Promise<{ articles: AdminArticleListItem[]; total: number }> {
+    const params = new URLSearchParams({ culture_key: cultureKey })
+    if (varietyKey) params.set('variety_key', varietyKey)
+    return fetchApi(`/articles/by-culture?${params}`)
+  },
+
+  async getArticleDefinitions(): Promise<{ categories: { key: string; label: string; consultation_category: string }[]; cultures: { culture_key: string; variety_key: string | null; label: string; culture_russian: string }[] }> {
+    return fetchApi('/articles/definitions')
+  },
+
+  async createArticleBatch(dto: { items: { culture_key: string; variety_key?: string | null; category_key: string }[]; llm_model?: string | null }): Promise<{ id: number; batch: Record<string, unknown> }> {
+    return fetchApi('/articles/batches', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    })
+  },
+
+  async getArticleBatches(params?: { limit?: number; offset?: number }): Promise<{ batches: Record<string, unknown>[]; total: number }> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return fetchApi(`/articles/batches${query ? `?${query}` : ''}`)
+  },
+
+  async getArticleBatch(batchId: number): Promise<Record<string, unknown>> {
+    return fetchApi(`/articles/batches/${batchId}`)
+  },
+
+  async cancelArticleBatch(batchId: number): Promise<{ success: boolean }> {
+    return fetchApi(`/articles/batches/${batchId}/cancel`, { method: 'POST' })
+  },
+
+  async deleteArticleBatch(batchId: number): Promise<{ success: boolean }> {
+    return fetchApi(`/articles/batches/${batchId}`, { method: 'DELETE' })
   },
 
   async getLlmConfig(): Promise<{ models: string[]; tasks: Record<string, { model: string; temperature: number | null; reasoning_effort: string | null; env_model: string; env_temp: number | null; label: string }> }> {

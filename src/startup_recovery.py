@@ -60,6 +60,15 @@ async def run_startup_recovery(bot: Bot) -> None:
     except Exception as e:
         logger.error(f"[recovery] Ошибка возобновления пакетов: {e}")
 
+    # Возобновляем незавершённые пакеты статей
+    try:
+        from src.services.articles.article_batch_processor import resume_running_article_batches
+        resumed = await resume_running_article_batches(bot)
+        if resumed:
+            logger.info(f"[recovery] Возобновлено {resumed} пакетов статей")
+    except Exception as e:
+        logger.error(f"[recovery] Ошибка возобновления пакетов статей: {e}")
+
     logger.info("[recovery] Восстановление завершено.")
 
 

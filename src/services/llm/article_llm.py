@@ -39,6 +39,10 @@ async def generate_article(
     use_problem_solving: bool = False,
     skip_rag: bool = False,
     model_override: Optional[str] = None,
+    culture_key: Optional[str] = None,
+    variety_key: Optional[str] = None,
+    category_key: Optional[str] = None,
+    batch_id: Optional[int] = None,
 ) -> Tuple[str, int]:
     """
     Генерирует статью по заданной теме.
@@ -138,6 +142,7 @@ async def generate_article(
                 topic=topic,
                 kb_snippets=kb_snippets,
                 qa_found=qa_found,
+                full_season=batch_id is not None,
             )
             parts.append(article_part)
 
@@ -217,6 +222,10 @@ async def generate_article(
             total_tokens=total_tokens,
             cost_usd=total_cost,
             llm_model=model_used,
+            culture_key=culture_key,
+            variety_key=variety_key,
+            category_key=category_key,
+            batch_id=batch_id,
         )
 
         print(f"[article_llm] Статья сохранена с ID: {article_id}")

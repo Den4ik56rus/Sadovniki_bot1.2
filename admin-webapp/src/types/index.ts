@@ -860,6 +860,101 @@ export interface BatchProgressEvent {
 }
 
 // =============================================================================
+// Article Batch Types (Пакетная генерация статей)
+// =============================================================================
+
+export interface ArticleCategoryDef {
+  key: string
+  label: string
+  consultation_category: string
+}
+
+export interface ArticleCultureDef {
+  culture_key: string
+  variety_key: string | null
+  label: string
+  culture_russian: string
+}
+
+export interface ArticleDefinitionsResponse {
+  categories: ArticleCategoryDef[]
+  cultures: ArticleCultureDef[]
+}
+
+export interface ArticleBatchItem {
+  id: number
+  batch_id: number
+  culture_key: string
+  variety_key: string | null
+  category_key: string
+  topic: string
+  culture_label: string
+  category_label: string
+  status: 'pending' | 'generating' | 'completed' | 'failed' | 'skipped'
+  article_id: number | null
+  error_message: string | null
+  started_at: string | null
+  finished_at: string | null
+  sort_order: number
+}
+
+export interface ArticleBatch {
+  id: number
+  status: 'pending' | 'running' | 'completed' | 'cancelled'
+  llm_model: string | null
+  total_items: number
+  completed_items: number
+  failed_items: number
+  current_item_index: number | null
+  total_cost_usd: number
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  items?: ArticleBatchItem[]
+}
+
+export interface ArticleBatchListItem {
+  id: number
+  status: string
+  total_items: number
+  completed_items: number
+  failed_items: number
+  current_item_index: number | null
+  total_cost_usd: number
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  llm_model: string | null
+}
+
+export interface ArticleBatchesResponse {
+  batches: ArticleBatchListItem[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface CreateArticleBatchDto {
+  items: { culture_key: string; variety_key?: string | null; category_key: string }[]
+  llm_model?: string | null
+}
+
+export interface ArticleBatchProgressEvent {
+  batch_id: number
+  item_id?: number
+  index?: number
+  total?: number
+  topic?: string
+  culture?: string
+  category?: string
+  article_id?: number
+  cost?: number
+  article_length?: number
+  error?: string
+  type?: string
+}
+
+// =============================================================================
 // Expenses Types (Расходы проекта)
 // =============================================================================
 

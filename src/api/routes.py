@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation, presentations, batch_presentations
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation, presentations, batch_presentations, batch_articles
 
 
 def setup_routes(app: web.Application) -> None:
@@ -160,9 +160,18 @@ def setup_routes(app: web.Application) -> None:
 
     # Admin Articles API (статьи, сгенерированные админом)
     app.router.add_post("/api/admin/articles/generate", articles.generate_article_api)
+    app.router.add_get("/api/admin/articles/definitions", batch_articles.get_definitions)
+    app.router.add_get("/api/admin/articles/by-culture", articles.get_articles_by_culture)
+    # Article Batches API (пакетная генерация статей)
+    app.router.add_post("/api/admin/articles/batches", batch_articles.create_batch_api)
+    app.router.add_get("/api/admin/articles/batches", batch_articles.get_batches)
+    app.router.add_get(r"/api/admin/articles/batches/{id:\d+}", batch_articles.get_batch)
+    app.router.add_post(r"/api/admin/articles/batches/{id:\d+}/cancel", batch_articles.cancel_batch_api)
+    app.router.add_delete(r"/api/admin/articles/batches/{id:\d+}", batch_articles.delete_batch_api)
     app.router.add_get("/api/admin/articles", articles.get_articles)
     app.router.add_get("/api/admin/articles/by-admin/{telegram_id}", articles.get_articles_by_admin)
     app.router.add_get(r"/api/admin/articles/{id:\d+}", articles.get_article)
+    app.router.add_put(r"/api/admin/articles/{id:\d+}", articles.update_article_api)
 
     # Presentations API (AI-генерация слайдов)
     app.router.add_post("/api/admin/presentations", presentations.create_presentation_api)
@@ -324,6 +333,9 @@ def setup_routes(app: web.Application) -> None:
 
     # SSE: Batch generation progress
     app.router.add_get(r"/api/admin/events/batch/{batch_id:\d+}", sse.batch_stream)
+
+    # SSE: Article batch generation progress
+    app.router.add_get(r"/api/admin/events/article-batch/{batch_id:\d+}", sse.article_batch_stream)
 
     # Automation Triggers API (универсальные триггеры автоматизации)
     app.router.add_get("/api/admin/triggers", automation.get_triggers)

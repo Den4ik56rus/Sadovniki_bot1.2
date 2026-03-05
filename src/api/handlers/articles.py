@@ -141,6 +141,48 @@ async def get_article(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=500)
 
 
+async def update_article_api(request: web.Request) -> web.Response:
+    """Обновить текст статьи."""
+    try:
+        article_id = int(request.match_info["id"])
+        data = await request.json()
+
+        new_text = data.get("article_text")
+        if not new_text:
+            return web.json_response({"error": "article_text is required"}, status=400)
+
+        success = await article_repo.update_article_text(article_id, new_text)
+        if not success:
+            return web.json_response({"error": "Article not found"}, status=404)
+
+        article = await article_repo.get_article_by_id(article_id)
+        return web.json_response(_serialize_article(article) if article else {"success": True})
+
+    except Exception as e:
+        logger.error(f"Error updating article {request.match_info.get('id')}: {e}", exc_info=True)
+        return web.json_response({"error": str(e)}, status=500)
+
+
+async def get_articles_by_culture(request: web.Request) -> web.Response:
+    """Получить статьи по культуре."""
+    try:
+        culture_key = request.query.get("culture_key")
+        variety_key = request.query.get("variety_key") or None
+
+        if not culture_key:
+            return web.json_response({"error": "culture_key is required"}, status=400)
+
+        articles = await article_repo.get_articles_by_culture(culture_key, variety_key)
+        return web.json_response({
+            "articles": [_serialize_article(a) for a in articles],
+            "total": len(articles),
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting articles by culture: {e}", exc_info=True)
+        return web.json_response({"error": str(e)}, status=500)
+
+
 async def get_articles_by_admin(request: web.Request) -> web.Response:
     """Получить статьи конкретного админа."""
     admin_telegram_id = int(request.match_info.get("telegram_id"))

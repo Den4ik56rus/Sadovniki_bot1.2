@@ -314,3 +314,73 @@
 .cardMeta span {
   white-space: nowrap;
 }
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 0;
+  margin-bottom: 24px;
+  background: var(--surface-primary, #fff);
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+
+.tab {
+  padding: 10px 24px;
+  font-size: 14px;
+  font-weight: 500;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+  font-family: inherit;
+}
+
+.tab:not(:last-child) {
+  border-right: 1px solid var(--border-color, #e8e8e8);
+}
+
+.tab:hover:not(.tabActive) {
+  background: var(--surface-secondary, #f8f8f8);
+}
+
+.tabActive {
+  background: var(--accent-color, #4A7C59);
+  color: #fff;
+}
+
+/* Culture filter row */
+.cultureFilterRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.cultureFilterBtn {
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 500;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 20px;
+  background: var(--surface-primary, #fff);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+  font-family: inherit;
+}
+
+.cultureFilterBtn:hover:not(.cultureFilterBtnActive) {
+  border-color: var(--accent-color, #4A7C59);
+  color: var(--text-primary);
+}
+
+.cultureFilterBtnActive {
+  background: var(--accent-color, #4A7C59);
+  color: #fff;
+  border-color: var(--accent-color, #4A7C59);
+}

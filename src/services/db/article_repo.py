@@ -29,6 +29,10 @@ async def save_article(
     total_tokens: int = 0,
     cost_usd: float = 0.0,
     llm_model: Optional[str] = None,
+    culture_key: Optional[str] = None,
+    variety_key: Optional[str] = None,
+    category_key: Optional[str] = None,
+    batch_id: Optional[int] = None,
 ) -> int:
     """
     Сохраняет сгенерированную статью в БД.
@@ -51,8 +55,12 @@ async def save_article(
             llm_completion_tokens,
             total_tokens,
             cost_usd,
-            llm_model
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+            llm_model,
+            culture_key,
+            variety_key,
+            category_key,
+            batch_id
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         RETURNING id
     """
 
@@ -72,6 +80,10 @@ async def save_article(
         total_tokens,
         cost_usd,
         llm_model,
+        culture_key,
+        variety_key,
+        category_key,
+        batch_id,
     )
 
     article_id = row["id"]
@@ -186,3 +198,51 @@ async def get_articles_count(admin_telegram_id: Optional[int] = None) -> int:
         row = await pool.fetchrow(query)
 
     return row["count"]
+
+
+async def update_article_text(article_id: int, new_text: str) -> bool:
+    """Обновляет текст статьи."""
+    pool = get_pool()
+    result = await pool.execute(
+        "UPDATE admin_articles SET article_text = $2 WHERE id = $1",
+        article_id, new_text,
+    )
+    success = result == "UPDATE 1"
+    if success:
+        logger.info(f"[article_repo] Текст статьи {article_id} обновлён ({len(new_text)} симв.)")
+    return success
+
+
+async def get_articles_by_culture(
+    culture_key: str,
+    variety_key: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Получает все статьи для конкретной культуры."""
+    pool = get_pool()
+
+    if variety_key:
+        rows = await pool.fetch(
+            """
+            SELECT id, topic, culture_key, variety_key, category_key,
+                   LENGTH(article_text) as article_length,
+                   rag_snippets_count, cost_usd, llm_model, created_at
+            FROM admin_articles
+            WHERE culture_key = $1 AND variety_key = $2
+            ORDER BY category_key, created_at DESC
+            """,
+            culture_key, variety_key,
+        )
+    else:
+        rows = await pool.fetch(
+            """
+            SELECT id, topic, culture_key, variety_key, category_key,
+                   LENGTH(article_text) as article_length,
+                   rag_snippets_count, cost_usd, llm_model, created_at
+            FROM admin_articles
+            WHERE culture_key = $1 AND variety_key IS NULL
+            ORDER BY category_key, created_at DESC
+            """,
+            culture_key,
+        )
+
+    return [dict(row) for row in rows]

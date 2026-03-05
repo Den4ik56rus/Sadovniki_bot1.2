@@ -1,0 +1,213 @@
+/* Article Batch Detail */
+
+.backButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 12px;
+  margin-bottom: 16px;
+  background: none;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.backButton:hover {
+  border-color: var(--accent-color, #4A7C59);
+  color: var(--text-primary);
+}
+
+.header {
+  margin-bottom: 24px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 4px 0;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.subtitle {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.loading {
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+/* Batch status */
+.batchStatus {
+  font-size: 12px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.statusRunning {
+  background: #fff3e0;
+  color: #e65100;
+}
+
+.statusCompleted {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+
+.statusCancelled {
+  background: #fce4ec;
+  color: #c62828;
+}
+
+.statusPending {
+  background: #e3f2fd;
+  color: #1565c0;
+}
+
+/* Progress */
+.progressSection {
+  padding: 20px;
+  border: 1px solid var(--border-color, #e8e8e8);
+  border-radius: 8px;
+}
+
+.progressHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.progressTitle {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.progressBar {
+  width: 100%;
+  height: 8px;
+  background: var(--bg-secondary, #eee);
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 12px;
+}
+
+.progressFill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+}
+
+.progressFillSuccess {
+  background: var(--accent-color, #4A7C59);
+}
+
+.progressFillError {
+  background: var(--error-color, #C75B5B);
+}
+
+.progressStats {
+  display: flex;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.progressStats span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.currentItem {
+  padding: 10px 14px;
+  background: var(--bg-secondary, #f8f8f8);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--text-primary);
+  margin-bottom: 16px;
+}
+
+/* Cancel button */
+.cancelButton {
+  padding: 8px 20px;
+  background: none;
+  border: 1px solid var(--error-color, #C75B5B);
+  border-radius: 6px;
+  font-size: 13px;
+  color: var(--error-color, #C75B5B);
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.15s;
+}
+
+.cancelButton:hover {
+  background: rgba(199, 91, 91, 0.05);
+}
+
+/* Items list */
+.itemsList {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  transition: background 0.1s;
+}
+
+.item:hover {
+  background: var(--bg-hover, #f5f5f5);
+}
+
+.itemStatus {
+  font-size: 16px;
+  width: 24px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.itemTitle {
+  flex: 1;
+  color: var(--text-primary);
+}
+
+.itemLink {
+  font-size: 12px;
+  color: var(--accent-color, #4A7C59);
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.itemLink:hover {
+  text-decoration: underline;
+}
+
+.itemError {
+  font-size: 12px;
+  color: var(--error-color, #C75B5B);
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -30,6 +30,9 @@ export function ArticleView({ articleId, onBack }: ArticleViewProps) {
   const { usdRate } = useCurrencyStore()
   const [article, setArticle] = useState<AdminArticle | null>(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
 
   useEffect(() => {
     const fetchArticle = async () => {
@@ -63,6 +66,33 @@ export function ArticleView({ articleId, onBack }: ArticleViewProps) {
       return `${(costRub * 100).toFixed(1)} коп.`
     }
     return `${costRub.toFixed(2)} ₽`
+  }
+
+  const handleStartEdit = () => {
+    if (article) {
+      setEditText(article.article_text)
+      setIsEditing(true)
+    }
+  }
+
+  const handleCancelEdit = () => {
+    setIsEditing(false)
+    setEditText('')
+  }
+
+  const handleSave = async () => {
+    if (!article || !editText.trim()) return
+    setIsSaving(true)
+    try {
+      await api.updateArticle(article.id, editText)
+      setArticle({ ...article, article_text: editText })
+      setIsEditing(false)
+      setEditText('')
+    } catch (e) {
+      console.error('Failed to save article:', e)
+    } finally {
+      setIsSaving(false)
+    }
   }
 
   // Parse RAG snippets
@@ -163,9 +193,41 @@ export function ArticleView({ articleId, onBack }: ArticleViewProps) {
           badge={`${article.article_text.length.toLocaleString()} символов`}
           defaultOpen={true}
         >
-          <div className={styles.articleText}>
-            {article.article_text}
-          </div>
+          {isEditing ? (
+            <div className={styles.editArea}>
+              <textarea
+                className={styles.editTextarea}
+                value={editText}
+                onChange={(e) => setEditText(e.target.value)}
+                rows={20}
+              />
+              <div className={styles.editActions}>
+                <button
+                  className={styles.saveBtn}
+                  onClick={handleSave}
+                  disabled={isSaving || !editText.trim()}
+                >
+                  {isSaving ? 'Сохранение...' : 'Сохранить'}
+                </button>
+                <button
+                  className={styles.cancelEditBtn}
+                  onClick={handleCancelEdit}
+                  disabled={isSaving}
+                >
+                  Отмена
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className={styles.articleTextWrapper}>
+              <button className={styles.editBtn} onClick={handleStartEdit}>
+                Редактировать
+              </button>
+              <div className={styles.articleText}>
+                {article.article_text}
+              </div>
+            </div>
+          )}
         </CollapsibleSection>
       </div>
 

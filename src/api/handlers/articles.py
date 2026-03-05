@@ -185,6 +185,33 @@ async def get_articles_by_culture(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=500)
 
 
+async def get_article_by_keys(request: web.Request) -> web.Response:
+    """Получить статью по category_key + culture_key (+ variety_key)."""
+    try:
+        category_key = request.query.get("category_key")
+        culture_key = request.query.get("culture_key")
+        variety_key = request.query.get("variety_key") or None
+
+        if not category_key or not culture_key:
+            return web.json_response({"error": "category_key and culture_key are required"}, status=400)
+
+        article = await article_repo.get_article_by_category_and_culture(
+            category_key, culture_key, variety_key,
+        )
+
+        if not article:
+            return web.json_response({"found": False, "article": None})
+
+        return web.json_response({
+            "found": True,
+            "article": _serialize_article(article),
+        })
+
+    except Exception as e:
+        logger.error(f"Error getting article by keys: {e}", exc_info=True)
+        return web.json_response({"error": str(e)}, status=500)
+
+
 async def get_articles_by_admin(request: web.Request) -> web.Response:
     """Получить статьи конкретного админа."""
     admin_telegram_id = int(request.match_info.get("telegram_id"))

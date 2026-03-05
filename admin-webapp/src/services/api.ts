@@ -828,6 +828,12 @@ export const api = {
     return fetchApi('/articles/definitions')
   },
 
+  async getArticleByKeys(categoryKey: string, cultureKey: string, varietyKey?: string | null): Promise<{ found: boolean; article: { id: number; topic: string; article_text: string; article_length: number; cost_usd: number; llm_model: string; created_at: string } | null }> {
+    const params = new URLSearchParams({ category_key: categoryKey, culture_key: cultureKey })
+    if (varietyKey) params.set('variety_key', varietyKey)
+    return fetchApi(`/articles/by-keys?${params}`)
+  },
+
   async createArticleBatch(dto: { items: { culture_key: string; variety_key?: string | null; category_key: string }[]; llm_model?: string | null; reasoning_effort?: string | null }): Promise<{ id: number; batch: Record<string, unknown> }> {
     return fetchApi('/articles/batches', {
       method: 'POST',
@@ -1009,6 +1015,45 @@ export const api = {
 
   async deleteBatch(id: number): Promise<{ success: boolean }> {
     return fetchApi(`/presentations/batches/${id}`, {
+      method: 'DELETE',
+    })
+  },
+
+  // =============================================================================
+  // Article Presentation Batches (Пакетная генерация презентаций по статьям)
+  // =============================================================================
+
+  async getArticlePresentationBatchDefinitions(): Promise<import('@/types').ArticlePresentationDefinitionsResponse> {
+    return fetchApi('/presentations/article-batches/definitions')
+  },
+
+  async createArticlePresentationBatch(dto: import('@/types').CreateArticlePresentationBatchDto): Promise<{ id: number; batch: import('@/types').Batch }> {
+    return fetchApi('/presentations/article-batches', {
+      method: 'POST',
+      body: JSON.stringify(dto),
+    })
+  },
+
+  async getArticlePresentationBatches(params?: { limit?: number; offset?: number }): Promise<import('@/types').BatchesResponse> {
+    const searchParams = new URLSearchParams()
+    if (params?.limit) searchParams.set('limit', String(params.limit))
+    if (params?.offset) searchParams.set('offset', String(params.offset))
+    const query = searchParams.toString()
+    return fetchApi(`/presentations/article-batches${query ? `?${query}` : ''}`)
+  },
+
+  async getArticlePresentationBatch(id: number): Promise<import('@/types').Batch> {
+    return fetchApi(`/presentations/article-batches/${id}`)
+  },
+
+  async cancelArticlePresentationBatch(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/presentations/article-batches/${id}/cancel`, {
+      method: 'POST',
+    })
+  },
+
+  async deleteArticlePresentationBatch(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/presentations/article-batches/${id}`, {
       method: 'DELETE',
     })
   },

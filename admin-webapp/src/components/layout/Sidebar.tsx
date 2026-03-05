@@ -133,7 +133,8 @@ const STATIC_MENU_ITEMS: MenuItem[] = [
     submenu: [
       { id: 'articles', label: 'Статьи' },
       { id: 'presentations', label: 'Презентации' },
-      { id: 'batch-presentations', label: 'Пакетная генерация' },
+      { id: 'batch-presentations', label: 'Пакет: по проблемам' },
+      { id: 'batch-article-presentations', label: 'Пакет: по статьям' },
     ],
   },
   { id: 'moderation', icon: Icons.moderation, label: 'Модерация' },

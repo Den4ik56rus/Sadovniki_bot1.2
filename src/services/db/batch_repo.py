@@ -23,21 +23,22 @@ async def create_batch(
     image_model: Optional[str] = None,
     custom_system_prompt: Optional[str] = None,
     total_items: int = 0,
+    batch_type: str = "problem",
 ) -> int:
     pool = get_pool()
     row = await pool.fetchrow(
         """
         INSERT INTO presentation_batches
             (style_id, template_id, llm_model, reasoning_effort, image_model,
-             custom_system_prompt, total_items)
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+             custom_system_prompt, total_items, batch_type)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING id
         """,
         style_id, template_id, llm_model, reasoning_effort, image_model,
-        custom_system_prompt, total_items,
+        custom_system_prompt, total_items, batch_type,
     )
     batch_id = row["id"]
-    logger.info(f"[batch_repo] Пакет создан: id={batch_id}, total_items={total_items}")
+    logger.info(f"[batch_repo] Пакет создан: id={batch_id}, total_items={total_items}, type={batch_type}")
     return batch_id
 
 
@@ -63,6 +64,34 @@ async def add_batch_items(batch_id: int, items: List[Dict[str, Any]]) -> List[in
     return ids
 
 
+async def add_article_batch_items(batch_id: int, items: List[Dict[str, Any]]) -> List[int]:
+    """Добавляет элементы пакета по статьям (с category_key, is_season_plan)."""
+    pool = get_pool()
+    ids = []
+    for i, item in enumerate(items):
+        # Для совместимости problem_key хранит category_key (или 'season_plan')
+        problem_key = "season_plan" if item.get("is_season_plan") else item.get("category_key", "")
+        row = await pool.fetchrow(
+            """
+            INSERT INTO presentation_batch_items
+                (batch_id, culture_key, variety_key, problem_key, category_key,
+                 is_season_plan, sort_order)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id
+            """,
+            batch_id,
+            item["culture_key"],
+            item.get("variety_key"),
+            problem_key,
+            item.get("category_key"),
+            item.get("is_season_plan", False),
+            i,
+        )
+        ids.append(row["id"])
+    logger.info(f"[batch_repo] Добавлено {len(ids)} элементов (статьи) в пакет {batch_id}")
+    return ids
+
+
 async def get_batch(batch_id: int) -> Optional[Dict[str, Any]]:
     pool = get_pool()
     row = await pool.fetchrow(
@@ -85,25 +114,49 @@ async def get_batch(batch_id: int) -> Optional[Dict[str, Any]]:
     return batch
 
 
-async def get_batches(limit: int = 50, offset: int = 0) -> List[Dict[str, Any]]:
+async def get_batches(
+    limit: int = 50,
+    offset: int = 0,
+    batch_type: Optional[str] = None,
+) -> List[Dict[str, Any]]:
     pool = get_pool()
-    rows = await pool.fetch(
-        """
-        SELECT id, status, total_items, completed_items, failed_items,
-               current_item_index, total_cost_usd, created_at, started_at, finished_at,
-               llm_model, image_model, style_id
-        FROM presentation_batches
-        ORDER BY created_at DESC
-        LIMIT $1 OFFSET $2
-        """,
-        limit, offset,
-    )
+    if batch_type:
+        rows = await pool.fetch(
+            """
+            SELECT id, status, total_items, completed_items, failed_items,
+                   current_item_index, total_cost_usd, created_at, started_at, finished_at,
+                   llm_model, image_model, style_id, batch_type
+            FROM presentation_batches
+            WHERE batch_type = $3
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset, batch_type,
+        )
+    else:
+        rows = await pool.fetch(
+            """
+            SELECT id, status, total_items, completed_items, failed_items,
+                   current_item_index, total_cost_usd, created_at, started_at, finished_at,
+                   llm_model, image_model, style_id, batch_type
+            FROM presentation_batches
+            ORDER BY created_at DESC
+            LIMIT $1 OFFSET $2
+            """,
+            limit, offset,
+        )
     return [dict(r) for r in rows]
 
 
-async def get_batches_count() -> int:
+async def get_batches_count(batch_type: Optional[str] = None) -> int:
     pool = get_pool()
-    row = await pool.fetchrow("SELECT COUNT(*) as cnt FROM presentation_batches")
+    if batch_type:
+        row = await pool.fetchrow(
+            "SELECT COUNT(*) as cnt FROM presentation_batches WHERE batch_type = $1",
+            batch_type,
+        )
+    else:
+        row = await pool.fetchrow("SELECT COUNT(*) as cnt FROM presentation_batches")
     return row["cnt"]
 
 

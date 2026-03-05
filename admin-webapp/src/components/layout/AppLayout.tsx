@@ -22,7 +22,8 @@ const PAGE_TITLES: Record<string, { title: string; subtitle?: string }> = {
   triggers: { title: 'Триггеры', subtitle: 'Автоматизация действий' },
   articles: { title: 'Статьи', subtitle: 'Генерация статей из базы знаний' },
   presentations: { title: 'Презентации', subtitle: 'Генерация и управление презентациями' },
-  'batch-presentations': { title: 'Пакетная генерация', subtitle: 'Генерация презентаций по проблемам' },
+  'batch-presentations': { title: 'Пакет: по проблемам', subtitle: 'Генерация презентаций по проблемам' },
+  'batch-article-presentations': { title: 'Пакет: по статьям', subtitle: 'Генерация презентаций из статей + сезонный план' },
 }
 
 export function AppLayout({ children }: AppLayoutProps) {

@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation, presentations, batch_presentations, batch_articles
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation, presentations, batch_presentations, batch_articles, batch_article_presentations
 
 
 def setup_routes(app: web.Application) -> None:
@@ -162,6 +162,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_post("/api/admin/articles/generate", articles.generate_article_api)
     app.router.add_get("/api/admin/articles/definitions", batch_articles.get_definitions)
     app.router.add_get("/api/admin/articles/by-culture", articles.get_articles_by_culture)
+    app.router.add_get("/api/admin/articles/by-keys", articles.get_article_by_keys)
     # Article Batches API (пакетная генерация статей)
     app.router.add_post("/api/admin/articles/batches", batch_articles.create_batch_api)
     app.router.add_get("/api/admin/articles/batches", batch_articles.get_batches)
@@ -188,12 +189,19 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_delete(r"/api/admin/presentations/templates/{id:\d+}", presentations.delete_template_api)
     app.router.add_get(r"/api/admin/presentations/slides/versions/{id:\d+}/image", presentations.get_slide_image)
     app.router.add_post(r"/api/admin/presentations/slides/{id:\d+}/edit", presentations.edit_slide_api)
-    # Presentation Batches API (пакетная генерация)
+    # Presentation Batches API (пакетная генерация по проблемам)
     app.router.add_post("/api/admin/presentations/batches", batch_presentations.create_batch_api)
     app.router.add_get("/api/admin/presentations/batches", batch_presentations.get_batches)
     app.router.add_get(r"/api/admin/presentations/batches/{id:\d+}", batch_presentations.get_batch)
     app.router.add_post(r"/api/admin/presentations/batches/{id:\d+}/cancel", batch_presentations.cancel_batch_api)
     app.router.add_delete(r"/api/admin/presentations/batches/{id:\d+}", batch_presentations.delete_batch_api)
+    # Presentation Article Batches API (пакетная генерация по статьям)
+    app.router.add_get("/api/admin/presentations/article-batches/definitions", batch_article_presentations.get_definitions)
+    app.router.add_post("/api/admin/presentations/article-batches", batch_article_presentations.create_batch_api)
+    app.router.add_get("/api/admin/presentations/article-batches", batch_article_presentations.get_batches_api)
+    app.router.add_get(r"/api/admin/presentations/article-batches/{id:\d+}", batch_article_presentations.get_batch_api)
+    app.router.add_post(r"/api/admin/presentations/article-batches/{id:\d+}/cancel", batch_article_presentations.cancel_batch_api)
+    app.router.add_delete(r"/api/admin/presentations/article-batches/{id:\d+}", batch_article_presentations.delete_batch_api)
     app.router.add_get(r"/api/admin/presentations/{id:\d+}", presentations.get_presentation)
     app.router.add_delete(r"/api/admin/presentations/{id:\d+}", presentations.delete_presentation_api)
     app.router.add_post(r"/api/admin/presentations/{id:\d+}/generate", presentations.generate_presentation_api)

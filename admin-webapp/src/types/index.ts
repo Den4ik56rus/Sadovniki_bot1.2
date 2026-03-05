@@ -227,7 +227,7 @@ export interface UploadResponse {
 }
 
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'ab-test' | 'triggers' | 'articles' | 'presentations' | 'batch-presentations'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'ab-test' | 'triggers' | 'articles' | 'presentations' | 'batch-presentations' | 'batch-article-presentations'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -705,10 +705,11 @@ export interface CreatePresentationDto {
   reasoning_effort?: string | null
   image_model?: string | null
   test_slide_index?: number | null
-  generation_mode?: 'article' | 'problem'
+  generation_mode?: 'article' | 'problem' | 'category'
   culture_key?: string | null
   variety_key?: string | null
   problem_key?: string | null
+  category_key?: string | null
   custom_system_prompt?: string | null
 }
 
@@ -954,6 +955,35 @@ export interface ArticleBatchProgressEvent {
   article_length?: number
   error?: string
   type?: string
+}
+
+// =============================================================================
+// Article Presentation Batch Types (Пакетная генерация презентаций по статьям)
+// =============================================================================
+
+export interface ArticlePresentationCultureDef {
+  culture_key: string
+  variety_key: string | null
+  label: string
+  culture_russian: string
+  existing_categories: string[]
+  article_count: number
+}
+
+export interface ArticlePresentationDefinitionsResponse {
+  categories: ArticleCategoryDef[]
+  cultures: ArticlePresentationCultureDef[]
+}
+
+export interface CreateArticlePresentationBatchDto {
+  cultures: { culture_key: string; variety_key?: string | null }[]
+  include_season_plan?: boolean
+  style_id?: number | null
+  template_id?: number | null
+  llm_model?: string | null
+  reasoning_effort?: string | null
+  image_model?: string | null
+  custom_system_prompt?: string | null
 }
 
 // =============================================================================

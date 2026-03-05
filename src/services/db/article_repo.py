@@ -213,6 +213,44 @@ async def update_article_text(article_id: int, new_text: str) -> bool:
     return success
 
 
+async def get_article_by_category_and_culture(
+    category_key: str,
+    culture_key: str,
+    variety_key: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Получает самую свежую статью по category_key + culture_key (+ variety_key)."""
+    pool = get_pool()
+
+    if variety_key:
+        row = await pool.fetchrow(
+            """
+            SELECT id, topic, article_text, culture_key, variety_key, category_key,
+                   LENGTH(article_text) as article_length,
+                   cost_usd, llm_model, created_at
+            FROM admin_articles
+            WHERE category_key = $1 AND culture_key = $2 AND variety_key = $3
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            category_key, culture_key, variety_key,
+        )
+    else:
+        row = await pool.fetchrow(
+            """
+            SELECT id, topic, article_text, culture_key, variety_key, category_key,
+                   LENGTH(article_text) as article_length,
+                   cost_usd, llm_model, created_at
+            FROM admin_articles
+            WHERE category_key = $1 AND culture_key = $2 AND variety_key IS NULL
+            ORDER BY created_at DESC
+            LIMIT 1
+            """,
+            category_key, culture_key,
+        )
+
+    return dict(row) if row else None
+
+
 async def get_articles_by_culture(
     culture_key: str,
     variety_key: Optional[str] = None,
@@ -238,6 +276,44 @@ async def get_articles_by_culture(
             SELECT id, topic, culture_key, variety_key, category_key,
                    LENGTH(article_text) as article_length,
                    rag_snippets_count, cost_usd, llm_model, created_at
+            FROM admin_articles
+            WHERE culture_key = $1 AND variety_key IS NULL
+            ORDER BY category_key, created_at DESC
+            """,
+            culture_key,
+        )
+
+    return [dict(row) for row in rows]
+
+
+async def get_articles_with_text_by_culture(
+    culture_key: str,
+    variety_key: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Получает все статьи для культуры с полным текстом (для сезонного плана).
+
+    Возвращает только самую свежую статью по каждой category_key.
+    """
+    pool = get_pool()
+
+    if variety_key:
+        rows = await pool.fetch(
+            """
+            SELECT DISTINCT ON (category_key)
+                   id, topic, article_text, culture_key, variety_key, category_key,
+                   cost_usd, llm_model, created_at
+            FROM admin_articles
+            WHERE culture_key = $1 AND variety_key = $2
+            ORDER BY category_key, created_at DESC
+            """,
+            culture_key, variety_key,
+        )
+    else:
+        rows = await pool.fetch(
+            """
+            SELECT DISTINCT ON (category_key)
+                   id, topic, article_text, culture_key, variety_key, category_key,
+                   cost_usd, llm_model, created_at
             FROM admin_articles
             WHERE culture_key = $1 AND variety_key IS NULL
             ORDER BY category_key, created_at DESC

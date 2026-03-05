@@ -23,6 +23,7 @@ import { TriggersPage } from '@/components/triggers'
 import { ArticlesPage } from '@/components/articles'
 import { PresentationsPage } from '@/components/presentations'
 import { BatchPage } from '@/components/presentations/BatchPage'
+import { ArticleBatchPage } from '@/components/presentations/ArticleBatchPage'
 import { useUIStore } from '@/store'
 import { useFunnelStore } from '@/store/funnelStore'
 import { useAutoRefresh, useRestoreState } from '@/hooks/useAutoRefresh'
@@ -65,6 +66,9 @@ function App() {
 
       {/* Пакетная генерация презентаций */}
       {currentView === 'batch-presentations' && <BatchPage />}
+
+      {/* Пакетная генерация презентаций по статьям */}
+      {currentView === 'batch-article-presentations' && <ArticleBatchPage />}
 
       {/* Задачи - заглушка */}
       {currentView === 'tasks' && (

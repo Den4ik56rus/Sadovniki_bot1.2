@@ -103,6 +103,15 @@ def _resolve_path(problem_key: str) -> Optional[Path]:
     return None
 
 
+def _find_pdf(directory: Path) -> Optional[Path]:
+    """Ищет PDF в папке: сначала solution.pdf, потом любой *.pdf."""
+    preferred = directory / "solution.pdf"
+    if preferred.exists():
+        return preferred
+    pdfs = list(directory.glob("*.pdf"))
+    return pdfs[0] if pdfs else None
+
+
 def get_quiz_solution(problem_key: str) -> Optional[Dict[str, Any]]:
     """Проверяет наличие готового PDF-решения для problem_key.
 
@@ -110,11 +119,12 @@ def get_quiz_solution(problem_key: str) -> Optional[Dict[str, Any]]:
         dict с путями и метаданными, или None если решения нет.
     """
     solution_dir = _resolve_path(problem_key)
-    if solution_dir is None:
-        return None
 
-    pdf_path = solution_dir / "solution.pdf"
-    if not pdf_path.exists():
+    pdf_path: Optional[Path] = None
+    if solution_dir is not None:
+        pdf_path = _find_pdf(solution_dir)
+
+    if pdf_path is None:
         return None
 
     # Загрузить config (опционален)

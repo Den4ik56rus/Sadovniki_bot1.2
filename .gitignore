@@ -84,6 +84,7 @@ data/fonts/
 data/guides/
 data/documents/
 data/presentations/*/
+data/content/
 data/previews/
 data/quiz_solutions/**/*.pdf
 data/prompt_documents/

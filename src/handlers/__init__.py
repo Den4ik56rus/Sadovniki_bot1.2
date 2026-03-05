@@ -38,6 +38,9 @@ from src.handlers.broadcast_responses import router as broadcast_responses_route
 # Воронка Б — квиз-онбординг (callback-хендлеры quiz_*)
 from src.handlers.funnel_b import router as funnel_b_router
 
+# Воронка Б — upsell после оплаты квиза (callback-хендлеры quiz_us_*)
+from src.handlers.funnel_b_upsell import router as funnel_b_upsell_router
+
 
 def setup_routers(dp: Dispatcher) -> None:
     """
@@ -65,6 +68,9 @@ def setup_routers(dp: Dispatcher) -> None:
 
     # 2.7. Воронка Б — callback-хендлеры квиза (перед консультациями)
     dp.include_router(funnel_b_router)
+
+    # 2.8. Воронка Б — upsell после оплаты квиза
+    dp.include_router(funnel_b_upsell_router)
 
     # 3. Админка (модерация /kb_pending и пр.) — ПЕРЕД консультациями!
     dp.include_router(moderation_handlers.router)

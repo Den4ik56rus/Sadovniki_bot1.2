@@ -1,6 +1,6 @@
-# Funnel B — Quiz Onboarding Flow
+# Funnel B — Quiz Onboarding + Upsell Flow
 
-**Status:** Implemented, DB schemas NOT applied on production (2026-03-01)
+**Status:** Quiz implemented; Upsell flow implemented (2026-03-05); DB schemas 81-83, 93 NOT applied on production
 **Related feature:** A/B Test (funnel_variant field on users table)
 
 ---
@@ -20,15 +20,20 @@ Goal: higher conversion by engaging the user before presenting the paid offer.
 
 | File | Role |
 |------|------|
-| `src/handlers/funnel_b.py` | All quiz logic, handlers, offer texts (1255 lines) |
-| `src/services/quiz_solutions.py` | PDF solution lookup, offer.txt loading |
+| `src/handlers/funnel_b.py` | All quiz logic, handlers, offer texts (1631 lines) |
+| `src/handlers/funnel_b_upsell.py` | Post-payment upsell flow: survey, LLM diagnosis, CTA (549 lines) |
+| `src/data/quiz_upsell_texts.py` | 53 unique trigger texts per problem_key (354 lines) |
+| `src/services/quiz_solutions.py` | PDF solution lookup (`_find_pdf` fallback), offer.txt loading |
 | `src/services/pdf_preview.py` | PDF blur preview generator (Pillow + poppler) |
-| `src/services/payments/payment_service.py` | `create_quiz_plan_payment()`, `_process_quiz_plan_payment_success()` |
+| `src/services/payments/payment_service.py` | `create_quiz_plan_payment()`, upsell trigger, PDF retry |
 | `src/handlers/menu.py` | `/start` handler routes new users to funnel B |
 | `db/schema_81_activate_funnel_b.sql` | Activates funnel B in bot_settings |
 | `db/schema_82_quiz_answers.sql` | Creates `user_quiz_answers` table |
 | `db/schema_83_quiz_problem_key.sql` | Adds `problem_key` column to `user_quiz_answers` |
+| `db/schema_93_quiz_survey2.sql` | Creates `user_quiz_survey2` + `user_upsell_choice` tables |
 | `data/quiz_solutions/` | PDF files, previews, offer texts (structure below) |
+| `scripts/sync_presentations_to_quiz.py` | Copies generated presentations to quiz_solutions |
+| `scripts/generate_quiz_previews.py` | Batch generates blurred preview JPEGs |
 
 ---
 
@@ -48,7 +53,8 @@ Msg: "Ок, начинаем диагностику..." (WELCOME_TEXT)
     |
     v
 Quiz 1: "Какая культура у Вас преобладает?"
-  [Клубника] [Малина] [Голубика] [Смородина] [Жимолость] [Ежевика] [Другая]
+  [Клубника] [Малина] [Голубика] [Смородина] [Жимолость] [Ежевика]
+  (no emojis in buttons; "Other culture" option removed)
     |
     +-- quiz_culture_strawberry or quiz_culture_raspberry
     |       |
@@ -91,6 +97,32 @@ Offer Message 2: "Обычно такой план стоит 490 ₽. Сего�
             v
         set state = "waiting_consultation_question"
         show standard consultation entry text
+
+--- (after PDF/LLM delivery) ---
+    |
+    v (async, 90 seconds later)
+schedule_upsell_trigger()
+    |
+    v
+Upsell trigger message (unique per problem_key from quiz_upsell_texts.py)
+    |
+    v
+Survey 1: urgency (early / progressing / urgent)
+    |
+    v
+Survey 2: goal (close_now / stable_season)
+    |
+    v
+Survey 3: schedule (ready_system / ask_answers)
+  → Answers saved to user_quiz_survey2
+    |
+    v
+LLM generates personalized diagnosis (problem + culture + survey answers)
+    |
+    v
+Offer: "Программа по {культуре}" — Seasonal Program | Consultation Subscription
+  → Choice saved to user_upsell_choice
+  → Both buttons show placeholder "Coming soon" (stubs)
 ```
 
 ### Repeat /start
@@ -136,9 +168,16 @@ For each `problem_key` the offer text is resolved in this order:
 After successful YooKassa payment:
 1. `_generate_quiz_plan_after_payment()` runs as background task
 2. Calls `get_quiz_solution(problem_key)` from `quiz_solutions.py`
-3. If `data/quiz_solutions/{culture}/{problem}/solution.pdf` exists:
-   - `_deliver_quiz_pdf_solution()` sends the PDF as Telegram document
-4. If no PDF: `_generate_auto_consultation()` runs LLM with quiz data as context
+3. `_find_pdf()` searches directory: `solution.pdf` first, then any `*.pdf` (fallback)
+4. If PDF found: `_deliver_quiz_pdf_solution()` sends PDF with 3 retry attempts (120s timeout, 3s*attempt backoff)
+5. If no PDF: `_generate_auto_consultation()` runs LLM with quiz data as context
+6. After delivery: `schedule_upsell_trigger()` fires 90 seconds later
+
+### SKIP_PAYMENT Flag (Dev Only)
+
+`src/handlers/funnel_b.py` line 16: `SKIP_PAYMENT = True`
+- When `True`: quiz_cta_payment callback skips YooKassa and goes directly to plan delivery
+- MUST be set to `False` before deploying to production
 
 ### data/quiz_solutions/ Structure
 
@@ -197,6 +236,26 @@ ALTER TABLE user_quiz_answers ADD COLUMN IF NOT EXISTS problem_key TEXT;
 
 -- schema_81: Activates funnel B
 UPDATE bot_settings SET value = 'B', updated_at = NOW() WHERE key = 'active_funnel_variant';
+
+-- schema_93: Upsell survey tables
+CREATE TABLE IF NOT EXISTS user_quiz_survey2 (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    urgency TEXT,    -- 'early' | 'progressing' | 'urgent'
+    goal TEXT,       -- 'close_now' | 'stable_season'
+    schedule TEXT,   -- 'ready_system' | 'ask_answers'
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_upsell_choice (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    choice TEXT NOT NULL,  -- 'seasonal_program' | 'consultation_subscription'
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    UNIQUE (user_id)
+);
 ```
 
 ---
@@ -208,15 +267,20 @@ UPDATE bot_settings SET value = 'B', updated_at = NOW() WHERE key = 'active_funn
 - **`CONSULTATION_CONTEXT` cleared on restart**: If bot restarts mid-quiz, user may see wrong problem keyboard. Mitigated by DB persistence of each quiz step.
 - **poppler-utils required for pdf_preview.py**: Must be installed in Docker if PDF previews are needed. Not added to Dockerfile yet.
 - **YooKassa payment not tested end-to-end**: Need test with real payment or YooKassa test mode.
+- **Upsell task lost on restart**: The 90-second asyncio task disappears if the bot restarts within that window. Acceptable for current scale.
+- **`SKIP_PAYMENT = True` in funnel_b.py**: Dev bypass — must be `False` in production.
+- **Schemas 81-83 and 93 not applied on production**: Bot will crash if funnel B or upsell flow triggered before applying.
 
 ---
 
 ## TODO / Next Steps
 
-- [ ] Apply schemas 81-83 on production (in order: 82 → 83 → 81)
+- [ ] CRITICAL: Set `SKIP_PAYMENT = False` in `src/handlers/funnel_b.py` before deploy
+- [ ] Apply schemas in order on production: 82 → 83 → 81 → 93
 - [ ] Verify quiz API routes registered (PATCH/DELETE /api/admin/crm/clients/{id}/quiz)
 - [ ] Create first PDF: `data/quiz_solutions/strawberry_summer/low_yield/solution.pdf`
 - [ ] Add `poppler-utils` to Dockerfile if PDF previews needed
-- [ ] Test full flow end-to-end in Telegram (quiz → payment → delivery)
+- [ ] Test full flow end-to-end in Telegram (quiz → payment → delivery → upsell)
 - [ ] Write offer.txt files for high-traffic problem keys
 - [ ] Monitor A/B test: quiz completion rate, payment conversion rate
+- [ ] Implement upsell CTA products (Seasonal Program, Consultation Subscription)

@@ -73,7 +73,7 @@ export function PresentationsPage() {
   const [selectedSlideId, setSelectedSlideId] = useState<number | null>(null)
 
   // Create form
-  const [generationMode, setGenerationMode] = useState<'article' | 'problem'>('article')
+  const [generationMode, setGenerationMode] = useState<'article' | 'problem' | 'category'>('article')
   const [title, setTitle] = useState('')
   const [sourceText, setSourceText] = useState('')
   const [styleId, setStyleId] = useState<number | null>(null)
@@ -90,6 +90,15 @@ export function PresentationsPage() {
   const [cultureKey, setCultureKey] = useState('')
   const [varietyKey, setVarietyKey] = useState('')
   const [problemKey, setProblemKey] = useState('')
+
+  // Category mode
+  const [articleCategories, setArticleCategories] = useState<{ key: string; label: string }[]>([])
+  const [articleCultures, setArticleCultures] = useState<{ culture_key: string; variety_key: string | null; label: string }[]>([])
+  const [catCultureKey, setCatCultureKey] = useState('')
+  const [categoryKey, setCategoryKey] = useState('')
+  const [catArticleInfo, setCatArticleInfo] = useState<{ found: boolean; topic?: string; length?: number } | null>(null)
+  const [catArticleText, setCatArticleText] = useState('')
+  const [isLoadingArticle, setIsLoadingArticle] = useState(false)
 
   // System prompt
   const [defaultSystemPrompt, setDefaultSystemPrompt] = useState('')
@@ -127,7 +136,46 @@ export function PresentationsPage() {
         setSystemPrompt(res.system_prompt)
       })
       .catch(err => console.error('Failed to load default system prompt:', err))
+    api.getArticleDefinitions()
+      .then(defs => {
+        setArticleCategories(defs.categories || [])
+        setArticleCultures(defs.cultures || [])
+      })
+      .catch(err => console.error('Failed to load article definitions:', err))
   }, [fetchPresentations, fetchStyles, fetchTemplates])
+
+  // Category mode: auto-load article when culture + category selected
+  useEffect(() => {
+    if (generationMode !== 'category' || !catCultureKey || !categoryKey) {
+      setCatArticleInfo(null)
+      setCatArticleText('')
+      return
+    }
+    const selectedCulture = articleCultures.find(c => {
+      const key = c.variety_key ? `${c.culture_key}_${c.variety_key}` : c.culture_key
+      return key === catCultureKey
+    })
+    if (!selectedCulture) return
+
+    setIsLoadingArticle(true)
+    setCatArticleInfo(null)
+    api.getArticleByKeys(categoryKey, selectedCulture.culture_key, selectedCulture.variety_key)
+      .then(res => {
+        if (res.found && res.article) {
+          setCatArticleInfo({ found: true, topic: res.article.topic, length: res.article.article_length })
+          setCatArticleText(res.article.article_text)
+        } else {
+          setCatArticleInfo({ found: false })
+          setCatArticleText('')
+        }
+      })
+      .catch(err => {
+        console.error('Failed to load article by keys:', err)
+        setCatArticleInfo({ found: false })
+        setCatArticleText('')
+      })
+      .finally(() => setIsLoadingArticle(false))
+  }, [generationMode, catCultureKey, categoryKey, articleCultures])
 
   // SSE cleanup
   useEffect(() => {
@@ -200,8 +248,10 @@ export function PresentationsPage() {
   const handleCreate = async () => {
     if (generationMode === 'article') {
       if (!title.trim() || !sourceText.trim()) return
-    } else {
+    } else if (generationMode === 'problem') {
       if (!cultureKey || !problemKey) return
+    } else if (generationMode === 'category') {
+      if (!catCultureKey || !categoryKey || !catArticleInfo?.found) return
     }
     setCreateError(null)
 
@@ -209,8 +259,30 @@ export function PresentationsPage() {
       // Передаём кастомный system prompt только если он отличается от дефолтного
       const customPrompt = systemPrompt.trim() !== defaultSystemPrompt.trim() ? systemPrompt.trim() : null
 
-      const dto: CreatePresentationDto = generationMode === 'problem'
-        ? {
+      let dto: CreatePresentationDto
+
+      if (generationMode === 'category') {
+        const selectedCulture = articleCultures.find(c => {
+          const key = c.variety_key ? `${c.culture_key}_${c.variety_key}` : c.culture_key
+          return key === catCultureKey
+        })
+        dto = {
+          title: title.trim() || '',
+          source_text: catArticleText,
+          generation_mode: 'category',
+          culture_key: selectedCulture?.culture_key || '',
+          variety_key: selectedCulture?.variety_key || null,
+          category_key: categoryKey,
+          style_id: styleId,
+          template_id: null,
+          llm_model: modelOverride || null,
+          reasoning_effort: reasoningEffort || null,
+          image_model: imageModel || null,
+          test_slide_index: testMode ? testSlideIndex : null,
+          custom_system_prompt: customPrompt,
+        }
+      } else if (generationMode === 'problem') {
+        dto = {
             title: title.trim() || '',
             source_text: '',
             generation_mode: 'problem',
@@ -224,8 +296,9 @@ export function PresentationsPage() {
             image_model: imageModel || null,
             test_slide_index: testMode ? testSlideIndex : null,
             custom_system_prompt: customPrompt,
-          }
-        : {
+        }
+      } else {
+        dto = {
             title: title.trim(),
             source_text: sourceText.trim(),
             style_id: styleId,
@@ -235,7 +308,8 @@ export function PresentationsPage() {
             image_model: imageModel || null,
             test_slide_index: testMode ? testSlideIndex : null,
             custom_system_prompt: customPrompt,
-          }
+        }
+      }
 
       const result = await api.createPresentation(dto)
 
@@ -253,6 +327,10 @@ export function PresentationsPage() {
       setCultureKey('')
       setVarietyKey('')
       setProblemKey('')
+      setCatCultureKey('')
+      setCategoryKey('')
+      setCatArticleInfo(null)
+      setCatArticleText('')
     } catch (err) {
       setCreateError(err instanceof Error ? err.message : 'Ошибка при создании')
       setIsGenerating(false)
@@ -518,7 +596,9 @@ export function PresentationsPage() {
           <p className={styles.subtitle}>
             {generationMode === 'article'
               ? 'Загрузите текст статьи, выберите стиль — AI создаст слайды'
-              : 'Выберите проблему — AI сгенерирует статью и создаст слайды'}
+              : generationMode === 'problem'
+              ? 'Выберите проблему — AI сгенерирует статью и создаст слайды'
+              : 'Выберите категорию и культуру — презентация из готовой статьи'}
           </p>
         </div>
 
@@ -538,6 +618,13 @@ export function PresentationsPage() {
               disabled={isGenerating}
             >
               По проблеме
+            </button>
+            <button
+              className={`${styles.modeTab} ${generationMode === 'category' ? styles.modeTabActive : ''}`}
+              onClick={() => setGenerationMode('category')}
+              disabled={isGenerating}
+            >
+              По категории
             </button>
           </div>
 
@@ -567,7 +654,7 @@ export function PresentationsPage() {
                 />
               </div>
             </>
-          ) : (
+          ) : generationMode === 'problem' ? (
             <>
               {/* Problem mode: cascading selects */}
               <div className={styles.fieldsRow}>
@@ -647,6 +734,82 @@ export function PresentationsPage() {
                   type="text"
                   value={title}
                   placeholder="Автоматически из культуры и проблемы"
+                  onChange={e => setTitle(e.target.value)}
+                  disabled={isGenerating}
+                />
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Category mode: culture + category selects */}
+              <div className={styles.fieldsRow}>
+                <div className={styles.field}>
+                  <label className={styles.label}>Культура</label>
+                  <select
+                    className={styles.select}
+                    value={catCultureKey}
+                    onChange={e => {
+                      setCatCultureKey(e.target.value)
+                      setCatArticleInfo(null)
+                      setCatArticleText('')
+                    }}
+                    disabled={isGenerating}
+                  >
+                    <option value="">Выберите культуру...</option>
+                    {articleCultures.map(c => {
+                      const key = c.variety_key ? `${c.culture_key}_${c.variety_key}` : c.culture_key
+                      return <option key={key} value={key}>{c.label}</option>
+                    })}
+                  </select>
+                </div>
+
+                <div className={styles.field}>
+                  <label className={styles.label}>Категория</label>
+                  <select
+                    className={styles.select}
+                    value={categoryKey}
+                    onChange={e => {
+                      setCategoryKey(e.target.value)
+                      setCatArticleInfo(null)
+                      setCatArticleText('')
+                    }}
+                    disabled={isGenerating}
+                  >
+                    <option value="">Выберите категорию...</option>
+                    {articleCategories.map(c => (
+                      <option key={c.key} value={c.key}>{c.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {/* Article status */}
+              {isLoadingArticle && (
+                <div className={styles.field}>
+                  <span style={{ color: '#888', fontSize: 13 }}>Загрузка статьи...</span>
+                </div>
+              )}
+              {catArticleInfo && !isLoadingArticle && (
+                <div className={styles.field}>
+                  {catArticleInfo.found ? (
+                    <span style={{ color: '#4A7C59', fontSize: 13 }}>
+                      Статья найдена: {catArticleInfo.topic} ({((catArticleInfo.length || 0) / 1000).toFixed(1)}K символов)
+                    </span>
+                  ) : (
+                    <span style={{ color: '#C75B5B', fontSize: 13 }}>
+                      Статья не найдена для этой комбинации. Сначала сгенерируйте её в пакетной генерации статей.
+                    </span>
+                  )}
+                </div>
+              )}
+
+              <div className={styles.field}>
+                <label className={styles.label}>Название (необязательно)</label>
+                <input
+                  className={styles.textInput}
+                  type="text"
+                  value={title}
+                  placeholder="Автоматически из категории и культуры"
                   onChange={e => setTitle(e.target.value)}
                   disabled={isGenerating}
                 />
@@ -822,7 +985,11 @@ export function PresentationsPage() {
           <button
             className={styles.generateButton}
             onClick={handleCreate}
-            disabled={isGenerating || (generationMode === 'article' ? (!title.trim() || !sourceText.trim()) : (!cultureKey || !problemKey))}
+            disabled={isGenerating || (
+              generationMode === 'article' ? (!title.trim() || !sourceText.trim()) :
+              generationMode === 'problem' ? (!cultureKey || !problemKey) :
+              (!catCultureKey || !categoryKey || !catArticleInfo?.found)
+            )}
           >
             {isGenerating ? (
               <>

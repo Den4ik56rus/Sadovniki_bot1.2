@@ -166,6 +166,19 @@ async def update_client_status(user_id: int, new_status: str) -> bool:
 
     Возвращает True если успешно, False если клиент не найден.
     """
+    # 'paid' — виртуальный статус: перемещает клиента в покупатели
+    if new_status == 'paid':
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            await ensure_client_status(user_id, conn=conn)
+        from src.services.db import buyer_repo
+        success = await buyer_repo.create_buyer_from_deal(user_id)
+        if success:
+            logger.info(f"Client {user_id} moved to buyers (paid status)")
+        else:
+            logger.warning(f"Failed to move client {user_id} to buyers")
+        return success
+
     # Проверяем что колонка существует (стандартная или кастомная)
     valid_columns = await get_funnel_columns()
     valid_ids = [col['id'] for col in valid_columns]
@@ -175,22 +188,7 @@ async def update_client_status(user_id: int, new_status: str) -> bool:
         return False
 
     pool = get_pool()
-
     async with pool.acquire() as conn:
-        # Сначала убедимся что запись существует
-        await ensure_client_status(user_id, conn=conn)
-
-        # Если статус = 'paid', перемещаем в покупатели
-        if new_status == 'paid':
-            from src.services.db import buyer_repo
-            success = await buyer_repo.create_buyer_from_deal(user_id)
-            if success:
-                logger.info(f"Client {user_id} moved to buyers (paid status)")
-                return True
-            else:
-                logger.warning(f"Failed to move client {user_id} to buyers")
-                return False
-
         # Обновляем статус
         result = await conn.execute(
             """

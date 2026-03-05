@@ -1777,10 +1777,32 @@ async def _deliver_quiz_pdf_solution(
     except Exception:
         pass
 
-    # 2. Отправляем PDF
-    document = FSInputFile(solution["pdf_path"], filename=f"{solution['title']}.pdf")
+    # 2. Отправляем PDF (с retry — файлы 25-30 MB, таймаут вероятен)
+    import asyncio as _asyncio
     caption = solution["delivery_caption"]
-    await bot.send_document(chat_id=telegram_user_id, document=document, caption=caption)
+    max_attempts = 3
+    for attempt in range(1, max_attempts + 1):
+        try:
+            document = FSInputFile(solution["pdf_path"], filename=f"{solution['title']}.pdf")
+            await bot.send_document(
+                chat_id=telegram_user_id,
+                document=document,
+                caption=caption,
+                request_timeout=120,
+            )
+            break
+        except Exception as e:
+            logger.warning(
+                f"[quiz_plan] send_document attempt {attempt}/{max_attempts} failed: {e}"
+            )
+            if attempt == max_attempts:
+                await bot.send_message(
+                    chat_id=telegram_user_id,
+                    text="К сожалению, не удалось отправить файл. "
+                         "Пожалуйста, напишите нам — мы отправим его вручную.",
+                )
+                raise
+            await _asyncio.sleep(3 * attempt)
     try:
         await log_message(user_id=payment["user_id"], direction="bot", text=f"[PDF] {caption}", session_id=session_id)
     except Exception:
@@ -1874,6 +1896,13 @@ async def _generate_quiz_plan_after_payment(
             await update_client_status(payment["user_id"], "paid")
         except Exception as e:
             logger.error(f"[quiz_plan] Ошибка перемещения в воронке: {e}")
+
+        # Запускаем upsell-воронку через 90 секунд
+        try:
+            from src.handlers.funnel_b_upsell import schedule_upsell_trigger
+            await schedule_upsell_trigger(bot, telegram_user_id, payment["user_id"])
+        except Exception as e:
+            logger.error(f"[quiz_plan] Ошибка запуска upsell: {e}")
 
     except Exception as e:
         logger.error(f"[quiz_plan] Ошибка после оплаты quiz_plan: {e}", exc_info=True)

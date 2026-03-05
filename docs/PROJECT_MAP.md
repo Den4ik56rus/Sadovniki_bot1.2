@@ -1,8 +1,8 @@
 # PROJECT MAP — Source of Truth
 
-**Last Updated:** 2026-03-01
-**Project:** Sadovniki-bot v1.8.0
-**Status:** Active development — Funnel B quiz onboarding implemented (schemas 81-83 NOT YET APPLIED); PDF solution delivery infrastructure ready (data/quiz_solutions/ empty); CRM quiz data display added
+**Last Updated:** 2026-03-05
+**Project:** Sadovniki-bot v1.9.0
+**Status:** Active development — Funnel B quiz + upsell implemented (schemas 81-83, 93 NOT YET APPLIED); Article PDF generator built (WeasyPrint pipeline); Quiz offer texts rewritten for strawberry; SKIP_PAYMENT=True in funnel_b.py (dev mode — must flip before deploy)
 
 ## Quick Navigation
 
@@ -172,8 +172,10 @@ User Question
 | Broadcast Payment Button | ❌ Planned | docs/plans/2026-02-23-broadcast-payment-button-and-create-modal.md | Personal YooKassa URL per recipient |
 | Payment Webhook Reliability | ❌ Planned | docs/plans/2026-02-23-payment-reliability.md | Async queue, reconciliation, alerts |
 | Funnel Stage Triggers | ⏳ Implemented, DB migrations pending | - | Auto-send broadcast when client moves to kanban stage |
-| Funnel B (Quiz Onboarding) | ⏳ Implemented, DB schemas 81-83 NOT applied | docs/features/FUNNEL_B.md | Full 4-step quiz, YooKassa 99 RUB, PDF or LLM delivery |
-| Quiz Plan Payment (quiz_plan) | ⏳ Implemented, not tested end-to-end | - | YooKassa payment_type=quiz_plan, PDF or LLM fallback |
+| Funnel B (Quiz Onboarding) | ⏳ Implemented, DB schemas 81-83, 93 NOT applied | docs/features/FUNNEL_B.md | Full 4-step quiz, YooKassa 99 RUB, PDF or LLM delivery |
+| Quiz Plan Payment (quiz_plan) | ⏳ Implemented, not tested end-to-end | - | YooKassa payment_type=quiz_plan, PDF retry x3, upsell trigger |
+| Funnel B Upsell | ⏳ Implemented, schema_93 NOT applied | docs/features/FUNNEL_B.md | 90s delayed survey + LLM diagnosis + CTA stubs |
+| Article PDF Generator | ⏳ Implemented, not tested on server | docs/features/ARTICLE_PDFS.md | WeasyPrint pipeline, 48 PDFs from admin_articles |
 | Article Writing Mode | ✅ Production | - | Admin feature, needs docs |
 | Document Upload | ✅ Production | [DOCUMENT_PIPELINE.md](features/DOCUMENT_PIPELINE.md) | PDF/TXT/MD/DOCX |
 | CRM Deals Kanban | ✅ Production | - | Sales funnel management, needs docs |
@@ -215,25 +217,28 @@ User Question
 
 ## Active Context
 
-### Current Phase: Funnel B Launch + Content Creation
+### Current Phase: Funnel B + Upsell Launch + Article PDF Production
 
-**CRITICAL — Must Do Before Next Session:**
-1. Apply DB schemas 81, 82, 83 on production (in order: 82 → 83 → 81)
-2. Verify CRM quiz API routes are registered in router
+**CRITICAL — Must Do Before Next Deploy:**
+1. Set `SKIP_PAYMENT = False` in `src/handlers/funnel_b.py` (line 16)
+2. Apply DB schemas on production in order: 82 → 83 → 81 → 93
 3. Test quiz flow end-to-end with test Telegram account
 
-**Last Session Changes (2026-03-01 — v1.8.0):**
-- Funnel B full quiz implementation (funnel_b.py: stub → 1255 lines)
-- Quiz plan payment (create_quiz_plan_payment, _process_quiz_plan_payment_success)
-- PDF solution delivery infrastructure (quiz_solutions.py, pdf_preview.py)
-- DB schemas 81 (activate B), 82 (user_quiz_answers), 83 (problem_key column)
-- CRM admin panel: quiz data display and edit in client card (MainTab.tsx)
-- CRM API: new quiz PATCH/DELETE endpoints
-- consultation_llm.py: quiz_focus_instructions parameter added
+**Last Session Changes (2026-03-05 — v1.9.0):**
+- Funnel B upsell flow (funnel_b_upsell.py: 549 lines) — 90s delayed survey + LLM diagnosis + CTA
+- 53 unique upsell trigger texts (quiz_upsell_texts.py)
+- DB schema_93 (user_quiz_survey2 + user_upsell_choice tables)
+- Quiz offer texts fully rewritten for all 12 strawberry problems (new copy format)
+- Quiz culture keyboard: emojis removed, "Other" option removed
+- PDF delivery: 3 retry attempts + upsell trigger fires after delivery
+- Article PDF generator: WeasyPrint + Jinja2 pipeline (scripts/md_to_pdf.py, generate_article_pdfs.py)
+- Presentation "category" mode in admin panel (auto-loads article by culture+category)
+- Bio/chem pesticide compatibility rules added to fertilizers_reference.py
+- client_funnel_repo.py: 'paid' status handling moved before column validation
 
-**Previous Session Changes (2026-02-25 — v1.8.0 articles page):**
-- Articles page added to admin-webapp
-- Decimal serialization fix in articles API
+**Previous Session Changes (2026-03-01 — v1.8.0):**
+- Funnel B full quiz (1255 lines), quiz plan payment, PDF delivery, schemas 81-83
+- CRM quiz data display + edit + reset in admin panel
 
 **Pending — Plans Ready (see docs/plans/):**
 - `payment-reliability.md` — webhook queue, reconciliation, alerts
@@ -241,9 +246,10 @@ User Question
 - `broadcast-discount-button.md` — discount button type
 
 **Content Needed (for PDF delivery path):**
-- `data/quiz_solutions/{culture}/{problem}/solution.pdf` — ready-made plans
-- `data/quiz_solutions/{culture}/{problem}/preview.jpg` — blurred previews
+- `data/quiz_solutions/{culture}/{problem}/solution.pdf` — use sync_presentations_to_quiz.py
+- `data/quiz_solutions/{culture}/{problem}/preview.jpg` — use generate_quiz_previews.py
 - `data/quiz_solutions/{culture}/{problem}/offer.txt` — custom offer copy (optional)
+- Rewrite remaining offer texts in funnel_b.py (raspberry, currant, honeysuckle, blackberry, blueberry)
 
 ### Constraints & Invariants
 

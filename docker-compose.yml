@@ -48,6 +48,7 @@ services:
       - ./data/prompt_documents:/app/data/prompt_documents
       - ./data/quiz_solutions:/app/data/quiz_solutions
       - ./data/presentations:/app/data/presentations
+      - ./data/content/presentations:/app/data/content/presentations
       - ./vertex-ai-key.json:/app/vertex-ai-key.json:ro
     logging:
       driver: "json-file"

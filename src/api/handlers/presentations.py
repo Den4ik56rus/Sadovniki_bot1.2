@@ -89,6 +89,35 @@ async def create_presentation_api(request: web.Request) -> web.Response:
                 title = f"{get_culture_label(culture_key, variety_key)}: {get_problem_label(problem_key)}"
 
             source_text = ""  # Будет заполнен после генерации статьи
+
+        elif generation_mode == "category":
+            # Режим «По категории статей»: culture_key + category_key обязательны
+            culture_key = (data.get("culture_key") or "").strip()
+            category_key = (data.get("category_key") or "").strip()
+            if not culture_key or not category_key:
+                return web.json_response({"error": "culture_key and category_key are required for category mode"}, status=400)
+
+            variety_key = (data.get("variety_key") or "").strip() or None
+
+            # Найти статью в admin_articles
+            from src.services.db.article_repo import get_article_by_category_and_culture
+            article = await get_article_by_category_and_culture(category_key, culture_key, variety_key)
+            if not article:
+                return web.json_response({"error": "Статья не найдена для этой комбинации культуры и категории"}, status=404)
+
+            source_text = article["article_text"]
+
+            # Авто-генерация title
+            title = (data.get("title") or "").strip()
+            if not title:
+                from src.data.article_categories import get_category_label, get_culture_label_for_batch
+                cat_label = get_category_label(category_key) or category_key
+                cult_label = get_culture_label_for_batch(culture_key, variety_key) or culture_key
+                title = f"{cat_label} — {cult_label}"
+
+            # Сохраняем category_key в problem_key (переиспользуем колонку)
+            problem_key = category_key
+
         else:
             # Режим «Текст статьи» (текущий)
             title = (data.get("title") or "").strip()

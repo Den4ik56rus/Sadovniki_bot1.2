@@ -1,26 +1,28 @@
-# Session Summary — 2026-03-01
+# Session Summary — 2026-03-05
 
 ## Project Context
 
 **Sadovniki-bot** — Telegram-bot for professional consultations on berry crops with RAG system (PostgreSQL + pgvector) and OpenAI GPT.
 
-**Current Version:** 1.8.0 (bumped after articles page feature in previous session)
+**Current Version:** 1.9.0 (bumped after batch presentation generation feature)
 
 **Tech Stack:**
 - Backend: Python 3.11+, Aiogram 3.x, asyncpg, OpenAI API
 - Frontend: React + TypeScript (Admin Panel), Vite
 - Database: PostgreSQL 16 + pgvector
+- PDF Generation: WeasyPrint + Jinja2 + markdown-python
 
 ---
 
 ## Session Goal
 
-Implement full Funnel B (quiz-based onboarding) for the A/B test:
-- Complete 4-step quiz with culture/variety/region/problem selection
-- Personalized offer generation per culture x problem pair
-- YooKassa payment for quiz plan (99 RUB)
-- PDF delivery or LLM auto-consultation after payment
-- CRM admin panel enhancements: quiz data display + funnel variant field
+Two independent workstreams:
+
+1. **Funnel B — Upsell after quiz payment**: Implement post-payment upsell flow (survey + offer screen) that triggers 90 seconds after PDF/plan delivery.
+
+2. **Article PDF Generator**: Build full pipeline to generate professional PDF documents from articles stored in `admin_articles` table — WeasyPrint-based, branded design matching design system.
+
+Additionally: batch presentation generation from articles (5 commits already in main prior to this session), plus polish of quiz offer texts across all cultures.
 
 ---
 
@@ -28,85 +30,104 @@ Implement full Funnel B (quiz-based onboarding) for the A/B test:
 
 ### Implemented
 
-**1. Funnel B — Full Quiz Onboarding (`src/handlers/funnel_b.py`, 1255 lines)**
-- Complete 4-step quiz: culture → variety (strawberry/raspberry only) → region → problem
-- Culture-specific problem sets: strawberry (summer/remontant), raspberry (summer/remontant), currant, honeysuckle, blackberry, blueberry
-- All 50+ problem keys with individual personalized offer texts per culture x problem combo
-- Offer text fallback: file-based `offer.txt` → hardcoded per-culture → generic template
-- PDF preview display if `data/quiz_solutions/{culture}/{problem}/preview.jpg` exists
-- `_mark_selected()` helper: replaces keyboard with single checkmark button after selection
-- State machine: `quiz_awaiting_culture` → `quiz_awaiting_variety` → `quiz_awaiting_region` → `quiz_awaiting_problem` → cleared
-- Custom text input states for "other culture" and custom region
-- Quiz quiz logging to CRM messages table via `_log_quiz_msg()`
-- Repeat `/start` guard: if `user_quiz_answers` row exists → show standard menu, not quiz
-- CTA buttons: "Get personal plan" (payment) and "Get free consultation" (standard flow)
-- `_generate_auto_consultation()`: auto-sends LLM answer using quiz data after free CTA or payment fallback
-- `quiz_focus_instructions` injected into `ask_consultation_llm()` to enforce concise action-plan style
+**1. Funnel B Upsell Flow (`src/handlers/funnel_b_upsell.py`, new file, 549 lines)**
+- Complete post-payment upsell sequence triggered 90 seconds after plan delivery
+- Unique trigger text per `problem_key` (53 texts, see `src/data/quiz_upsell_texts.py`)
+- 3-question survey: urgency (3 options), goal (2 options), schedule (2 options)
+- Answers saved to `user_quiz_survey2` table (schema_93)
+- LLM-generated personalized diagnosis based on survey answers + problem_key + culture
+- Offer screen with 2 CTA buttons: "Seasonal Program" and "Consultation Subscription"
+- Both CTA buttons are stubs that log choice to `user_upsell_choice` table (analytics)
+- Human-readable labels for LLM input (`_URGENCY_LABELS`, `_GOAL_LABELS`, `_SCHEDULE_LABELS`)
+- Culture dative forms for offer title ("Программа по клубнике / малине / ...")
+- Registered in `src/handlers/__init__.py` as `funnel_b_upsell_router` (priority 2.8)
 
-**2. Payment: Quiz Plan (`src/services/payments/payment_service.py`)**
-- `create_quiz_plan_payment()`: creates YooKassa payment for 99 RUB
-- Payment type `quiz_plan` registered; `create_payment_activity_event()` supports it
-- `_process_quiz_plan_payment_success()`: background task on webhook success
-- `_generate_quiz_plan_after_payment()`: dual delivery path:
-  - PDF path: if `data/quiz_solutions/{problem_key}/solution.pdf` exists → `_deliver_quiz_pdf_solution()`
-  - LLM path: fallback auto-consultation generation if no PDF
-- CRM funnel update to `paid` on payment success
+**2. Upsell Trigger Texts (`src/data/quiz_upsell_texts.py`, new file, 354 lines)**
+- 53 unique trigger texts keyed by `problem_key` (one per culture x problem combination)
+- Pattern: confirms plan received + sets up why one plan may not be enough
+- Fallback: auto-generated text using `get_problem_label()` + `get_culture_label()`
 
-**3. Quiz Solutions Lookup (`src/services/quiz_solutions.py`, new file, 248 lines)**
-- `get_quiz_solution(problem_key)`: looks up ready PDF at `data/quiz_solutions/{culture}/{problem}/`
-- `get_offer_text(problem_key, region)`: loads `offer.txt` from solution dir with header injection
-- Full `_KEY_TO_PATH` mapping for all 50+ problem keys
-- `_OFFER_HEADERS` dict for human-readable culture + problem header in offer text
-- Preview lookup: first checks problem dir, then falls back to `{culture}/preview/` dir
+**3. DB Schema: Quiz Survey 2 (`db/schema_93_quiz_survey2.sql`, new file)**
+- Table `user_quiz_survey2`: user_id, urgency, goal, schedule, timestamps, UNIQUE(user_id)
+- Table `user_upsell_choice`: user_id, choice (seasonal_program | consultation_subscription), UNIQUE(user_id)
+- Both tables: cascade delete on user, indexed on user_id
 
-**4. PDF Preview Generator (`src/services/pdf_preview.py`, new file, 330 lines)**
-- Renders PDF first page → blurred image with "Locked" overlay
-- Removes NotebookLM watermark before blurring
-- Dependencies: Pillow, pdftoppm (poppler-utils)
-- Used for showing teaser preview before payment
+**4. Payment Service: Upsell Trigger Integration (`src/services/payments/payment_service.py`)**
+- Added `schedule_upsell_trigger()` call at end of `_generate_quiz_plan_after_payment()`
+- Triggers 90 seconds after plan is delivered (non-blocking, async)
+- PDF delivery retry logic added: 3 attempts, 120s timeout, 3s * attempt backoff
+- Fallback message to user if all retries fail
 
-**5. Database Migrations (new files)**
-- `db/schema_81_activate_funnel_b.sql`: sets `active_funnel_variant = 'B'` in `bot_settings`
-- `db/schema_82_quiz_answers.sql`: creates `user_quiz_answers` table (user_id, culture, region, problem, created_at, updated_at)
-- `db/schema_83_quiz_problem_key.sql`: adds `problem_key TEXT` column to `user_quiz_answers`
+**5. Funnel B Offer Text Overhaul (`src/handlers/funnel_b.py`, 1255 → 1631 lines)**
+- All strawberry offer texts rewritten (summer: 6 problems, remontant: 6 problems)
+- New format: problem hook → "Чаще всего дачники:" → 3 numbered mistakes → warning → CTA with fire emoji
+- All other culture offer texts to be continued (see funnel_b.py)
+- OFFER_TEXT_2 updated with HTML formatting: `<s>490 ₽</s>` strikethrough + `<b>99 ₽</b>` bold
+- Culture keyboard: emojis removed from button labels (cleaner display on mobile)
+- "Other culture" button removed from keyboard (6 cultures only: strawberry, raspberry, blueberry, currant, honeysuckle, blackberry)
+- `SKIP_PAYMENT = True` flag added for local testing (bypasses YooKassa payment)
 
-**6. Consultation LLM Extension (`src/services/llm/consultation_llm.py`)**
-- Added `quiz_focus_instructions: Optional[str] = None` parameter to `ask_consultation_llm()`
-- Appended to system prompt when present to enforce focused quiz-consultation response style
+**6. Quiz Solutions PDF Lookup Fix (`src/services/quiz_solutions.py`)**
+- `_find_pdf()` helper: searches for `solution.pdf` first, falls back to any `*.pdf` in directory
+- Allows placing generated presentation PDFs directly without renaming to `solution.pdf`
 
-**7. CRM: Quiz Data in Client Card (`admin-webapp/src/components/crm/LeftPanel/`)**
-- `MainTab.tsx`: new section "Quiz Answers" showing funnel variant (A/B), culture, region, problem
-- Edit mode for quiz answers with Save/Cancel
-- Reset quiz button (clears user_quiz_answers row, resets funnel_variant to A)
-- `index.tsx`: wired `handleFunnelVariantChange`, `handleQuizAnswersChange`, `handleQuizReset` handlers calling backend API
+**7. Article PDF Generator Infrastructure (`scripts/`)**
+- `scripts/md_to_pdf.py` — Markdown → PDF converter using WeasyPrint + Jinja2
+  - Cover page (dark green background, culture name, category, SVG ornament)
+  - TOC auto-generated from `##` headings
+  - Content pages with running headers and page numbers
+  - Callout blocks: paragraphs starting with "Важно:" get red left border
+  - CLI: `--test`, `--input`, `--culture`, `--variety`, `--category`
+- `scripts/generate_article_pdfs.py` — batch generator from `admin_articles` DB
+  - Connects to PostgreSQL (`bot_user@localhost:5432/garden_bot`)
+  - Output: `data/article_pdfs/{culture_key}_{variety_key}/{category_key}.pdf`
+  - Flags: `--dry-run`, `--culture`, `--force`
+- `scripts/pdf_styles.css` — full PDF stylesheet (natural/organic design system)
+- `scripts/pdf_template.html` — Jinja2 HTML template (cover + TOC + content)
+- `scripts/fonts/` — offline Cormorant Garamond + Source Sans 3 woff2 files
+- `scripts/assets/` — logo assets directory
+- `data/article_pdfs/` — output directory (gitignored)
 
-**8. CRM: Client Full Data (`src/services/db/client_crm_repo.py`)**
-- `get_client_full_data()` extended: joins `user_quiz_answers` and `users.funnel_variant`
-- Returns `funnel_variant`, `quiz_culture`, `quiz_region`, `quiz_problem` to frontend
+**8. Presentation-to-Quiz Sync Script (`scripts/sync_presentations_to_quiz.py`)**
+- Copies generated presentation PDFs from `data/content/presentations/` to `data/quiz_solutions/`
+- Uses `_KEY_TO_PATH` mapping from `quiz_solutions.py`
+- Flags: `--force`, `--dry-run`
 
-**9. CRM API: Quiz Endpoints (`src/api/handlers/crm.py`)**
-- `PATCH /api/admin/crm/clients/{id}/quiz`: update quiz answers (culture, region, problem)
-- `DELETE /api/admin/crm/clients/{id}/quiz`: reset quiz (delete from user_quiz_answers, reset funnel_variant)
-- `PATCH /api/admin/crm/clients/{id}/funnel-variant`: update funnel_variant A/B
+**9. Quiz Preview Generator Script (`scripts/generate_quiz_previews.py`)**
+- Batch generates blurred preview images for all `quiz_solutions/*/solution.pdf`
+- Uses existing `src/services/pdf_preview.py`
 
-**10. TypeScript Types (`admin-webapp/src/types/index.ts`)**
-- `CrmClientFull` extended with `funnel_variant`, `quiz_culture`, `quiz_region`, `quiz_problem`
+**10. Docker + Infrastructure (`docker-compose.yml`, `requirements.txt`, `.gitignore`)**
+- `requirements.txt`: added `weasyprint>=60.0`, `markdown>=3.6`, `jinja2>=3.1.0`
+- `docker-compose.yml`: added volume mount `./data/content/presentations:/app/data/content/presentations`
+- `.gitignore`: added `data/content/` to ignore generated content
 
-**11. `src/handlers/__init__.py`**
-- Registered `funnel_b.router` into main dispatcher
+**11. Fertilizers Reference Enhancement (`src/prompts/category_prompts/_fertilizers_reference.py`)**
+- Added rule for leaf feeding during flowering/fruiting: Plantafol high-K + calcium foliar
+- Added bio/chem compatibility rules: biopesticides cannot follow recent chemical fungicides
+- Added entomophage/insecticide compatibility rules (same logic as bio/chem)
 
-**12. `src/handlers/menu.py`**
-- `/start` handler: if `is_new_user` and `active_funnel_variant == 'B'` → call `start_funnel_b()`
-- If returning user with quiz done → standard menu (repeat `/start` guard)
+**12. CRM: client_funnel_repo.py refactor**
+- `update_client_status()`: moved `paid` virtual status handling before DB column validation
+- Prevents "invalid column" error when `paid` is passed as status (previously reached the validation check)
 
-**13. `src/utils/status_manager.py`**
-- Minor adjustments (likely to support `_generate_auto_consultation` streaming)
+**13. Presentations Page: "Category" Generation Mode (`admin-webapp/src/components/presentations/PresentationsPage.tsx`)**
+- New third generation mode: `'category'` (article → presentation via culture + category key)
+- Auto-loads article from `admin_articles` when culture + category are selected
+- Shows article info preview (topic + length) before generation
+- Calls `api.getArticleByKeys()` → backend endpoint `GET /api/admin/articles/by-keys`
 
-**14. Articles API (`src/api/handlers/articles.py`)**
-- Minor fix (from previous session: Decimal serialization)
+**14. API: Article by Keys Endpoint (`src/api/handlers/presentations.py`)**
+- New `generation_mode = "category"` branch in `create_presentation_api`
+- Fetches article from DB by `category_key + culture_key + variety_key`
+- Auto-generates title: `{category_label} — {culture_label}`
+- Stores `category_key` in `problem_key` column (column reuse)
 
-**15. Articles Page (`admin-webapp/src/components/articles/ArticlesPage.tsx`, `.module.css`)**
-- Minor UI adjustments carried over from previous session
+**15. Article PDF Documentation (`docs/features/ARTICLE_PDFS.md`, new file)**
+- Documents full PDF generation pipeline, file structure, batch commands
+
+**16. Implementation Plan (`docs/plans/2026-03-05-article-pdf-generator.md`)**
+- Full step-by-step plan for article PDF generator (completed this session)
 
 ---
 
@@ -114,151 +135,175 @@ Implement full Funnel B (quiz-based onboarding) for the A/B test:
 
 ### Architecture
 
-- **Dual delivery after payment**: PDF-first, LLM-fallback. If `data/quiz_solutions/{culture}/{problem}/solution.pdf` exists → send PDF directly. Otherwise → generate LLM auto-consultation. This allows gradual content creation without blocking the product launch.
+- **Upsell trigger as async delayed task**: `schedule_upsell_trigger()` uses `asyncio.create_task()` with a 90-second sleep. The task is non-blocking — quiz payment delivery completes immediately, upsell fires after delay. Risk: if bot restarts within 90s of payment, task is lost. Acceptable for current scale.
 
-- **Problem key naming convention**: `{culture_prefix}_{variety_prefix}_{problem_name}` (e.g. `straw_s_low_yield`, `rasp_r_pruning`, `cur_glasswing`). Flattened into single `_KEY_TO_PATH` dict mapping to `(culture_folder, problem_folder)` path tuples.
+- **53 unique upsell trigger texts in separate data file**: `quiz_upsell_texts.py` keeps copy separate from handler logic. Easier for content team to edit without touching handler code.
 
-- **Offer text priority**: `offer.txt` in solution dir > hardcoded per-culture function > generic `_get_offer_text()`. This lets content editors add custom copy without code changes.
+- **`_find_pdf()` fallback in quiz_solutions**: allows placing presentation PDFs from batch generator directly in the quiz directory without renaming. The batch presenter generates `{problem_key}.pdf`, not `solution.pdf`. The sync script (`sync_presentations_to_quiz.py`) handles the copy+rename.
 
-- **Variety sub-step**: Only strawberry and raspberry ask about variety (summer/remontant). All other cultures skip to region directly. Variety is stored as part of culture label (e.g. "Клубника (Ремонтантная)").
+- **Presentation-to-quiz pipeline**: generated presentations (via admin panel batch flow) → `sync_presentations_to_quiz.py` → `data/quiz_solutions/`. This avoids storing PDFs twice at the cost of a manual sync step.
 
-- **`CONSULTATION_CONTEXT` for quiz state**: Culture key and variety key stored in existing `CONSULTATION_CONTEXT[tg_user.id]` dict during quiz flow. This context is used to select the correct problem keyboard and generate the right offer text.
+- **`SKIP_PAYMENT = True` flag in funnel_b.py**: module-level constant for local development. Must be set to `False` before deploying to production. No env var — intentional (prevents accidental production skip).
 
-- **Quiz logging to CRM messages**: All bot messages and user selections during quiz are logged via `_log_quiz_msg()` using `session_id = f"quiz:{user_id}"`. This makes the quiz visible in CRM consultation history.
+- **WeasyPrint for article PDFs**: chosen over reportlab (too low-level), fpdf2 (no Markdown support), or headless Chrome (heavy). WeasyPrint renders HTML/CSS to PDF natively, supports `@page` rules, string counters, page numbers.
+
+- **Column reuse `problem_key` for category presentations**: rather than adding a new `category_key` column to `admin_presentations`, the existing `problem_key` column is reused to store `category_key`. This avoids a DB migration. The `generation_mode` field distinguishes the meaning.
 
 ### Logic
 
-- **Repeat /start**: `_quiz_already_done()` checks `user_quiz_answers` for existing row. If found → show standard menu. If not → run quiz from start. This prevents re-running quiz for users who completed it but didn't pay yet.
+- **Quiz survey 2 options simplified**: urgency has 3 options (early/progressing/urgent), goal reduced to 2 (close_now/stable_season), schedule reduced to 2 (ready_system/ask_answers). Previous design had 3+4+3 = complex. Simplified for conversion.
 
-- **CRM funnel on payment button click**: When user clicks "Get personal plan" (before paying), status is immediately updated to `paid` in CRM. This is intentional — the click itself signals high intent.
+- **CTA stubs with analytics logging**: both CTA buttons ("Seasonal Program", "Consultation Subscription") save choice to `user_upsell_choice` table and show "Coming soon" message. Analytics is more valuable than premature product launch.
 
-- **`_mark_selected()` keyboard replacement**: After any quiz selection, the multi-button keyboard is replaced with a single button showing `✅ <selected text>`. Prevents re-selecting and provides visual feedback.
-
-- **`noop` callback**: All "selected" buttons use `callback_data="noop"` which is handled by a router.callback_query that just calls `answer()`. Prevents Telegram "loading" spinner on already-selected buttons.
-
-### Data Format
-
-- `user_quiz_answers` has a single row per user (PRIMARY KEY on user_id, upsert on conflict)
-- `problem_key` column added in schema_83 (after schema_82 created the table) — must apply both in order
-- `funnel_variant` field is on `users` table (added in earlier schema, not this session)
+- **Keyboard emoji removal in quiz**: emojis in button text were causing layout issues on some Telegram clients. Removed from culture selection keyboard. "Other culture" option removed since all 6 main cultures are covered.
 
 ---
 
 ## Problems and Limitations
 
-- **DB schemas 81-83 NOT YET APPLIED ON PRODUCTION**: Must apply all three before enabling funnel B or quiz plan payments. Order matters: 82 before 83.
+- **`SKIP_PAYMENT = True` is active in `funnel_b.py`**: MUST be set to `False` before deploying to production. This is a dev-only bypass.
 
-- **`data/quiz_solutions/` directory is empty**: No PDF solutions exist yet. All payments will fall back to LLM auto-consultation. PDFs need to be created and placed at the correct paths.
+- **DB schema_93 NOT applied on production**: `user_quiz_survey2` and `user_upsell_choice` tables do not exist in production. Bot will crash if upsell flow is triggered before applying schema_93.
 
-- **`data/previews/` directory is empty**: No generated previews exist. Preview display in quiz offer is silently skipped if no file found.
+- **Schemas 81-83 from previous session STILL not applied**: these are required for funnel B to work at all (user_quiz_answers, problem_key column, funnel B activation).
 
-- **`pdf_preview.py` requires poppler-utils**: `pdftoppm` must be installed in Docker container. Not yet added to Dockerfile.
+- **Upsell trigger lost on bot restart**: the 90-second async task disappears if the bot is restarted within that window. No persistence mechanism. Low probability but not zero.
 
-- **Quiz plan payment not tested end-to-end**: YooKassa webhook handling for `quiz_plan` type was implemented but not tested with real payments.
+- **Article PDF generator not tested end-to-end**: scripts exist and plan is documented, but actual PDF generation from DB has not been run. Requires local DB access or SSH tunnel to server.
 
-- **`CONSULTATION_CONTEXT` race condition**: If user sends messages rapidly during quiz, context dict mutations could have async race conditions (existing issue in codebase, not introduced here).
+- **WeasyPrint system deps on server**: Ubuntu requires `libpango-1.0-0 libpangoft2-1.0-0 libcairo2`. Not yet added to Dockerfile.
 
-- **CRM quiz edit API not wired to route table**: The new PATCH/DELETE quiz endpoints in `crm.py` need to be registered in the API router (`src/api/router.py` or equivalent). This was likely done but should be verified.
+- **Fonts in scripts/fonts/ may be incomplete**: the woff2 download URLs in the plan may be outdated. Need to verify fonts work in WeasyPrint before running batch on server.
+
+- **Preview JPEGs in `data/quiz_solutions/` are present but empty placeholders**: 53 `preview.jpg` files exist as 0-byte stubs (from untracked files list). These need to be replaced with actual blurred previews.
 
 ---
 
 ## Rejected Ideas
 
-- **Separate FSM states for quiz** (using aiogram FSMContext): Rejected in favor of existing `CONSULTATION_STATE` dict pattern used throughout the codebase. Consistency was prioritized over FSM safety.
+- **Upsell flow with FSM (aiogram FSMContext)**: rejected in favor of existing `CONSULTATION_STATE` dict pattern. Consistency with codebase, avoids FSM state management complexity.
 
-- **Problem keyboard per culture without variety sub-step for strawberry**: Initially considered skipping variety and just using a single generic problem set. Rejected because strawberry summer vs remontant have completely different problem profiles.
+- **Storing upsell survey answers in session only (not DB)**: rejected — need analytics to measure what users want (seasonal program vs subscription). DB storage is required.
 
-- **Storing quiz answers in `CONSULTATION_CONTEXT` only (not DB)**: Rejected because context is lost on bot restart, and auto-consultation after payment needs the data.
+- **Automatic upsell text generation via LLM**: initially considered generating the trigger text dynamically using problem_key + culture context. Rejected: unpredictable quality, latency, and cost. 53 hand-crafted texts are better for conversion.
+
+- **FPDF2 for article PDFs**: considered as simpler alternative to WeasyPrint. Rejected: doesn't support Markdown, requires manual layout code for every element. WeasyPrint allows full CSS control.
 
 ---
 
 ## Current Code State
 
-### Files Changed
+### Files Changed This Session
 
 | File | Change Type | Status |
 |------|-------------|--------|
-| `src/handlers/funnel_b.py` | Major rewrite (stub → 1255 lines) | Working |
-| `src/services/payments/payment_service.py` | Added quiz_plan functions (+238 lines) | Working |
-| `src/services/quiz_solutions.py` | New file (248 lines) | Working |
-| `src/services/pdf_preview.py` | New file (330 lines) | Not tested (needs poppler) |
-| `db/schema_81_activate_funnel_b.sql` | New DB migration | NOT APPLIED |
-| `db/schema_82_quiz_answers.sql` | New DB migration | NOT APPLIED |
-| `db/schema_83_quiz_problem_key.sql` | New DB migration | NOT APPLIED |
-| `src/services/llm/consultation_llm.py` | Added quiz_focus_instructions param | Working |
-| `src/handlers/__init__.py` | Registered funnel_b router | Working |
-| `src/handlers/menu.py` | Added funnel B routing in /start | Working (after schema 81) |
-| `src/services/db/client_crm_repo.py` | Extended get_client_full_data for quiz | Working (after schema 82+83) |
-| `src/api/handlers/crm.py` | Added quiz PATCH/DELETE endpoints | Working |
-| `admin-webapp/src/components/crm/LeftPanel/MainTab.tsx` | Quiz data display + edit | Working |
-| `admin-webapp/src/components/crm/LeftPanel/index.tsx` | Wired quiz handlers | Working |
-| `admin-webapp/src/types/index.ts` | Added quiz fields to CrmClientFull | Working |
-| `admin-webapp/src/components/articles/ArticlesPage.tsx` | Minor adjustments | Working |
-| `src/api/handlers/articles.py` | Decimal serialization fix | Working |
-| `src/utils/status_manager.py` | Minor adjustments | Working |
+| `src/handlers/funnel_b_upsell.py` | New (549 lines) | Working, needs schema_93 in prod |
+| `src/data/quiz_upsell_texts.py` | New (354 lines) | Working |
+| `db/schema_93_quiz_survey2.sql` | New DB migration | NOT APPLIED on prod |
+| `src/services/payments/payment_service.py` | Upsell trigger + PDF retry | Working |
+| `src/handlers/funnel_b.py` | +376 lines (offer text overhaul + SKIP_PAYMENT) | Working locally (SKIP_PAYMENT=True) |
+| `src/services/quiz_solutions.py` | _find_pdf() fallback | Working |
+| `src/handlers/__init__.py` | Register upsell router | Working |
+| `scripts/md_to_pdf.py` | New (PDF converter) | Implemented, not tested on server |
+| `scripts/generate_article_pdfs.py` | New (batch generator) | Implemented, not tested |
+| `scripts/pdf_styles.css` | New (PDF stylesheet) | Ready |
+| `scripts/pdf_template.html` | New (Jinja2 template) | Ready |
+| `scripts/fonts/` | New (offline font files) | Ready |
+| `scripts/assets/` | New (logo dir) | Empty, needs logo |
+| `scripts/sync_presentations_to_quiz.py` | New (sync script) | Working |
+| `scripts/generate_quiz_previews.py` | New (preview batch) | Working |
+| `src/prompts/category_prompts/_fertilizers_reference.py` | Added bio/chem compatibility rules | Working |
+| `src/services/db/client_funnel_repo.py` | 'paid' status handling refactor | Working |
+| `admin-webapp/src/components/presentations/PresentationsPage.tsx` | Category mode added | Working |
+| `src/api/handlers/presentations.py` | category generation_mode | Working |
+| `docs/features/ARTICLE_PDFS.md` | New documentation | Done |
+| `docs/plans/2026-03-05-article-pdf-generator.md` | Implementation plan | Done (plan executed) |
+| `docker-compose.yml` | Added content/presentations volume | Working |
+| `requirements.txt` | weasyprint + markdown + jinja2 | Done |
+| `.gitignore` | Added data/content/ | Done |
 
-### Data Directories (New, Empty)
+### Previously Pending (from 2026-03-01) — Still Not Applied
 
-- `data/previews/` — for generated PDF blur previews
-- `data/quiz_solutions/` — for PDF solution files (structure: `{culture}/{problem}/solution.pdf`)
+| Item | Status |
+|------|--------|
+| `db/schema_81_activate_funnel_b.sql` | NOT APPLIED on production |
+| `db/schema_82_quiz_answers.sql` | NOT APPLIED on production |
+| `db/schema_83_quiz_problem_key.sql` | NOT APPLIED on production |
 
 ### What Works
 
-- Quiz flow logic (all 6 cultures, 50+ problem keys)
-- Offer text generation (hardcoded per culture x problem)
-- CTA button → payment creation in YooKassa
-- CRM client card shows quiz data (funnel_variant, culture, region, problem)
-- CRM admin can edit/reset quiz answers
-- LLM auto-consultation after payment (fallback path)
+- Upsell flow logic end-to-end (all 53 texts, survey, LLM diagnosis, CTA)
+- Upsell trigger fires 90 seconds after payment/plan delivery
+- Quiz offer texts for all strawberry problems (summer + remontant) fully rewritten
+- Presentation "category" mode in admin panel (auto-loads article, generates presentation)
+- Quiz PDF lookup: any .pdf in directory (not just solution.pdf)
+- Sync script: copies generated presentations to quiz_solutions directory
 
-### What Needs Testing
+### What Needs Testing / Action
 
-- Full quiz flow end-to-end in Telegram (not tested live)
-- YooKassa webhook → quiz_plan success processing
-- PDF delivery path (needs actual PDF files in `data/quiz_solutions/`)
-- `pdf_preview.py` (needs poppler-utils installed)
-- CRM quiz edit/reset via admin panel
+- Apply DB schemas **in order**: 82 → 83 → 81 → **93** on production
+- Set `SKIP_PAYMENT = False` in `funnel_b.py` before deploying
+- Run `scripts/generate_article_pdfs.py --dry-run` to verify 48 articles are found
+- Test WeasyPrint PDF generation locally (`python scripts/md_to_pdf.py --test`)
+- Replace 53 stub `preview.jpg` files with actual blurred previews
+- Add WeasyPrint system deps to Dockerfile (`libpango libpangoft2 libcairo2`)
 
 ---
 
 ## Next Steps
 
-1. **Apply DB migrations on production** (CRITICAL before any funnel B users):
+1. **CRITICAL — Set `SKIP_PAYMENT = False` in `src/handlers/funnel_b.py` before ANY deploy**
+   Line 16: `SKIP_PAYMENT = True` → `SKIP_PAYMENT = False`
+
+2. **Apply ALL pending DB schemas on production** (must apply in order):
    ```
-   schema_81_activate_funnel_b.sql
    schema_82_quiz_answers.sql
    schema_83_quiz_problem_key.sql
-   ```
-   Apply in order: 82 → 83 → 81 (or 82 → 83 first, then decide when to activate B)
-
-2. **Verify CRM quiz API routes registered** in `src/api/router.py` (PATCH quiz, DELETE quiz, PATCH funnel-variant endpoints)
-
-3. **Create first PDF solution** and test delivery path:
-   - Place `solution.pdf` in `data/quiz_solutions/strawberry_summer/low_yield/`
-   - Add `preview.jpg` for offer preview display
-   - Test full flow: quiz → payment → PDF delivery
-
-4. **Add poppler-utils to Dockerfile** if PDF preview generation is needed:
-   ```dockerfile
-   RUN apt-get install -y poppler-utils
+   schema_81_activate_funnel_b.sql
+   schema_93_quiz_survey2.sql
    ```
 
-5. **Test full quiz flow** with a test Telegram account:
-   - New user /start → quiz → offer → payment → auto-consultation OR PDF
-   - Repeat /start → should show standard menu (not re-run quiz)
-
-6. **Create offer.txt files** for problem-specific custom offer copy:
-   - Place at `data/quiz_solutions/{culture}/{problem}/offer.txt`
-   - Format: plain text with HTML tags for Telegram
-
-7. **Deploy to production** after migrations and testing:
+3. **Test article PDF generation locally**:
    ```bash
-   ssh -i ~/.ssh/id_rsa_server root@72.56.121.98 \
-     'cd /root/Sadovniki_bot1.2 && git pull && docker compose up -d --build bot'
+   python scripts/md_to_pdf.py --test
+   # Should create data/article_pdfs/test.pdf — open and verify visually
    ```
 
-8. **A/B test monitoring**: Check `bot_settings.active_funnel_variant` is 'B' after applying schema_81. Monitor new user quiz completion rate and payment conversion in CRM.
+4. **Run batch PDF generation** (requires DB access):
+   ```bash
+   python scripts/generate_article_pdfs.py --dry-run
+   python scripts/generate_article_pdfs.py --culture strawberry
+   ```
 
-9. **Content creation**: Write PDF solutions for the most common problem keys (strawberry is highest traffic — start with `straw_s_low_yield` and `straw_s_leaf_spots`)
+5. **Add Dockerfile deps for WeasyPrint** (for production PDF generation in container):
+   ```dockerfile
+   RUN apt-get install -y libpango-1.0-0 libpangoft2-1.0-0 libcairo2
+   ```
 
-10. **Bump version to 1.8.1** after successful deploy (or higher depending on what else ships)
+6. **Generate actual quiz preview images**:
+   - First: run `sync_presentations_to_quiz.py` to populate `data/quiz_solutions/`
+   - Then: run `generate_quiz_previews.py` to create blurred previews
+   - Replace existing 0-byte `preview.jpg` stub files
+
+7. **Test full quiz flow end-to-end** with test Telegram account:
+   - New user `/start` → quiz → offer text → payment (set `SKIP_PAYMENT=True` locally)
+   - After payment: plan delivery → 90s delay → upsell trigger → survey → diagnosis → CTA
+
+8. **Test upsell CTA buttons**: clicking "Seasonal Program" or "Consultation Subscription"
+   should save choice to `user_upsell_choice` and show placeholder message
+
+9. **Content: rewrite remaining offer texts in `funnel_b.py`**:
+   - Raspberry (summer + remontant): 16 problems
+   - Currant: 6 problems
+   - Honeysuckle: 7 problems
+   - Blackberry: 4 problems
+   - Blueberry: 4 problems
+   - Currently using old generic format
+
+10. **Deploy** after testing:
+    ```bash
+    ssh -i ~/.ssh/id_rsa_server root@72.56.121.98 \
+      'cd /root/Sadovniki_bot1.2 && git pull && docker compose up -d --build bot'
+    ```
+
+11. **Bump version to 2.0.0** (major: article PDF system + upsell funnel complete)

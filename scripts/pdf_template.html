@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<link rel="stylesheet" href="{{ css_path }}">
+</head>
+<body>
+
+<!-- Строка для колонтитула -->
+<div id="culture-name-string">{{ culture_name }}{% if variety_label %} {{ variety_label }}{% endif %}</div>
+
+<!-- ═══════════════ ОБЛОЖКА ═══════════════ -->
+<div class="cover-page">
+
+  <img class="cover-logo" src="{{ logo_path }}" alt="PRO Растения">
+
+  <!-- Декоративный SVG орнамент (листья и ягоды) -->
+  <svg class="cover-ornament" viewBox="0 0 300 400" xmlns="http://www.w3.org/2000/svg" fill="none">
+    <path d="M150 20 C180 60 220 80 260 70 C240 110 200 130 160 120 C190 150 210 190 200 230 C170 210 150 180 140 150 C130 180 110 210 80 230 C70 190 90 150 120 120 C80 130 40 110 20 70 C60 80 100 60 130 20 Z" fill="#4A7C59" opacity="0.6"/>
+    <circle cx="150" cy="160" r="25" fill="#C75B5B" opacity="0.5"/>
+    <circle cx="120" cy="185" r="18" fill="#C75B5B" opacity="0.4"/>
+    <circle cx="178" cy="178" r="20" fill="#C75B5B" opacity="0.45"/>
+    <path d="M80 250 C100 230 130 225 150 240 C130 255 105 260 80 250 Z" fill="#4A7C59" opacity="0.5"/>
+    <path d="M220 250 C200 230 170 225 150 240 C170 255 195 260 220 250 Z" fill="#4A7C59" opacity="0.4"/>
+    <path d="M60 300 C90 280 120 290 130 310 C105 320 75 315 60 300 Z" fill="#4A7C59" opacity="0.35"/>
+    <path d="M240 300 C210 280 180 290 170 310 C195 320 225 315 240 300 Z" fill="#4A7C59" opacity="0.3"/>
+    <line x1="150" y1="20" x2="150" y2="340" stroke="#4A7C59" stroke-width="1.5" opacity="0.3"/>
+    <line x1="150" y1="120" x2="80" y2="230" stroke="#4A7C59" stroke-width="1" opacity="0.2"/>
+    <line x1="150" y1="120" x2="220" y2="230" stroke="#4A7C59" stroke-width="1" opacity="0.2"/>
+  </svg>
+
+  <svg class="cover-ornament-bottom" viewBox="0 0 300 400" xmlns="http://www.w3.org/2000/svg" fill="none">
+    <path d="M150 20 C180 60 220 80 260 70 C240 110 200 130 160 120 C190 150 210 190 200 230 C170 210 150 180 140 150 C130 180 110 210 80 230 C70 190 90 150 120 120 C80 130 40 110 20 70 C60 80 100 60 130 20 Z" fill="#4A7C59"/>
+    <circle cx="150" cy="160" r="25" fill="#C75B5B"/>
+    <circle cx="120" cy="185" r="18" fill="#C75B5B"/>
+    <circle cx="178" cy="178" r="20" fill="#C75B5B"/>
+  </svg>
+
+  <div class="cover-content">
+    <div class="cover-category">{{ category_label }}</div>
+    <div class="cover-culture">{{ culture_name }}{% if variety_label %}<br><span style="font-size:32pt;font-weight:400">{{ variety_label }}</span>{% endif %}</div>
+    <div class="cover-divider"></div>
+    <div class="cover-subtitle">{{ topic }}</div>
+  </div>
+
+  {% if infographic_path %}
+  <div class="cover-infographic">
+    <img src="{{ infographic_path }}" alt="PRO Растения — возможности">
+  </div>
+  {% endif %}
+
+  <div class="cover-footer">
+    <div class="cover-year">{{ year }}</div>
+  </div>
+
+</div>
+
+<!-- ═══════════════ ОГЛАВЛЕНИЕ ═══════════════ -->
+<div class="toc-page">
+  <div class="toc-header">Содержание</div>
+  {% for item in toc %}
+  <div class="toc-item">
+    <span class="toc-number">{{ loop.index }}.</span>
+    <span class="toc-title">{{ item }}</span>
+  </div>
+  {% endfor %}
+</div>
+
+<!-- ═══════════════ КОНТЕНТ ═══════════════ -->
+<div class="content-page">
+{{ article_html }}
+</div>
+
+</body>
+</html>

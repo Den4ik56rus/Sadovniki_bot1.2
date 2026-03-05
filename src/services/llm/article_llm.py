@@ -39,6 +39,7 @@ async def generate_article(
     use_problem_solving: bool = False,
     skip_rag: bool = False,
     model_override: Optional[str] = None,
+    reasoning_effort_override: Optional[str] = None,
     culture_key: Optional[str] = None,
     variety_key: Optional[str] = None,
     category_key: Optional[str] = None,
@@ -178,7 +179,12 @@ async def generate_article(
         print(f"  - Temperature: {article_temp}")
         print(f"  - Сообщений: {len(messages)}")
 
-        article_reasoning = await get_reasoning_effort_for_task("article")
+        if reasoning_effort_override and reasoning_effort_override in ("low", "medium", "high"):
+            article_reasoning = reasoning_effort_override
+        else:
+            article_reasoning = await get_reasoning_effort_for_task("article")
+
+        print(f"  - Reasoning: {article_reasoning}")
 
         response = await create_chat_completion_with_usage(
             messages=messages,

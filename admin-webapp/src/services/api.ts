@@ -828,7 +828,7 @@ export const api = {
     return fetchApi('/articles/definitions')
   },
 
-  async createArticleBatch(dto: { items: { culture_key: string; variety_key?: string | null; category_key: string }[]; llm_model?: string | null }): Promise<{ id: number; batch: Record<string, unknown> }> {
+  async createArticleBatch(dto: { items: { culture_key: string; variety_key?: string | null; category_key: string }[]; llm_model?: string | null; reasoning_effort?: string | null }): Promise<{ id: number; batch: Record<string, unknown> }> {
     return fetchApi('/articles/batches', {
       method: 'POST',
       body: JSON.stringify(dto),

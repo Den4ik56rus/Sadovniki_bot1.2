@@ -58,6 +58,7 @@ async def generate_article_api(request: web.Request) -> web.Response:
         category = data.get("category") or None
         culture = data.get("culture") or None
         model_override = data.get("model_override") or None
+        reasoning_effort = data.get("reasoning_effort") or None
         use_scripts = bool(data.get("use_scripts", True))
         use_problem_solving = bool(data.get("use_problem_solving", False))
         use_rag = bool(data.get("use_rag", True))
@@ -74,6 +75,7 @@ async def generate_article_api(request: web.Request) -> web.Response:
             use_problem_solving=use_problem_solving,
             skip_rag=not use_rag,
             model_override=model_override,
+            reasoning_effort_override=reasoning_effort,
         )
 
         article = await article_repo.get_article_by_id(article_id)

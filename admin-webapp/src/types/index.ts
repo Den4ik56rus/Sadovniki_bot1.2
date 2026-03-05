@@ -586,6 +586,7 @@ export interface GenerateArticleDto {
   category?: string | null
   culture?: string | null
   model_override?: string | null
+  reasoning_effort?: string | null
   use_scripts: boolean
   use_problem_solving: boolean
   use_rag: boolean
@@ -937,6 +938,7 @@ export interface ArticleBatchesResponse {
 export interface CreateArticleBatchDto {
   items: { culture_key: string; variety_key?: string | null; category_key: string }[]
   llm_model?: string | null
+  reasoning_effort?: string | null
 }
 
 export interface ArticleBatchProgressEvent {

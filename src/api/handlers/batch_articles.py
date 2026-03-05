@@ -95,6 +95,7 @@ async def create_batch_api(request: web.Request) -> web.Response:
         batch_id = await article_batch_repo.create_batch(
             llm_model=data.get("llm_model"),
             total_items=len(enriched_items),
+            reasoning_effort=data.get("reasoning_effort"),
         )
 
         # Добавляем элементы

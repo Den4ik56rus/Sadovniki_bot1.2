@@ -110,6 +110,7 @@ async def run_article_batch(batch_id: int, bot: Bot) -> None:
                 use_problem_solving=False,
                 skip_rag=False,
                 model_override=batch.get("llm_model"),
+                reasoning_effort_override=batch.get("reasoning_effort"),
                 culture_key=item["culture_key"],
                 variety_key=item.get("variety_key"),
                 category_key=item["category_key"],

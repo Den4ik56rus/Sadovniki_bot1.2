@@ -18,15 +18,16 @@ async def create_batch(
     *,
     llm_model: Optional[str] = None,
     total_items: int = 0,
+    reasoning_effort: Optional[str] = None,
 ) -> int:
     pool = get_pool()
     row = await pool.fetchrow(
         """
-        INSERT INTO article_batches (llm_model, total_items)
-        VALUES ($1, $2)
+        INSERT INTO article_batches (llm_model, total_items, reasoning_effort)
+        VALUES ($1, $2, $3)
         RETURNING id
         """,
-        llm_model, total_items,
+        llm_model, total_items, reasoning_effort,
     )
     batch_id = row["id"]
     logger.info(f"[article_batch_repo] Пакет создан: id={batch_id}, total_items={total_items}")

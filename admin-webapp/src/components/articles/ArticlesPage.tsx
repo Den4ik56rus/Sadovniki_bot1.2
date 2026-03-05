@@ -85,6 +85,7 @@ export function ArticlesPage() {
   const [category, setCategory] = useState<string>(prefs.category ?? '')
   const [culture, setCulture] = useState<string>(prefs.culture ?? '')
   const [modelOverride, setModelOverride] = useState<string>(prefs.modelOverride ?? '')
+  const [reasoningEffort, setReasoningEffort] = useState<string>(prefs.reasoningEffort ?? '')
   const [useScripts, setUseScripts] = useState<boolean>(prefs.useScripts ?? true)
   const [useRag, setUseRag] = useState<boolean>(prefs.useRag ?? true)
   const [isGenerating, setIsGenerating] = useState(false)
@@ -170,6 +171,7 @@ export function ArticlesPage() {
       category: category || null,
       culture: culture || null,
       model_override: modelOverride || null,
+      reasoning_effort: reasoningEffort || null,
       use_scripts: isProblemSolving ? false : useScripts,
       use_problem_solving: isProblemSolving,
       use_rag: isProblemSolving ? true : useRag,
@@ -349,6 +351,24 @@ export function ArticlesPage() {
                   {availableModels.map(m => (
                     <option key={m} value={m}>{m}</option>
                   ))}
+                </select>
+              </div>
+
+              <div className={styles.field}>
+                <label className={styles.label}>
+                  Reasoning
+                  <span className={styles.hint}>&nbsp;(думать)</span>
+                </label>
+                <select
+                  className={styles.select}
+                  value={reasoningEffort}
+                  onChange={e => { setReasoningEffort(e.target.value); savePrefs({ reasoningEffort: e.target.value }) }}
+                  disabled={isGenerating}
+                >
+                  <option value="">Из настроек (по умолчанию)</option>
+                  <option value="low">Low</option>
+                  <option value="medium">Medium</option>
+                  <option value="high">High</option>
                 </select>
               </div>
             </div>

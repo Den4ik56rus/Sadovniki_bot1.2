@@ -56,6 +56,7 @@ export function ArticleBatchPanel({ onBatchCreated, onViewBatch }: Props) {
 
   // Settings
   const [llmModel, setLlmModel] = useState<string>('gpt-5.1')
+  const [reasoningEffort, setReasoningEffort] = useState<string>('')
   const [isLaunching, setIsLaunching] = useState(false)
 
   // Store
@@ -147,6 +148,7 @@ export function ArticleBatchPanel({ onBatchCreated, onViewBatch }: Props) {
       const res = await api.createArticleBatch({
         items,
         llm_model: llmModel || null,
+        reasoning_effort: reasoningEffort || null,
       })
 
       onBatchCreated(res.id)
@@ -255,6 +257,19 @@ export function ArticleBatchPanel({ onBatchCreated, onViewBatch }: Props) {
                 <option value="gpt-4.1-mini">GPT-4.1-mini</option>
                 <option value="gpt-4o">GPT-4o</option>
                 <option value="gpt-4o-mini">GPT-4o-mini</option>
+              </select>
+            </div>
+            <div className={styles.settingField}>
+              <span className={styles.settingLabel}>Reasoning (думать)</span>
+              <select
+                className={styles.settingSelect}
+                value={reasoningEffort}
+                onChange={e => setReasoningEffort(e.target.value)}
+              >
+                <option value="">Из настроек (по умолчанию)</option>
+                <option value="low">Low</option>
+                <option value="medium">Medium</option>
+                <option value="high">High</option>
               </select>
             </div>
           </div>

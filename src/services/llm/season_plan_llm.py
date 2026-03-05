@@ -12,7 +12,7 @@ from typing import List, Dict, Any, Optional
 
 from src.services.llm.core_llm import (
     create_chat_completion_with_retry,
-    calculate_openai_price,
+    calculate_cost,
 )
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ async def generate_season_plan(
     plan_text = result["content"]
     prompt_tokens = result["prompt_tokens"]
     completion_tokens = result["completion_tokens"]
-    cost = calculate_openai_price(model, prompt_tokens, completion_tokens)
+    cost = calculate_cost(model, prompt_tokens, completion_tokens)
 
     logger.info(
         f"[season_plan_llm] План для {culture_label}: "

@@ -215,6 +215,31 @@ async def cancel_batch_api(request: web.Request) -> web.Response:
         return web.json_response({"error": str(e)}, status=500)
 
 
+async def run_batch_api(request: web.Request) -> web.Response:
+    """Запустить существующий pending-пакет (для retry failed items)."""
+    try:
+        batch_id = int(request.match_info["id"])
+        batch = await batch_repo.get_batch(batch_id)
+        if not batch:
+            return web.json_response({"error": "Batch not found"}, status=404)
+
+        if batch["status"] not in ("pending",):
+            return web.json_response(
+                {"error": f"Batch status is '{batch['status']}', expected 'pending'"},
+                status=400,
+            )
+
+        from src.bot import get_bot
+        bot = get_bot()
+        asyncio.create_task(run_article_presentation_batch(batch_id, bot))
+
+        return web.json_response({"success": True, "batch_id": batch_id})
+
+    except Exception as e:
+        logger.error(f"Error running article presentation batch: {e}", exc_info=True)
+        return web.json_response({"error": str(e)}, status=500)
+
+
 async def delete_batch_api(request: web.Request) -> web.Response:
     """Удалить пакет."""
     try:

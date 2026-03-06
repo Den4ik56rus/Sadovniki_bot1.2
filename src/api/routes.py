@@ -5,7 +5,7 @@
 
 from aiohttp import web
 
-from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation, presentations, batch_presentations, batch_articles, batch_article_presentations
+from src.api.handlers import events, plantings, user, admin, documents, sse, crm, buyers, funnels, articles, expenses, prompt_documents, rag_documents, prompts, prompt_preview, webhooks, payments, settings, invite_links, guides, server_metrics, openai_balance, moderation, broadcasts, automation, presentations, batch_presentations, batch_articles, batch_article_presentations, image_generator
 
 
 def setup_routes(app: web.Application) -> None:
@@ -201,6 +201,7 @@ def setup_routes(app: web.Application) -> None:
     app.router.add_get("/api/admin/presentations/article-batches", batch_article_presentations.get_batches_api)
     app.router.add_get(r"/api/admin/presentations/article-batches/{id:\d+}", batch_article_presentations.get_batch_api)
     app.router.add_post(r"/api/admin/presentations/article-batches/{id:\d+}/cancel", batch_article_presentations.cancel_batch_api)
+    app.router.add_post(r"/api/admin/presentations/article-batches/{id:\d+}/run", batch_article_presentations.run_batch_api)
     app.router.add_delete(r"/api/admin/presentations/article-batches/{id:\d+}", batch_article_presentations.delete_batch_api)
     app.router.add_get(r"/api/admin/presentations/{id:\d+}", presentations.get_presentation)
     app.router.add_delete(r"/api/admin/presentations/{id:\d+}", presentations.delete_presentation_api)
@@ -380,6 +381,16 @@ def setup_routes(app: web.Application) -> None:
     from src.api.handlers.ab_test import get_ab_test_stats, set_ab_test_variant
     app.router.add_get('/api/admin/ab-test/stats', get_ab_test_stats)
     app.router.add_post('/api/admin/ab-test/variant', set_ab_test_variant)
+
+    # Image Generator API
+    app.router.add_post("/api/admin/image-generator/generate", image_generator.generate_image_api)
+    app.router.add_post("/api/admin/image-generator/generate-direct", image_generator.generate_direct_api)
+    app.router.add_post("/api/admin/image-generator/upload-reference", image_generator.upload_reference_api)
+    app.router.add_get("/api/admin/image-generator/history", image_generator.get_history)
+    app.router.add_get(r"/api/admin/image-generator/image/{filename}", image_generator.get_image_file)
+    app.router.add_delete(r"/api/admin/image-generator/{id:\d+}", image_generator.delete_generation_api)
+    app.router.add_get("/api/admin/image-generator/presets", image_generator.get_presets)
+    app.router.add_get(r"/api/admin/events/image-generator/{gen_id:\d+}", sse.image_generator_stream)
 
     # Health check endpoint
     app.router.add_get("/api/health", health_check)

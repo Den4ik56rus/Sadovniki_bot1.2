@@ -1323,15 +1323,15 @@ async def handle_quiz_region(callback: CallbackQuery) -> None:
     await _log_quiz_msg(internal_user_id, "bot", QUIZ_PROBLEM_TEXT)
 
 
-@router.message(F.text)
+@router.message(
+    lambda m: m.from_user is not None
+    and CONSULTATION_STATE.get(m.from_user.id) in ("quiz_awaiting_culture_text", "quiz_awaiting_region_text")
+)
 async def handle_quiz_text_input(message: Message) -> None:
     """
     Обработка текстового ввода в квизе (культура / регион).
     Срабатывает в состояниях quiz_awaiting_culture_text и quiz_awaiting_region_text.
     """
-    if message.from_user is None:
-        return
-
     tg_user = message.from_user
     state = CONSULTATION_STATE.get(tg_user.id)
 
@@ -1372,8 +1372,6 @@ async def handle_quiz_text_input(message: Message) -> None:
         await message.answer(QUIZ_PROBLEM_TEXT, reply_markup=get_problem_keyboard_for_context(ctx))
         await _log_quiz_msg(internal_user_id, "bot", QUIZ_PROBLEM_TEXT)
 
-    else:
-        return  # Не наш шаг — пропускаем
 
 
 # ---------------------------------------------------------------------------

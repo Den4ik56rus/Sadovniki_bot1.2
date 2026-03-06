@@ -1320,6 +1320,8 @@ async def handle_consultation_question_unified(message: Message) -> None:
     if user is None or not message.text:
         return
 
+    print(f"[handle_consultation_question_unified] TRIGGERED for user {user.id}, text={message.text!r}")
+
     await run_consultation_pipeline(
         message=message,
         telegram_user_id=user.id,
@@ -1342,6 +1344,8 @@ async def handle_waiting_root(message: Message) -> None:
     user = message.from_user
     if user is None or not message.text:
         return
+
+    print(f"[handle_waiting_root] TRIGGERED for user {user.id}, text={message.text!r}")
 
     await run_consultation_pipeline(
         message=message,
@@ -2745,6 +2749,9 @@ async def handle_consultation_root(message: Message) -> None:
     Catch-all для текстовых сообщений без активного состояния консультации.
     НЕ вызывает LLM — просто просит выбрать пункт меню.
     """
+    if message.from_user:
+        state = CONSULTATION_STATE.get(message.from_user.id)
+        print(f"[catch-all] Перехвачено сообщение от user {message.from_user.id}, state={state!r}, text={message.text!r}")
     from src.keyboards.main.main_menu import get_main_keyboard
     menu_prompt = "Пожалуйста, выберите пункт из меню."
     kb = get_main_keyboard()

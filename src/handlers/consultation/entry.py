@@ -1330,6 +1330,29 @@ async def handle_consultation_question_unified(message: Message) -> None:
     )
 
 
+@router.message(
+    lambda m: m.from_user is not None
+    and CONSULTATION_STATE.get(m.from_user.id) == "waiting_root"
+)
+async def handle_waiting_root(message: Message) -> None:
+    """
+    Обработка первого вопроса после выбора категории (кроме питания).
+    Категории: Посадка и уход, Защита растений, Улучшение почвы, Подбор сорта, Другая тема.
+    """
+    user = message.from_user
+    if user is None or not message.text:
+        return
+
+    await run_consultation_pipeline(
+        message=message,
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+        question_text=message.text.strip(),
+    )
+
+
 async def process_general_consultation(
     message: Message,
     user_id: int,

@@ -114,7 +114,7 @@ def _get_offer_text(culture_key: str, problem_key: str) -> str:
 
 OFFER_TEXT_2 = (
     "Обычно такой план стоит <s>490 ₽</s>.\n"
-    "Сегодня — <b>99 ₽</b>"
+    "Для Вас сегодня — <b>99 ₽</b>"
 )
 
 # ---------------------------------------------------------------------------
@@ -1531,7 +1531,7 @@ async def handle_quiz_problem(callback: CallbackQuery) -> None:
         from aiogram.types import FSInputFile
         preview_photo = FSInputFile(solution["preview_path"])
 
-        preview_caption = "Обычно такой план стоит <s>490 ₽</s>.\nСегодня — <b>99 ₽</b>"
+        preview_caption = "Обычно такой план стоит <s>490 ₽</s>.\nДля Вас сегодня — <b>99 ₽</b>"
 
         preview_msg = await callback.message.answer_photo(
             photo=preview_photo,

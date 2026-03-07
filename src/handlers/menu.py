@@ -11,23 +11,20 @@ from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKe
 from src.config import settings
 
 # Импортируем функции работы с БД: пользователи, темы, логи сообщений
-from src.services.db.users_repo import get_or_create_user, count_all_users, user_exists
+from src.services.db.users_repo import get_or_create_user, user_exists
 from src.services.db.topics_repo import get_or_create_open_topic     # Создание/поиск "открытой" темы (диалога)
 from src.services.db.messages_repo import log_message                # Логирование сообщений в таблицу messages
-from src.services.db.moderation_repo import moderation_count_pending # Подсчёт вопросов на модерации
 
 # Импортируем глобальное состояние консультации и утилиту для сборки session_id
 from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT, build_session_id_from_message, set_consultation_state, clear_consultation_state
 
 # Импортируем функцию, создающую клавиатуру главного меню (inline)
-from src.keyboards.main.main_menu import get_main_keyboard, get_admin_start_keyboard, REMOVE_REPLY_KEYBOARD
+from src.keyboards.main.main_menu import get_main_keyboard, REMOVE_REPLY_KEYBOARD
 
 # Импортируем инлайн-меню консультаций (6 тем + кнопка "Закрыть")
 from src.keyboards.consultation.common import CONSULTATION_MENU_INLINE_KB, CONSULTATION_ENTRY_TEXT, EXAMPLE_QUESTIONS, get_example_questions_keyboard
 from src.handlers.consultation.entry import _log_bot_msg, _log_user_callback, serialize_keyboard, run_consultation_pipeline
 
-# Импортируем список админов
-from src.handlers.admin import ADMIN_IDS
 from src.services.db.bot_settings_repo import get_setting
 from src.handlers.funnel_b import start_funnel_b
 
@@ -291,86 +288,7 @@ async def cmd_start(message: Message) -> None:
         topic_id=topic_id,
     )
 
-    # Проверяем, является ли пользователь администратором
-    is_admin = user is not None and telegram_user_id in ADMIN_IDS
-
-    if is_admin:
-        # Для администратора показываем статистику
-        total_users = await count_all_users()
-        pending_questions = await moderation_count_pending()
-
-        welcome_text = (
-            f"<b>Администратор</b>\n\n"
-            f"👥 Пользователей: <b>{total_users}</b>\n"
-            f"📋 Вопросов на модерацию: <b>{pending_questions}</b>\n\n"
-            f"Выберите режим работы:"
-        )
-
-        # Убираем старую ReplyKeyboard
-        _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
-        try:
-            await _tmp.delete()
-        except Exception:
-            pass
-
-        await message.answer(
-            welcome_text,
-            reply_markup=get_admin_start_keyboard(),
-            parse_mode="HTML",
-        )
-    else:
-        # Для обычного пользователя стандартное приветствие
-        welcome_text = (
-            "Рад, что Вы присоединились! Я Ваш агроном!🙏\n\n"
-            "Моя задача — помочь, посоветовать и научить выращиванию ягодных культур.\n\n"
-            "<b>Я даю индивидуальные рекомендации, с поправкой на климат Вашего региона</b> "
-            "и условия выращивания.\n\n"
-            "В моей базе знаний огромное количество профильной литературы, "
-            "<b>но главное — в меня заложен практический опыт ягодных хозяйств.</b>\n\n"
-            "<b>То, что я расскажу, — это не сухая теория, а успешная практика, "
-            "применяемая в промышленных хозяйствах и интерпретированная для садоводов.</b> "
-            "Это очень важно!\n\n"
-            "Со мной у Вас будут богатые урожаи при минимуме ухода!\n\n"
-            "Предлагаю начать, нажмите кнопку\n"
-            "<b>«🧑‍🌾 Консультация»</b>!"
-        )
-
-        # Убираем старую ReplyKeyboard
-        _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
-        try:
-            await _tmp.delete()
-        except Exception:
-            pass
-
-        await message.answer(
-            welcome_text,
-            reply_markup=get_main_keyboard(),
-            parse_mode="HTML",
-        )
-
-    await log_message(
-        user_id=user_id,
-        direction="bot",
-        text=welcome_text,
-        session_id=session_id,
-        topic_id=topic_id,
-    )
-
-    # Очищаем состояние и контекст консультации при /start
-    if user is not None:
-        await clear_consultation_state(user.id)
-
-
-@router.callback_query(F.data == "admin_user_mode")
-async def handle_user_mode_callback(callback: CallbackQuery) -> None:
-    """Переключение администратора в режим обычного пользователя (inline)."""
-    user = callback.from_user
-    if user is None or user.id not in ADMIN_IDS:
-        await callback.answer()
-        return
-
-    await callback.answer()
-
+    # Единое приветствие для всех пользователей (включая админов)
     welcome_text = (
         "Рад, что Вы присоединились! Я Ваш агроном!🙏\n\n"
         "Моя задача — помочь, посоветовать и научить выращиванию ягодных культур.\n\n"
@@ -386,85 +304,32 @@ async def handle_user_mode_callback(callback: CallbackQuery) -> None:
         "<b>«🧑‍🌾 Консультация»</b>!"
     )
 
-    await callback.message.answer(
+    # Убираем старую ReplyKeyboard
+    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+    try:
+        await _tmp.delete()
+    except Exception:
+        pass
+
+    await message.answer(
         welcome_text,
         reply_markup=get_main_keyboard(),
         parse_mode="HTML",
     )
 
-    internal_user_id = await get_or_create_user(
-        telegram_user_id=user.id,
-        username=user.username,
-        first_name=user.first_name,
-        last_name=user.last_name,
-    )
     await log_message(
-        user_id=internal_user_id,
-        direction="user",
-        text="👤 Режим пользователя",
-        session_id=f"tg:{user.id}",
-        meta={"type": "callback", "callback_data": "admin_user_mode"},
-    )
-    await log_message(
-        user_id=internal_user_id,
+        user_id=user_id,
         direction="bot",
         text=welcome_text,
-        session_id=f"tg:{user.id}",
+        session_id=session_id,
+        topic_id=topic_id,
     )
 
-
-@router.message(F.text == "👤 Режим пользователя")
-async def handle_user_mode_text(message: Message) -> None:
-    """Обратная совместимость — старая ReplyKeyboard кнопка."""
-    user = message.from_user
-    if user is None or user.id not in ADMIN_IDS:
-        return
-    # Убираем ReplyKeyboard и показываем inline-меню
-    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
-    try:
-        await _tmp.delete()
-    except Exception:
-        pass
-    await message.answer(
-        "📋 <b>Меню</b>",
-        parse_mode="HTML",
-        reply_markup=get_main_keyboard(),
-    )
+    # Очищаем состояние и контекст консультации при /start
+    if user is not None:
+        await clear_consultation_state(user.id)
 
 
-@router.callback_query(F.data == "admin_admin_mode")
-async def handle_admin_mode_callback(callback: CallbackQuery) -> None:
-    """Переключение в режим администратора (inline)."""
-    user = callback.from_user
-    if user is None or user.id not in ADMIN_IDS:
-        await callback.answer("Эта функция доступна только администраторам.", show_alert=True)
-        return
-
-    await callback.answer()
-    from src.keyboards.admin.menu import admin_main_menu_kb
-    await callback.message.answer(
-        "Меню администратора:",
-        reply_markup=admin_main_menu_kb()
-    )
-
-
-@router.message(F.text == "🛠 Режим администратора")
-async def handle_admin_mode_text(message: Message) -> None:
-    """Обратная совместимость — старая ReplyKeyboard кнопка."""
-    user = message.from_user
-    if user is None or user.id not in ADMIN_IDS:
-        return
-    # Убираем ReplyKeyboard и переходим в админ-режим
-    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
-    try:
-        await _tmp.delete()
-    except Exception:
-        pass
-    from src.keyboards.admin.menu import admin_main_menu_kb
-    await message.answer(
-        "Меню администратора:",
-        reply_markup=admin_main_menu_kb()
-    )
 
 
 @router.message(F.text == "🧑‍🌾 Консультация")

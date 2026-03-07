@@ -1,3 +1,22 @@
+# Session Summary — 2026-03-07
+
+## Session Log: 2026-03-07
+
+**Duration:** Brief (no code changes)
+**Goal:** Session review / context handoff
+**Result:** No changes made. Session closed with documentation in sync.
+
+**Status carried forward from 2026-03-05:**
+- SKIP_PAYMENT = True still active in funnel_b.py — MUST flip before deploy
+- DB schemas 82 → 83 → 81 → 93 still NOT applied on production
+- Article PDF generator implemented but not tested on server
+- WeasyPrint Dockerfile deps not added yet
+- 53 quiz preview.jpg files are 0-byte stubs (need actual blurred previews)
+
+All next steps from 2026-03-05 session remain valid and unchanged.
+
+---
+
 # Session Summary — 2026-03-05
 
 ## Project Context

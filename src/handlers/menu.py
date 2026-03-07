@@ -19,8 +19,8 @@ from src.services.db.moderation_repo import moderation_count_pending # Подс�
 # Импортируем глобальное состояние консультации и утилиту для сборки session_id
 from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT, build_session_id_from_message, set_consultation_state, clear_consultation_state
 
-# Импортируем функцию, создающую клавиатуру главного меню
-from src.keyboards.main.main_menu import get_main_keyboard, get_admin_start_keyboard
+# Импортируем функцию, создающую клавиатуру главного меню (inline)
+from src.keyboards.main.main_menu import get_main_keyboard, get_admin_start_keyboard, REMOVE_REPLY_KEYBOARD
 
 # Импортируем инлайн-меню консультаций (6 тем + кнопка "Закрыть")
 from src.keyboards.consultation.common import CONSULTATION_MENU_INLINE_KB, CONSULTATION_ENTRY_TEXT, EXAMPLE_QUESTIONS, get_example_questions_keyboard
@@ -306,9 +306,17 @@ async def cmd_start(message: Message) -> None:
             f"Выберите режим работы:"
         )
 
+        # Убираем старую ReplyKeyboard
+        _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+        try:
+            await _tmp.delete()
+        except Exception:
+            pass
+
         await message.answer(
             welcome_text,
             reply_markup=get_admin_start_keyboard(),
+            parse_mode="HTML",
         )
     else:
         # Для обычного пользователя стандартное приветствие
@@ -326,6 +334,13 @@ async def cmd_start(message: Message) -> None:
             "Предлагаю начать, нажмите кнопку\n"
             "<b>«🧑‍🌾 Консультация»</b>!"
         )
+
+        # Убираем старую ReplyKeyboard
+        _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+        try:
+            await _tmp.delete()
+        except Exception:
+            pass
 
         await message.answer(
             welcome_text,
@@ -346,14 +361,15 @@ async def cmd_start(message: Message) -> None:
         await clear_consultation_state(user.id)
 
 
-@router.message(F.text == "👤 Режим пользователя")
-async def handle_user_mode(message: Message) -> None:
-    """
-    Переключение администратора в режим обычного пользователя.
-    """
-    user = message.from_user
+@router.callback_query(F.data == "admin_user_mode")
+async def handle_user_mode_callback(callback: CallbackQuery) -> None:
+    """Переключение администратора в режим обычного пользователя (inline)."""
+    user = callback.from_user
     if user is None or user.id not in ADMIN_IDS:
+        await callback.answer()
         return
+
+    await callback.answer()
 
     welcome_text = (
         "Рад, что Вы присоединились! Я Ваш агроном!🙏\n\n"
@@ -370,13 +386,12 @@ async def handle_user_mode(message: Message) -> None:
         "<b>«🧑‍🌾 Консультация»</b>!"
     )
 
-    await message.answer(
+    await callback.message.answer(
         welcome_text,
         reply_markup=get_main_keyboard(),
         parse_mode="HTML",
     )
 
-    # Логируем нажатие кнопки + ответ бота
     internal_user_id = await get_or_create_user(
         telegram_user_id=user.id,
         username=user.username,
@@ -388,7 +403,7 @@ async def handle_user_mode(message: Message) -> None:
         direction="user",
         text="👤 Режим пользователя",
         session_id=f"tg:{user.id}",
-        meta={"type": "callback", "callback_data": "user_mode"},
+        meta={"type": "callback", "callback_data": "admin_user_mode"},
     )
     await log_message(
         user_id=internal_user_id,
@@ -398,19 +413,54 @@ async def handle_user_mode(message: Message) -> None:
     )
 
 
-@router.message(F.text == "🛠 Режим администратора")
-async def handle_admin_mode(message: Message) -> None:
-    """
-    Переключение в режим администратора.
-    """
+@router.message(F.text == "👤 Режим пользователя")
+async def handle_user_mode_text(message: Message) -> None:
+    """Обратная совместимость — старая ReplyKeyboard кнопка."""
     user = message.from_user
     if user is None or user.id not in ADMIN_IDS:
-        await message.answer("Эта функция доступна только администраторам.")
+        return
+    # Убираем ReplyKeyboard и показываем inline-меню
+    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+    try:
+        await _tmp.delete()
+    except Exception:
+        pass
+    await message.answer(
+        "📋 <b>Меню</b>",
+        parse_mode="HTML",
+        reply_markup=get_main_keyboard(),
+    )
+
+
+@router.callback_query(F.data == "admin_admin_mode")
+async def handle_admin_mode_callback(callback: CallbackQuery) -> None:
+    """Переключение в режим администратора (inline)."""
+    user = callback.from_user
+    if user is None or user.id not in ADMIN_IDS:
+        await callback.answer("Эта функция доступна только администраторам.", show_alert=True)
         return
 
-    # Импортируем клавиатуру админа
+    await callback.answer()
     from src.keyboards.admin.menu import admin_main_menu_kb
+    await callback.message.answer(
+        "Меню администратора:",
+        reply_markup=admin_main_menu_kb()
+    )
 
+
+@router.message(F.text == "🛠 Режим администратора")
+async def handle_admin_mode_text(message: Message) -> None:
+    """Обратная совместимость — старая ReplyKeyboard кнопка."""
+    user = message.from_user
+    if user is None or user.id not in ADMIN_IDS:
+        return
+    # Убираем ReplyKeyboard и переходим в админ-режим
+    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+    try:
+        await _tmp.delete()
+    except Exception:
+        pass
+    from src.keyboards.admin.menu import admin_main_menu_kb
     await message.answer(
         "Меню администратора:",
         reply_markup=admin_main_menu_kb()
@@ -420,13 +470,18 @@ async def handle_admin_mode(message: Message) -> None:
 @router.message(F.text == "🧑‍🌾 Консультация")
 async def handle_consultation_button(message: Message) -> None:
     """
-    Обработка нажатия кнопки '🧑‍🌾 Консультация'.
-    Теперь сразу просит вопрос без выбора категории.
-    Категория и культура определяются автоматически из текста вопроса.
+    Обратная совместимость — старая ReplyKeyboard кнопка «Консультация».
     """
     user = message.from_user
     if user is None:
         return
+
+    # Убираем старую ReplyKeyboard
+    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+    try:
+        await _tmp.delete()
+    except Exception:
+        pass
 
     # Получаем внутренний user_id
     from src.services.db.users_repo import get_or_create_user
@@ -675,10 +730,16 @@ async def handle_back_to_menu(message: Message) -> None:
         meta={"type": "callback", "callback_data": "back_to_menu"},
     )
 
-    # Вернуть главное меню
-    menu_text = "Главное меню:"
+    # Убираем старую ReplyKeyboard и показываем inline-меню
+    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+    try:
+        await _tmp.delete()
+    except Exception:
+        pass
+
+    menu_text = "📋 <b>Меню</b>"
     kb = get_main_keyboard()
-    await message.answer(menu_text, reply_markup=kb)
+    await message.answer(menu_text, parse_mode="HTML", reply_markup=kb)
     await _log_bot_msg(menu_text, user_id=internal_user_id, session_id=f"tg:{user.id}", meta=serialize_keyboard(kb))
 
 
@@ -914,10 +975,16 @@ async def render_and_send_profile(
 
 @router.message(F.text == "👤 Мой профиль")
 async def handle_profile(message: Message) -> None:
-    """Обработчик кнопки "Мой профиль"."""
+    """Обратная совместимость — старая ReplyKeyboard кнопка «Мой профиль»."""
     user = message.from_user
     if user is None:
         return
+    # Убираем старую ReplyKeyboard
+    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+    try:
+        await _tmp.delete()
+    except Exception:
+        pass
     await render_and_send_profile(
         bot=message.bot,
         chat_id=message.chat.id,
@@ -1162,14 +1229,7 @@ async def cmd_menu(message: Message) -> None:
     if user is None:
         return
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🧑‍🌾 Консультация", callback_data="menu_consultation")],
-        [InlineKeyboardButton(text="🛍 Магазин", callback_data="menu_shop")],
-        [InlineKeyboardButton(text="👤 Мой профиль", callback_data="menu_profile")],
-        [InlineKeyboardButton(text="📂 Мои материалы", callback_data="menu_materials")],
-    ])
-
-    await message.answer("📋 <b>Меню</b>", parse_mode="HTML", reply_markup=keyboard)
+    await message.answer("📋 <b>Меню</b>", parse_mode="HTML", reply_markup=get_main_keyboard())
 
 
 @router.callback_query(F.data == "menu_consultation")

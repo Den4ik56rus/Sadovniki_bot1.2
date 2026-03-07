@@ -207,7 +207,13 @@ async def send_shop_cards(bot, tg_id: int) -> None:
 
 @router.message(F.text == "🛍 Магазин")
 async def handle_shop_button(message: Message) -> None:
-    """Обработчик ReplyKeyboard кнопки «🛍 Магазин»."""
+    """Обратная совместимость — старая ReplyKeyboard кнопка «🛍 Магазин»."""
+    from src.keyboards.main.main_menu import REMOVE_REPLY_KEYBOARD
+    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+    try:
+        await _tmp.delete()
+    except Exception:
+        pass
     await send_shop_cards(message.bot, message.from_user.id)
 
 

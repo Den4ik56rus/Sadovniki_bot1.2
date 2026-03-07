@@ -2753,9 +2753,9 @@ async def handle_consultation_root(message: Message) -> None:
         state = CONSULTATION_STATE.get(message.from_user.id)
         print(f"[catch-all] Перехвачено сообщение от user {message.from_user.id}, state={state!r}, text={message.text!r}")
     from src.keyboards.main.main_menu import get_main_keyboard
-    menu_prompt = "Пожалуйста, выберите пункт из меню."
+    menu_prompt = "Пожалуйста, выберите пункт из меню:"
     kb = get_main_keyboard()
-    await message.answer(menu_prompt, reply_markup=kb)
+    await message.answer(menu_prompt, parse_mode="HTML", reply_markup=kb)
     if message.from_user:
         await _log_bot_msg(menu_prompt, telegram_user_id=message.from_user.id, meta=serialize_keyboard(kb))
 

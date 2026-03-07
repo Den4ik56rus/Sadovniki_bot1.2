@@ -106,6 +106,19 @@ export function FunnelClientCardFull({ clientId, funnelId, onClose }: FunnelClie
     setSelectedTopicId(null)
   }
 
+  const handleDelete = async () => {
+    if (!client) return
+    const name = client.first_name || client.username || `ID ${client.telegram_user_id}`
+    if (!window.confirm(`Удалить пользователя ${name}?\n\nВсе данные будут удалены безвозвратно. При следующем /start он будет как новый.`)) return
+    try {
+      await api.deleteClient(clientId)
+      onClose()
+    } catch (error) {
+      console.error('Failed to delete client:', error)
+      alert('Ошибка при удалении пользователя')
+    }
+  }
+
   // Close on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -144,6 +157,7 @@ export function FunnelClientCardFull({ clientId, funnelId, onClose }: FunnelClie
               onUpdate={handleUpdate}
               onTopicClick={handleTopicClick}
               onClose={onClose}
+              onDelete={handleDelete}
             />
           </div>
           <div className={styles.rightPanel}>

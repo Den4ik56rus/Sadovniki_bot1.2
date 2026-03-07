@@ -1531,3 +1531,36 @@ async def reset_client_quiz(request: web.Request) -> web.Response:
     except Exception as e:
         logger.error(f"Error resetting quiz for {user_id}: {e}")
         raise web.HTTPInternalServerError(text="Database error")
+
+
+async def delete_client(request: web.Request) -> web.Response:
+    """
+    DELETE /api/admin/crm/clients/{id}
+    Полностью удаляет пользователя из БД (CASCADE на все связанные таблицы).
+    При следующем /start он будет создан как новый пользователь.
+    """
+    try:
+        user_id = int(request.match_info["id"])
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            # Получаем telegram_user_id перед удалением (для лога)
+            row = await conn.fetchrow(
+                "SELECT telegram_user_id FROM users WHERE id = $1",
+                user_id,
+            )
+            if not row:
+                raise web.HTTPNotFound(text="User not found")
+
+            tg_id = row["telegram_user_id"]
+            await conn.execute("DELETE FROM users WHERE id = $1", user_id)
+
+        logger.info(f"Client {user_id} (tg:{tg_id}) deleted by admin")
+        return web.json_response({"success": True})
+
+    except web.HTTPNotFound:
+        raise
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid client ID")
+    except Exception as e:
+        logger.error(f"Error deleting client {request.match_info.get('id')}: {e}")
+        raise web.HTTPInternalServerError(text="Database error")

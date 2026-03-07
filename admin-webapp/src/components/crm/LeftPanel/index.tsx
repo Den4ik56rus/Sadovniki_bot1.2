@@ -33,9 +33,10 @@ interface LeftPanelProps {
   onUpdate: () => void
   onTopicClick?: (topicId: number) => void
   onClose?: () => void
+  onDelete?: () => void
 }
 
-export function LeftPanel({ client, allTags, funnelId, onUpdate, onTopicClick: _onTopicClick, onClose }: LeftPanelProps) {
+export function LeftPanel({ client, allTags, funnelId, onUpdate, onTopicClick: _onTopicClick, onClose, onDelete }: LeftPanelProps) {
   const [activeTab, setActiveTab] = useState<TabId>('main')
   const [isUpdating, setIsUpdating] = useState(false)
   const [notes, setNotes] = useState<ClientNote[]>([])
@@ -269,6 +270,11 @@ export function LeftPanel({ client, allTags, funnelId, onUpdate, onTopicClick: _
             </button>
           )}
           <span className={styles.dealTitle}>Сделка #{client.id}</span>
+          {onDelete && (
+            <button className={styles.deleteBtn} onClick={onDelete} title="Удалить пользователя">
+              🗑
+            </button>
+          )}
           <button className={styles.menuBtn} title="Меню">⋯</button>
         </div>
 

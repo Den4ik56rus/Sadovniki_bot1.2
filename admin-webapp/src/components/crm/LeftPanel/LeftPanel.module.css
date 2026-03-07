@@ -72,6 +72,26 @@
   color: var(--text-primary);
 }
 
+.deleteBtn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  background: transparent;
+  border: none;
+  font-size: 0.9rem;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+  opacity: 0.5;
+}
+
+.deleteBtn:hover {
+  background: #fee2e2;
+  opacity: 1;
+}
+
 .tagRow {
   margin-bottom: 0.75rem;
 }

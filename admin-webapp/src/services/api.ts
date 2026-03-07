@@ -435,6 +435,12 @@ export const api = {
     })
   },
 
+  async deleteClient(clientId: number): Promise<{ success: boolean }> {
+    return fetchApi(`/crm/clients/${clientId}`, {
+      method: 'DELETE',
+    })
+  },
+
   // CRM: Tasks
   async getClientTasks(clientId: number, includeCompleted = true): Promise<ClientTask[]> {
     const query = `?include_completed=${includeCompleted}`

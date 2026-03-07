@@ -948,3 +948,46 @@ async def cb_kb_reject(callback: CallbackQuery):
     )
 
     await callback.answer("Отклонено.")
+
+
+# ─── Удаление / сброс пользователя ────────────────────────────────
+
+@router.message(Command("reset_user"))
+async def cmd_reset_user(message: Message) -> None:
+    """
+    /reset_user <telegram_id> — удаляет пользователя из БД.
+    При следующем /start он будет создан заново как новый.
+    Все данные (токены, квиз, воронка, консультации) удаляются каскадно.
+    """
+    if not is_admin(message.from_user.id):
+        return
+
+    parts = (message.text or "").split()
+    if len(parts) < 2 or not parts[1].isdigit():
+        await message.answer(
+            "Использование: <code>/reset_user 123456789</code>\n"
+            "Укажите Telegram ID пользователя.",
+            parse_mode="HTML",
+        )
+        return
+
+    target_tg_id = int(parts[1])
+
+    from src.services.db.users_repo import delete_user_by_telegram_id
+    deleted = await delete_user_by_telegram_id(target_tg_id)
+
+    if deleted:
+        # Очищаем in-memory состояние консультации
+        from src.handlers.common import clear_consultation_state
+        await clear_consultation_state(target_tg_id)
+
+        await message.answer(
+            f"Пользователь <code>{target_tg_id}</code> удалён.\n"
+            f"При следующем /start он пройдёт регистрацию заново.",
+            parse_mode="HTML",
+        )
+    else:
+        await message.answer(
+            f"Пользователь с Telegram ID <code>{target_tg_id}</code> не найден.",
+            parse_mode="HTML",
+        )

@@ -151,3 +151,19 @@ async def count_all_users() -> int:
     async with pool.acquire() as conn:
         row = await conn.fetchrow("SELECT COUNT(*) AS cnt FROM users;")
         return int(row["cnt"]) if row and row["cnt"] is not None else 0
+
+
+async def delete_user_by_telegram_id(telegram_user_id: int) -> bool:
+    """
+    Удаляет пользователя по telegram_user_id.
+    Все связанные записи удаляются каскадно (ON DELETE CASCADE).
+    Возвращает True если пользователь был найден и удалён.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            "DELETE FROM users WHERE telegram_user_id = $1",
+            telegram_user_id,
+        )
+        # result = "DELETE N" где N — количество удалённых строк
+        return result == "DELETE 1"

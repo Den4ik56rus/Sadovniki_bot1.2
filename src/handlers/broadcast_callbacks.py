@@ -208,6 +208,53 @@ async def handle_broadcast_discount_click(callback: CallbackQuery) -> None:
         await callback.answer("Произошла ошибка")
 
 
+@router.callback_query(F.data.startswith("bcast_quiz:"))
+async def handle_broadcast_quiz_click(callback: CallbackQuery) -> None:
+    """Обработка клика по кнопке START квиза из рассылки."""
+    try:
+        parts = callback.data.split(":")
+        broadcast_id = int(parts[1])
+
+        from src.services.db.pool import get_pool
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            user_row = await conn.fetchrow(
+                "SELECT id FROM users WHERE telegram_user_id = $1",
+                callback.from_user.id,
+            )
+
+        if not user_row:
+            await callback.answer("Пользователь не найден")
+            return
+
+        user_id = user_row['id']
+
+        # Записываем клик для аналитики
+        run_id = await resolve_run_id_from_recipient(broadcast_id, user_id)
+        await record_button_click(
+            broadcast_id=broadcast_id,
+            user_id=user_id,
+            telegram_user_id=callback.from_user.id,
+            option_key="quiz_start",
+            button_text="START",
+            run_id=run_id,
+        )
+
+        await callback.answer()
+
+        # Запускаем квиз
+        from src.handlers.funnel_b import start_funnel_b_from_broadcast
+        await start_funnel_b_from_broadcast(
+            bot=callback.bot,
+            telegram_user_id=callback.from_user.id,
+            user_id=user_id,
+        )
+
+    except Exception as e:
+        logger.error(f"Error handling broadcast quiz click: {e}", exc_info=True)
+        await callback.answer("Произошла ошибка")
+
+
 @router.poll_answer()
 async def handle_poll_answer(poll_answer: PollAnswer) -> None:
     """Обработка ответа на неанонимный опрос рассылки."""

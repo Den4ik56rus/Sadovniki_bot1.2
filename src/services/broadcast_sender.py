@@ -212,6 +212,12 @@ async def build_inline_keyboard(
                     text=btn_text,
                     callback_data=callback_data,
                 ))
+            elif btn['type'] == 'quiz_start':
+                callback_data = f"bcast_quiz:{broadcast_id}"
+                row_buttons.append(InlineKeyboardButton(
+                    text=btn.get('text', 'START'),
+                    callback_data=callback_data,
+                ))
         if row_buttons:
             keyboard.append(row_buttons)
 

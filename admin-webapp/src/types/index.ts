@@ -1629,7 +1629,7 @@ export type BroadcastTargetType = 'all' | 'invite_link' | 'funnel_stage' | 'manu
 export interface BroadcastButton {
   row: number
   text: string
-  type: 'url' | 'quick_reply' | 'payment' | 'discount'
+  type: 'url' | 'quick_reply' | 'payment' | 'discount' | 'quiz_start'
   url?: string
   option_key?: string
   reply_text?: string

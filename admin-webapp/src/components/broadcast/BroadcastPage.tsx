@@ -5,9 +5,11 @@ import { useBroadcastStore } from '@/store/broadcastStore'
 import { BroadcastList } from './BroadcastList'
 import { BroadcastForm } from './BroadcastForm'
 import { BroadcastDetail } from './BroadcastDetail'
+import { QuizBroadcastForm } from './QuizBroadcastForm'
 import styles from './BroadcastPage.module.css'
 
 type Mode = 'list' | 'create' | 'edit'
+type Tab = 'broadcasts' | 'quiz'
 
 export function BroadcastPage() {
   const {
@@ -24,6 +26,7 @@ export function BroadcastPage() {
   } = useBroadcastStore()
 
   const [mode, setMode] = useState<Mode>('list')
+  const [activeTab, setActiveTab] = useState<Tab>('broadcasts')
 
   useEffect(() => {
     fetchBroadcasts()
@@ -73,6 +76,26 @@ export function BroadcastPage() {
 
   return (
     <div className={styles.container}>
+      {/* Tabs */}
+      <div className={styles.tabBar}>
+        <button
+          className={`${styles.tabButton} ${activeTab === 'broadcasts' ? styles.tabActive : ''}`}
+          onClick={() => { setActiveTab('broadcasts'); setMode('list') }}
+        >
+          Рассылки
+        </button>
+        <button
+          className={`${styles.tabButton} ${activeTab === 'quiz' ? styles.tabActive : ''}`}
+          onClick={() => setActiveTab('quiz')}
+        >
+          Квиз-рассылка
+        </button>
+      </div>
+
+      {activeTab === 'quiz' ? (
+        <QuizBroadcastForm />
+      ) : (
+      <>
       {/* Header */}
       <div className={styles.header}>
         <div className={styles.headerLeft}>
@@ -161,6 +184,8 @@ export function BroadcastPage() {
             </div>
           )}
         </div>
+      )}
+      </>
       )}
     </div>
   )

@@ -1196,6 +1196,37 @@ async def start_funnel_b(message: Message, user_id: int) -> None:
     await set_consultation_state(telegram_user_id, "quiz_awaiting_culture")
 
 
+async def start_funnel_b_from_broadcast(bot, telegram_user_id: int, user_id: int) -> None:
+    """
+    Точка входа для воронки Б из рассылки.
+    Welcome-текст уже отправлен как сообщение рассылки — сразу показываем квиз.
+    """
+    logger.info(f"[funnel_b] User {user_id} entered funnel B from broadcast")
+
+    # Если квиз уже пройден — не запускаем повторно
+    already_done = await _quiz_already_done(user_id)
+    if already_done:
+        await bot.send_message(
+            chat_id=telegram_user_id,
+            text="Вы уже проходили диагностику! Если хотите пройти ещё раз — напишите /start",
+        )
+        return
+
+    # Пауза с индикатором "печатает..."
+    await bot.send_chat_action(chat_id=telegram_user_id, action=ChatAction.TYPING)
+    await asyncio.sleep(2)
+
+    # Первый шаг квиза — выбор культуры
+    await bot.send_message(
+        chat_id=telegram_user_id,
+        text=QUIZ_CULTURE_TEXT,
+        reply_markup=get_culture_keyboard(),
+    )
+    await _log_quiz_msg(user_id, "bot", QUIZ_CULTURE_TEXT)
+
+    await set_consultation_state(telegram_user_id, "quiz_awaiting_culture")
+
+
 # ---------------------------------------------------------------------------
 # Обработчики квиза — культура
 # ---------------------------------------------------------------------------

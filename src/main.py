@@ -162,6 +162,11 @@ async def main() -> None:
     subscription_check_task = asyncio.create_task(_subscription_expiring_loop(check_subscription_expiring_triggers))
     print("Фоновая задача проверки подписок запущена.")
 
+    # Запускаем фоновую задачу для воронки дожима tripwire
+    from src.services.tripwire_followup_sender import process_pending_followups
+    followup_task = asyncio.create_task(_trigger_scheduler_loop(process_pending_followups))
+    print("Фоновая задача воронки дожима запущена.")
+
     # Graceful shutdown: сохраняем ссылку на dispatcher и ставим свои signal handlers.
     # При SIGTERM наш handler ставит флаг + сигнализирует aiogram остановить polling.
     # start_polling(close_bot_session=False) НЕ закрывает bot.session —
@@ -200,6 +205,7 @@ async def main() -> None:
         automation_trigger_task.cancel()
         subscription_check_task.cancel()
         reconciliation_task.cancel()
+        followup_task.cancel()
         try:
             await webhook_consumer_task
         except asyncio.CancelledError:
@@ -228,6 +234,10 @@ async def main() -> None:
             await reconciliation_task
         except asyncio.CancelledError:
             print("Фоновая задача сверки платежей остановлена.")
+        try:
+            await followup_task
+        except asyncio.CancelledError:
+            print("Фоновая задача воронки дожима остановлена.")
 
         # Закрываем SSE соединения перед остановкой API сервера
         from src.api.sse_manager import sse_manager

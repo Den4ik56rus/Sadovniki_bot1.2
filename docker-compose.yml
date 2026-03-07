@@ -49,6 +49,12 @@ services:
       - ./data/quiz_solutions:/app/data/quiz_solutions
       - ./data/presentations:/app/data/presentations
       - ./data/content/presentations:/app/data/content/presentations
+      - ./data/flagship:/app/data/flagship
+      - ./data/images:/app/data/images
+      - ./data/article_pdfs:/app/data/article_pdfs
+      - ./data/generated_images:/app/data/generated_images
+      - ./data/previews:/app/data/previews
+      - ./data/broadcast_photos:/app/data/broadcast_photos
       - ./vertex-ai-key.json:/app/vertex-ai-key.json:ro
     logging:
       driver: "json-file"

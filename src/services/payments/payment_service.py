@@ -75,6 +75,11 @@ async def create_payment_activity_event(user_id: int, payment_id: int):
             if isinstance(meta, str):
                 meta = json.loads(meta)
             product_name = f"Персональный план: {meta.get('problem_display', 'квиз')}"
+        elif payment['payment_type'] == 'flagship':
+            meta = payment.get('metadata', {})
+            if isinstance(meta, str):
+                meta = json.loads(meta)
+            product_name = meta.get('product_title', 'Сезонная программа')
 
         event_data = {
             'payment_id': payment_id,
@@ -829,6 +834,100 @@ async def create_quiz_plan_payment(
         raise
 
 
+async def create_flagship_payment(
+    user_id: int,
+    telegram_user_id: int,
+    product_key: str,
+    product_title: str,
+    price_rub: Decimal,
+    return_url: Optional[str] = None,
+    user_email: Optional[str] = None,
+    product_type: str = "seasonal_program",
+) -> Dict[str, Any]:
+    """
+    Создает платеж за флагманский продукт (сезонная программа или отдельный блок).
+
+    Args:
+        user_id: Внутренний ID пользователя
+        telegram_user_id: Telegram ID пользователя
+        product_key: Ключ продукта (strawberry_summer или strawberry_summer__nutrition)
+        product_title: Название продукта
+        price_rub: Цена в рублях
+        return_url: URL для возврата
+        user_email: Email для чека
+        product_type: Тип продукта (seasonal_program или single_block)
+
+    Returns:
+        Словарь с данными платежа: payment_id, confirmation_url, amount
+    """
+    idempotency_key = f"flagship_{user_id}_{product_key}_{int(datetime.now().timestamp())}"
+
+    description_text = product_title
+
+    receipt_items = yookassa_client.create_receipt_items(
+        description=description_text,
+        amount_rub=price_rub,
+        quantity=1,
+    )
+
+    metadata = {
+        "user_id": str(user_id),
+        "telegram_user_id": str(telegram_user_id),
+        "payment_type": "flagship",
+        "product_key": product_key,
+        "product_title": product_title,
+        "product_type": product_type,
+    }
+
+    try:
+        yookassa_payment = await yookassa_client.create_payment(
+            amount_rub=price_rub,
+            description=description_text,
+            return_url=return_url or settings.YOOKASSA_RETURN_URL,
+            user_telegram_id=telegram_user_id,
+            user_email=user_email,
+            receipt_items=receipt_items if settings.YOOKASSA_SEND_RECEIPT else None,
+            metadata=metadata,
+            idempotence_key=idempotency_key,
+        )
+
+        payment = await payment_repo.create_payment(
+            user_id=user_id,
+            yookassa_payment_id=yookassa_payment["id"],
+            idempotency_key=idempotency_key,
+            payment_type="flagship",
+            amount_rub=float(price_rub),
+            description=description_text,
+            confirmation_url=yookassa_payment["confirmation"]["confirmation_url"],
+            metadata=metadata,
+        )
+
+        await create_payment_activity_event(user_id, payment["id"])
+
+        logger.info(
+            f"Flagship payment created: payment_id={payment['id']}, "
+            f"yookassa_id={yookassa_payment['id']}, user={user_id}, product={product_key}"
+        )
+
+        return {
+            "payment_id": payment["id"],
+            "yookassa_payment_id": yookassa_payment["id"],
+            "confirmation_url": yookassa_payment["confirmation"]["confirmation_url"],
+            "amount": float(price_rub),
+            "description": description_text,
+        }
+
+    except Exception as e:
+        logger.error(f"Failed to create flagship payment: {e}", exc_info=True)
+        await payment_repo.log_payment_error(
+            user_id=user_id,
+            payment_id=None,
+            error_code="flagship_payment_creation_failed",
+            error_message=str(e),
+        )
+        raise
+
+
 async def create_recurrent_subscription_payment(
     user_id: int,
     subscription_id: int,
@@ -1019,6 +1118,8 @@ async def process_payment_success(
             await _process_guide_payment_success(payment, verified_payment)
         elif payment["payment_type"] == "quiz_plan":
             await _process_quiz_plan_payment_success(payment, verified_payment)
+        elif payment["payment_type"] == "flagship":
+            await _process_flagship_payment_success(payment, verified_payment)
         else:
             raise ValueError(f"Unknown payment type: {payment['payment_type']}")
 
@@ -1147,6 +1248,14 @@ async def _process_subscription_payment_success(
         payment_method_id=payment_method_id,
         bonus_tokens=bonus_tokens if bonus_tokens else None,
     )
+
+    # CRM: подписка → 'bought_product' + добавляем в Buyers
+    try:
+        from src.services.db.funnel_repo import auto_move_client_in_crm, add_client_to_funnel
+        await auto_move_client_in_crm(payment["user_id"], 'bought_product')
+        await add_client_to_funnel(payment["user_id"], 'buyers', 'active')
+    except Exception as e:
+        logger.warning(f"[subscription] CRM/Buyers move failed: {e}")
 
 
 async def _process_subscription_renewal_success(
@@ -1751,9 +1860,71 @@ async def _process_quiz_plan_payment_success(
     if isinstance(metadata, str):
         metadata = json.loads(metadata)
 
+    # Отменяем воронку дожима (follow-up) если была запущена
+    try:
+        from src.services.db.tripwire_followup_repo import cancel_all_pending
+        cancelled = await cancel_all_pending(payment["user_id"])
+        if cancelled:
+            logger.info(f"[quiz_plan] Cancelled {cancelled} follow-ups for user {payment['user_id']}")
+    except Exception as e:
+        logger.error(f"[quiz_plan] Error cancelling follow-ups: {e}")
+
     # Уведомляем пользователя и запускаем генерацию в фоне
     asyncio.create_task(
         _generate_quiz_plan_after_payment(payment, metadata)
+    )
+
+
+async def _process_flagship_payment_success(
+    payment: Dict[str, Any],
+    yookassa_payment: Dict[str, Any],
+) -> None:
+    """Обрабатывает успешный платеж за флагманский продукт — выдаёт доступ."""
+    metadata = payment.get("metadata", {})
+    if isinstance(metadata, str):
+        metadata = json.loads(metadata)
+
+    product_key = metadata.get("product_key", "")
+    product_title = metadata.get("product_title", "Сезонная программа")
+    product_type = metadata.get("product_type", "seasonal_program")
+    telegram_user_id = int(metadata.get("telegram_user_id", 0))
+
+    # Выдать доступ
+    from src.services.db import flagship_repo
+    await flagship_repo.grant_access(
+        user_id=payment["user_id"],
+        product_key=product_key,
+        payment_id=payment["id"],
+        product_type=product_type,
+    )
+
+    # Уведомить пользователя
+    if telegram_user_id:
+        try:
+            from src.main import bot
+            await bot.send_message(
+                chat_id=telegram_user_id,
+                text=(
+                    f"✅ Оплата подтверждена!\n\n"
+                    f"<b>{product_title}</b> — доступ открыт.\n\n"
+                    f"Нажмите «👤 Мой профиль» → «📂 Мои материалы», "
+                    f"чтобы открыть программу."
+                ),
+                parse_mode="HTML",
+            )
+        except Exception as e:
+            logger.error(f"[flagship] Ошибка отправки уведомления: {e}")
+
+    # CRM: покупка flagship → 'bought_product'
+    try:
+        from src.services.db.funnel_repo import auto_move_client_in_crm
+        await auto_move_client_in_crm(payment["user_id"], 'bought_product')
+    except Exception as e:
+        logger.warning(f"[flagship] CRM auto-move to bought_product failed: {e}")
+
+    logger.info(
+        f"[flagship] Access granted: user={payment['user_id']}, "
+        f"product={product_key}, payment={payment['id']}"
     )
 
 
@@ -1890,12 +2061,12 @@ async def _generate_quiz_plan_after_payment(
 
             await _generate_auto_consultation(msg, tg_user, payment["user_id"])
 
-        # Перемещаем в CRM-воронку (покупатели)
+        # CRM: оплата quiz plan → 'bought_plan'
         try:
-            from src.services.db.client_funnel_repo import update_client_status
-            await update_client_status(payment["user_id"], "paid")
+            from src.services.db.funnel_repo import auto_move_client_in_crm
+            await auto_move_client_in_crm(payment["user_id"], 'bought_plan')
         except Exception as e:
-            logger.error(f"[quiz_plan] Ошибка перемещения в воронке: {e}")
+            logger.error(f"[quiz_plan] CRM auto-move to bought_plan failed: {e}")
 
         # Запускаем upsell-воронку через 90 секунд
         try:

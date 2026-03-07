@@ -38,8 +38,17 @@ from src.handlers.broadcast_responses import router as broadcast_responses_route
 # Воронка Б — квиз-онбординг (callback-хендлеры quiz_*)
 from src.handlers.funnel_b import router as funnel_b_router
 
+# Воронка Б — follow-up дожим для не-купивших tripwire (callback-хендлеры quiz_fu_*)
+from src.handlers.funnel_b_followup import router as funnel_b_followup_router
+
 # Воронка Б — upsell после оплаты квиза (callback-хендлеры quiz_us_*)
 from src.handlers.funnel_b_upsell import router as funnel_b_upsell_router
+
+# Магазин — постоянная точка входа в покупку (callback-хендлеры shop_*)
+from src.handlers.shop import router as shop_router
+
+# Флагманский продукт — доступ к контенту (callback-хендлеры flagship_*)
+from src.handlers.flagship import router as flagship_router
 
 
 def setup_routers(dp: Dispatcher) -> None:
@@ -69,8 +78,17 @@ def setup_routers(dp: Dispatcher) -> None:
     # 2.7. Воронка Б — callback-хендлеры квиза (перед консультациями)
     dp.include_router(funnel_b_router)
 
+    # 2.75. Воронка Б — follow-up дожим для не-купивших tripwire
+    dp.include_router(funnel_b_followup_router)
+
     # 2.8. Воронка Б — upsell после оплаты квиза
     dp.include_router(funnel_b_upsell_router)
+
+    # 2.85. Магазин — кнопка главного меню (после upsell, перед flagship)
+    dp.include_router(shop_router)
+
+    # 2.9. Флагманский продукт — доступ к контенту
+    dp.include_router(flagship_router)
 
     # 3. Админка (модерация /kb_pending и пр.) — ПЕРЕД консультациями!
     dp.include_router(moderation_handlers.router)

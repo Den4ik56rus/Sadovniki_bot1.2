@@ -15,7 +15,7 @@ import asyncio
 import logging
 
 # === ЛОКАЛЬНОЕ ТЕСТИРОВАНИЕ: обход оплаты ===
-SKIP_PAYMENT = True  # Поставить False для боевого режима
+SKIP_PAYMENT = False  # Поставить False для боевого режима
 
 from aiogram import Router, F
 from aiogram.types import (
@@ -937,9 +937,11 @@ def _get_blueberry_offer_text(problem_key: str) -> str:
 
 
 def get_offer_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура финального оффера: 2 кнопки по 1 в ряд."""
+    """Клавиатура финального оффера: 3 кнопки по 1 в ряд."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔥 Получить персональную схему", callback_data="quiz_cta_payment")],
+        [InlineKeyboardButton(text="🔄 Выбрать другую проблему", callback_data="quiz_change_problem")],
+        [InlineKeyboardButton(text="🌱 Выбрать другую культуру", callback_data="quiz_change_culture")],
     ])
 
 
@@ -1219,14 +1221,26 @@ async def handle_quiz_culture(callback: CallbackQuery) -> None:
 
     await _log_quiz_msg(internal_user_id, "user", f"Культура: {culture_label}")
 
-    # Сохраняем culture_key в контекст для персонализации оффера
-    CONSULTATION_CONTEXT[tg_user.id] = {"quiz_culture_key": culture_key}
+    # Сохраняем culture_key в контекст, сохраняя регион если уже был
+    old_ctx = CONSULTATION_CONTEXT.get(tg_user.id, {})
+    new_ctx = {"quiz_culture_key": culture_key}
+    if "quiz_region_label" in old_ctx:
+        new_ctx["quiz_region_label"] = old_ctx["quiz_region_label"]
+    CONSULTATION_CONTEXT[tg_user.id] = new_ctx
+
+    # Проверяем, есть ли уже сохранённый регион (при смене культуры)
+    has_region = "quiz_region_label" in new_ctx
 
     if culture_key in ("strawberry", "raspberry"):
         # Для клубники и малины — доп. вопрос про сорт (заменяем сообщение)
         await set_consultation_state(tg_user.id, "quiz_awaiting_variety")
         await callback.message.edit_text(QUIZ_VARIETY_TEXT, reply_markup=get_variety_keyboard())
         await _log_quiz_msg(internal_user_id, "bot", QUIZ_VARIETY_TEXT)
+    elif has_region:
+        # Регион уже выбран (смена культуры) — сразу к проблемам
+        await set_consultation_state(tg_user.id, "quiz_awaiting_problem")
+        await callback.message.edit_text(QUIZ_PROBLEM_TEXT, reply_markup=get_problem_keyboard_for_context(new_ctx))
+        await _log_quiz_msg(internal_user_id, "bot", QUIZ_PROBLEM_TEXT)
     else:
         await set_consultation_state(tg_user.id, "quiz_awaiting_region")
         await callback.message.edit_text(QUIZ_REGION_TEXT, reply_markup=get_region_keyboard())
@@ -1269,10 +1283,15 @@ async def handle_quiz_variety(callback: CallbackQuery) -> None:
 
     await _log_quiz_msg(internal_user_id, "user", f"Сорт: {variety_label}")
 
-    # Заменяем сообщение на следующий вопрос
-    await set_consultation_state(tg_user.id, "quiz_awaiting_region")
-    await callback.message.edit_text(QUIZ_REGION_TEXT, reply_markup=get_region_keyboard())
-    await _log_quiz_msg(internal_user_id, "bot", QUIZ_REGION_TEXT)
+    # Если регион уже выбран (смена культуры) — сразу к проблемам
+    if "quiz_region_label" in ctx:
+        await set_consultation_state(tg_user.id, "quiz_awaiting_problem")
+        await callback.message.edit_text(QUIZ_PROBLEM_TEXT, reply_markup=get_problem_keyboard_for_context(ctx))
+        await _log_quiz_msg(internal_user_id, "bot", QUIZ_PROBLEM_TEXT)
+    else:
+        await set_consultation_state(tg_user.id, "quiz_awaiting_region")
+        await callback.message.edit_text(QUIZ_REGION_TEXT, reply_markup=get_region_keyboard())
+        await _log_quiz_msg(internal_user_id, "bot", QUIZ_REGION_TEXT)
 
 
 # ---------------------------------------------------------------------------
@@ -1427,6 +1446,16 @@ async def handle_quiz_problem(callback: CallbackQuery) -> None:
 
     await _log_quiz_msg(internal_user_id, "user", f"Проблема: {problem_label}")
 
+    # CRM: квиз пройден → 'quiz_done'
+    try:
+        from src.services.db.funnel_repo import auto_move_client_in_crm
+        await auto_move_client_in_crm(internal_user_id, 'quiz_done')
+    except Exception as e:
+        logger.error(f"[funnel_b] Auto-move to quiz_done failed for {internal_user_id}: {e}")
+
+    # Сохраняем message_id сообщений оффера для удаления при смене проблемы/культуры
+    offer_msg_ids = [callback.message.message_id]  # вопрос "что волнует"
+
     # Пробуем загрузить текст офера из файла offer.txt
     from src.services.quiz_solutions import get_offer_text as get_file_offer
     region = ctx.get("quiz_region_label", "")
@@ -1449,7 +1478,8 @@ async def handle_quiz_problem(callback: CallbackQuery) -> None:
         else:
             intro_text = _get_offer_text(culture_key, problem_key)
 
-    await callback.message.answer(intro_text)
+    intro_msg = await callback.message.answer(intro_text)
+    offer_msg_ids.append(intro_msg.message_id)
     await _log_quiz_msg(internal_user_id, "bot", intro_text)
 
     # Превью PDF-решения (если есть готовый PDF для этой проблемы)
@@ -1465,21 +1495,104 @@ async def handle_quiz_problem(callback: CallbackQuery) -> None:
 
         preview_caption = "Обычно такой план стоит <s>490 ₽</s>.\nСегодня — <b>99 ₽</b>"
 
-        await callback.message.answer_photo(
+        preview_msg = await callback.message.answer_photo(
             photo=preview_photo,
             caption=preview_caption,
             parse_mode="HTML",
             reply_markup=get_offer_keyboard(),
         )
+        offer_msg_ids.append(preview_msg.message_id)
         await _log_quiz_msg(internal_user_id, "bot", f"[Превью PDF + оффер]")
 
-    # Квиз пройден — очищаем состояние
-    await clear_consultation_state(tg_user.id)
+    # Квиз пройден — очищаем только state, контекст оставляем
+    # (нужен для кнопок "выбрать другую проблему/культуру")
+    CONSULTATION_STATE.pop(tg_user.id, None)
 
     if not (solution and solution.get("preview_path")):
         # Нет превью — показываем оффер отдельным сообщением
-        await callback.message.answer(OFFER_TEXT_2, reply_markup=get_offer_keyboard())
+        offer_msg = await callback.message.answer(OFFER_TEXT_2, reply_markup=get_offer_keyboard())
+        offer_msg_ids.append(offer_msg.message_id)
         await _log_quiz_msg(internal_user_id, "bot", OFFER_TEXT_2)
+
+    # Сохраняем message_id оффера в контекст для удаления при смене
+    ctx["quiz_offer_msg_ids"] = offer_msg_ids
+    CONSULTATION_CONTEXT[tg_user.id] = ctx
+
+    # Регистрируем в воронке дожима (cancel + reenroll при смене проблемы/культуры)
+    try:
+        from src.services.db.tripwire_followup_repo import cancel_and_reenroll
+        from src.services.db.pool import get_pool as _get_pool
+        _pool = _get_pool()
+        async with _pool.acquire() as _conn:
+            _quiz = await _conn.fetchrow(
+                "SELECT culture FROM user_quiz_answers WHERE user_id = $1",
+                internal_user_id,
+            )
+        _culture_display = _quiz["culture"] if _quiz and _quiz["culture"] else "ягодных культур"
+        await cancel_and_reenroll(
+            user_id=internal_user_id,
+            telegram_user_id=tg_user.id,
+            culture=_culture_display,
+            problem=problem_label,
+            problem_key=problem_key,
+        )
+        logger.info(f"[funnel_b] tripwire_offer_shown: user {internal_user_id}")
+    except Exception as e:
+        logger.error(f"[funnel_b] Follow-up enrollment error for {internal_user_id}: {e}")
+
+
+# ---------------------------------------------------------------------------
+# Кнопки «Выбрать другую проблему» / «Выбрать другую культуру»
+# ---------------------------------------------------------------------------
+
+async def _delete_offer_messages(callback: CallbackQuery) -> None:
+    """Удаляет сохранённые сообщения оффера (вопрос, текст, превью)."""
+    ctx = CONSULTATION_CONTEXT.get(callback.from_user.id, {})
+    msg_ids = ctx.pop("quiz_offer_msg_ids", [])
+    bot = callback.message.bot
+    chat_id = callback.message.chat.id
+    for mid in msg_ids:
+        try:
+            await bot.delete_message(chat_id=chat_id, message_id=mid)
+        except Exception:
+            pass
+
+
+@router.callback_query(F.data == "quiz_change_problem")
+async def handle_quiz_change_problem(callback: CallbackQuery) -> None:
+    """Пользователь хочет выбрать другую проблему — показываем клавиатуру проблем."""
+    await callback.answer()
+
+    tg_user = callback.from_user
+    internal_user_id = await _get_internal_user_id(tg_user.id, tg_user)
+
+    await _log_quiz_msg(internal_user_id, "user", "Нажал: Выбрать другую проблему")
+
+    # Удаляем старые сообщения оффера
+    await _delete_offer_messages(callback)
+
+    ctx = CONSULTATION_CONTEXT.get(tg_user.id, {})
+    await set_consultation_state(tg_user.id, "quiz_awaiting_problem")
+    await callback.message.answer(QUIZ_PROBLEM_TEXT, reply_markup=get_problem_keyboard_for_context(ctx))
+    await _log_quiz_msg(internal_user_id, "bot", QUIZ_PROBLEM_TEXT)
+
+
+@router.callback_query(F.data == "quiz_change_culture")
+async def handle_quiz_change_culture(callback: CallbackQuery) -> None:
+    """Пользователь хочет выбрать другую культуру — показываем клавиатуру культур."""
+    await callback.answer()
+
+    tg_user = callback.from_user
+    internal_user_id = await _get_internal_user_id(tg_user.id, tg_user)
+
+    await _log_quiz_msg(internal_user_id, "user", "Нажал: Выбрать другую культуру")
+
+    # Удаляем старые сообщения оффера
+    await _delete_offer_messages(callback)
+
+    await set_consultation_state(tg_user.id, "quiz_awaiting_culture")
+    await callback.message.answer(QUIZ_CULTURE_TEXT, reply_markup=get_culture_keyboard())
+    await _log_quiz_msg(internal_user_id, "bot", QUIZ_CULTURE_TEXT)
 
 
 # ---------------------------------------------------------------------------
@@ -1494,12 +1607,12 @@ async def handle_quiz_cta_payment(callback: CallbackQuery) -> None:
     tg_user = callback.from_user
     internal_user_id = await _get_internal_user_id(tg_user.id, tg_user)
 
-    # Отслеживаем этап в CRM-воронке (колонка "УЗНАЛ ЦЕНУ")
+    # CRM: нажал CTA → 'saw_pricing' (узнал цену)
     try:
-        from src.services.db.client_funnel_repo import update_client_status
-        await update_client_status(internal_user_id, "paid")
+        from src.services.db.funnel_repo import auto_move_client_in_crm
+        await auto_move_client_in_crm(internal_user_id, 'saw_pricing')
     except Exception as e:
-        logger.error(f"[funnel_b] Ошибка перемещения в воронке для {internal_user_id}: {e}")
+        logger.error(f"[funnel_b] Auto-move to saw_pricing failed for {internal_user_id}: {e}")
 
     await _log_quiz_msg(internal_user_id, "user", "🔥 Получить персональную схему")
 
@@ -1595,6 +1708,13 @@ async def handle_quiz_fake_payment(callback: CallbackQuery) -> None:
             "problem_display": problem_display,
         },
     }
+
+    # Отменяем воронку дожима
+    try:
+        from src.services.db.tripwire_followup_repo import cancel_all_pending
+        await cancel_all_pending(internal_user_id)
+    except Exception as e:
+        logger.error(f"[funnel_b] Error cancelling follow-ups: {e}")
 
     from src.services.payments.payment_service import _generate_quiz_plan_after_payment
     await _generate_quiz_plan_after_payment(fake_payment, fake_payment["metadata"])

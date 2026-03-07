@@ -11,7 +11,8 @@ async def set_main_menu_commands(bot: Bot) -> None:
     """
     commands = [
         BotCommand(command="start",        description="🚀 Запустить бота"),
-        BotCommand(command="subscription", description="📋 Управление подпиской"),
+        BotCommand(command="menu",         description="📋 Меню"),
+        BotCommand(command="subscription", description="💳 Управление подпиской"),
         BotCommand(command="support",      description="💬 Написать в поддержку"),
     ]
 

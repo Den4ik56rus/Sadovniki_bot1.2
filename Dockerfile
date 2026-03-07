@@ -21,7 +21,7 @@ COPY data/fonts/ ./data/fonts/
 COPY data/varieties_reference.json ./data/varieties_reference.json
 
 # Директории для runtime данных (монтируются как volumes)
-RUN mkdir -p data/avatars data/guides data/documents data/prompt_documents data/presentations
+RUN mkdir -p data/avatars data/guides data/documents data/prompt_documents data/presentations data/images data/article_pdfs data/generated_images data/previews data/broadcast_photos data/flagship data/content/presentations data/quiz_solutions
 
 EXPOSE 8080
 

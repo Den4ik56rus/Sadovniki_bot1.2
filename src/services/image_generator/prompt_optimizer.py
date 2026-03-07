@@ -3,7 +3,7 @@
 """
 Оптимизация промптов для генерации изображений через Nano Banana Pro.
 
-GPT-4o превращает русское описание + пресет → оптимизированный английский промпт
+ChatGPT 5.1 (medium reasoning) превращает русское описание + пресет → оптимизированный английский промпт
 по правилам NBP (natural language, hex colors, specific positions, context).
 """
 
@@ -149,7 +149,7 @@ async def optimize_prompt(
     has_reference_image: bool = False,
 ) -> PromptOptimizationResult:
     """
-    Оптимизирует пользовательское описание в NBP-промпт через GPT-4o.
+    Оптимизирует пользовательское описание в NBP-промпт через ChatGPT 5.1 (medium reasoning).
 
     Args:
         user_description: Описание на русском языке
@@ -173,12 +173,12 @@ async def optimize_prompt(
 
     result = await create_chat_completion_with_usage(
         messages=messages,
-        model="gpt-4o",
-        temperature=0.4,
+        model="chatgpt-5.1",
+        reasoning_effort="medium",
     )
 
-    # Стоимость GPT-4o: $2.50/1M input, $10/1M output
-    cost = (result["prompt_tokens"] / 1_000_000) * 2.50 + (result["completion_tokens"] / 1_000_000) * 10.0
+    # Стоимость chatgpt-5.1: $2.00/1M input, $8.00/1M output
+    cost = (result["prompt_tokens"] / 1_000_000) * 2.00 + (result["completion_tokens"] / 1_000_000) * 8.0
 
     logger.info(
         f"[prompt_optimizer] Промпт оптимизирован: preset={preset}, "

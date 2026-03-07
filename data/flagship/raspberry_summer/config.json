@@ -1,0 +1,55 @@
+{
+  "product": "seasonal_program",
+  "culture": "raspberry",
+  "variety": "summer",
+  "title": "Сезонная программа — Малина летняя",
+  "price_rub": 3990,
+  "articles": [
+    {
+      "key": "nutrition",
+      "title": "Питание растений",
+      "article_pdf": "articles/nutrition.pdf",
+      "presentation_pdf": "presentations/nutrition.pdf",
+      "video": "video/Малина лет/Питание_(малина_лет)_branded.mp4"
+    },
+    {
+      "key": "planting_care",
+      "title": "Посадка и уход",
+      "article_pdf": "articles/planting_care.pdf",
+      "presentation_pdf": "presentations/planting_care.pdf",
+      "video": "video/Малина лет/Посадка_и_уход_(мал_лет)_branded.mp4"
+    },
+    {
+      "key": "protection",
+      "title": "Защита растений",
+      "article_pdf": "articles/protection.pdf",
+      "presentation_pdf": "presentations/protection.pdf",
+      "video": "video/Малина лет/Защита_(мал_лет)_branded.mp4"
+    },
+    {
+      "key": "soil",
+      "title": "Улучшение почвы",
+      "article_pdf": "articles/soil.pdf",
+      "presentation_pdf": "presentations/soil.pdf",
+      "video": "video/Малина лет/Улучшение_почвы_(малина_лет)_branded.mp4"
+    },
+    {
+      "key": "varieties",
+      "title": "Подбор сорта",
+      "article_pdf": "articles/varieties.pdf",
+      "presentation_pdf": "presentations/varieties.pdf",
+      "video": "video/Малина лет/подбор_сорта_(лет_мал)_branded.mp4"
+    },
+    {
+      "key": "pruning",
+      "title": "Обрезка",
+      "article_pdf": "articles/pruning.pdf",
+      "presentation_pdf": "presentations/pruning.pdf",
+      "video": "video/Малина лет/Обрезка_летней_малины_branded.mp4"
+    }
+  ],
+  "season_plan": {
+    "title": "Сезонный план работ",
+    "article_pdf": "articles/season_plan.pdf"
+  }
+}

@@ -63,12 +63,6 @@ export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
     },
   })
 
-  const style = {
-    transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isDragging ? 0.5 : 1,
-  }
-
   // Format cost in rubles
   const costRub = (client.total_cost_usd ?? 0) * usdRate
   const formatCost = (cost: number) => {
@@ -97,8 +91,26 @@ export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
   const hasSubscription = !!client.subscription_plan_name
   const subIsActive = client.subscription_status === 'active'
 
+  // Purchase type info (for bought_product stage)
+  const purchaseType = client.latest_purchase_type
+  const showPurchaseBadge = !!purchaseType && client.status === 'bought_product'
+
+  // Color-coded left border for bought_product stage
+  const purchaseBorderColor = showPurchaseBadge
+    ? purchaseType === 'subscription' ? '#3B82F6'
+      : purchaseType === 'seasonal_program' ? '#10B981'
+      : '#F59E0B'
+    : undefined
+
+  const style: React.CSSProperties = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    ...(purchaseBorderColor ? { borderLeft: `3px solid ${purchaseBorderColor}` } : {}),
+  }
+
   // Show tokens+subscription row?
-  const showInfoRow = tokenBalance > 0 || hasSubscription
+  const showInfoRow = tokenBalance > 0 || hasSubscription || showPurchaseBadge
 
   return (
     <div
@@ -154,6 +166,17 @@ export function FunnelClientCard({ client, onClick }: FunnelClientCardProps) {
           {hasSubscription && (
             <span className={`${styles.subBadge} ${subIsActive ? styles.subActive : styles.subExpired}`}>
               📋 {client.subscription_plan_name} {subIsActive ? '✓' : '✗'}
+            </span>
+          )}
+          {showPurchaseBadge && (
+            <span className={`${styles.purchaseBadge} ${
+              purchaseType === 'subscription' ? styles.purchaseSub
+                : purchaseType === 'seasonal_program' ? styles.purchaseSeason
+                : styles.purchaseBlock
+            }`}>
+              {purchaseType === 'subscription' ? '📋 Подписка'
+                : purchaseType === 'seasonal_program' ? '📅 Сезон. система'
+                : '📦 Один блок'}
             </span>
           )}
         </div>

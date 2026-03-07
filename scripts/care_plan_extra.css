@@ -1,0 +1,199 @@
+/* ═══════════════════════════════════════
+   CARE PLAN — дополнительные стили
+   Загружается вместе с pdf_styles.css
+   ═══════════════════════════════════════ */
+
+/* Период сезона — под h2 */
+.season-period {
+    font-family: 'SourceSans3', sans-serif;
+    font-size: 9pt;
+    color: #4A7C59;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin: -8px 0 14px 0;
+    text-align: left;
+}
+
+/* Вводный текст */
+.intro-text {
+    font-size: 10pt;
+    line-height: 1.6;
+    color: #2C2C2C;
+    margin-bottom: 16px;
+    text-align: justify;
+}
+
+/* Общая страница с вводным текстом */
+.intro-page {
+    page: toc;
+    page-break-after: always;
+}
+
+.intro-page p {
+    font-size: 10.5pt;
+    line-height: 1.65;
+    text-align: justify;
+    margin-bottom: 12px;
+}
+
+/* Обложка — уменьшенный заголовок для длинного текста */
+.cover-page .cover-culture {
+    font-size: 38pt;
+    line-height: 1.15;
+}
+
+.cover-page .cover-subtitle {
+    font-size: 17pt;
+}
+
+/* Shopping list table — тёплый коричневый заголовок */
+table.shopping-list {
+    margin: 8px 0 18px 0;
+    font-size: 9pt;
+}
+
+table.shopping-list th {
+    background: #8B6F47;
+    color: white;
+    padding: 6px 10px;
+    font-size: 8.5pt;
+    letter-spacing: 0.02em;
+}
+
+table.shopping-list td {
+    padding: 5px 10px;
+    vertical-align: top;
+}
+
+table.shopping-list td:first-child {
+    font-weight: 700;
+    color: #1A3A2A;
+}
+
+/* Care steps table — стандартный зелёный (наследуется) */
+table.care-steps {
+    margin: 8px 0 18px 0;
+    font-size: 9pt;
+}
+
+table.care-steps th {
+    font-size: 8.5pt;
+    letter-spacing: 0.02em;
+}
+
+table.care-steps td {
+    padding: 5px 10px;
+    vertical-align: top;
+}
+
+table.care-steps td:first-child {
+    font-weight: 700;
+    color: #1A3A2A;
+    white-space: nowrap;
+}
+
+/* Примечание внизу сезонного блока */
+.season-note {
+    background: rgba(74, 124, 89, 0.06);
+    border-left: 3px solid #4A7C59;
+    padding: 8px 12px;
+    margin: 12px 0 8px 0;
+    font-size: 9pt;
+    line-height: 1.5;
+    color: #555;
+}
+
+.season-note strong {
+    color: #4A7C59;
+}
+
+/* Подсекции (6.1, 6.2, 6.3) */
+.subsection-title {
+    font-family: 'CormorantGaramond', Georgia, serif;
+    font-size: 14pt;
+    font-weight: 400;
+    font-style: italic;
+    color: #1A3A2A;
+    margin: 20px 0 8px;
+    padding-left: 12px;
+    border-left: 3px solid #4A7C59;
+    page-break-after: avoid;
+}
+
+.subsection-intro {
+    font-size: 9.5pt;
+    color: #555;
+    margin-bottom: 10px;
+    font-style: italic;
+}
+
+/* Заголовок таблицы в подсекции */
+.table-label {
+    font-family: 'SourceSans3', sans-serif;
+    font-size: 9.5pt;
+    font-weight: 700;
+    color: #4A7C59;
+    margin: 12px 0 4px;
+    page-break-after: avoid;
+}
+
+/* ═══ Группы «на выбор» в списке покупок ═══ */
+
+/* Строка-заголовок группы */
+tr.group-header td {
+    background: rgba(139, 111, 71, 0.10);
+    font-weight: 700;
+    font-size: 8.5pt;
+    color: #8B6F47;
+    padding: 4px 10px;
+    border-bottom: 1px solid rgba(139, 111, 71, 0.25);
+}
+
+/* Лейбл «один на выбор» */
+.choose-label {
+    font-weight: 400;
+    font-style: italic;
+    font-size: 7.5pt;
+    color: #999;
+    margin-left: 6px;
+}
+
+/* Варианты внутри группы — отступ слева */
+tr.group-option td:first-child {
+    padding-left: 22px;
+    font-weight: 400;
+    color: #2C2C2C;
+}
+
+tr.group-option td:first-child::before {
+    content: "или  ";
+    font-size: 7.5pt;
+    color: #999;
+    font-style: italic;
+}
+
+tr.group-option:first-of-type td:first-child::before,
+tr.group-header + tr.group-option td:first-child::before {
+    content: "▸ ";
+    font-style: normal;
+    color: #8B6F47;
+}
+
+/* Повтор заголовков таблиц при разрыве страницы */
+thead {
+    display: table-header-group;
+}
+
+/* Избегаем разрыв внутри строки таблицы */
+tr {
+    page-break-inside: avoid;
+}
+
+/* h2 — каждый сезон с новой страницы (кроме первого) */
+.season-block {
+    page-break-before: always;
+}
+
+.season-block:first-child {
+    page-break-before: avoid;
+}

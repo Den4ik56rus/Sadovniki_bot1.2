@@ -226,8 +226,34 @@ export interface UploadResponse {
   message: string
 }
 
+// Image Generator
+export interface ImageGeneration {
+  id: number
+  user_prompt: string
+  optimized_prompt: string | null
+  preset: string
+  image_path: string | null
+  reference_image_path: string | null
+  image_model: string
+  status: 'pending' | 'optimizing' | 'generating' | 'completed' | 'failed'
+  error_message: string | null
+  input_tokens: number
+  output_tokens: number
+  prompt_tokens: number
+  prompt_completion_tokens: number
+  cost_usd: number
+  created_at: string
+}
+
+export interface ImageGeneratorPreset {
+  key: string
+  label: string
+  description: string
+  requires_reference: boolean
+}
+
 // View types
-export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'ab-test' | 'triggers' | 'articles' | 'presentations' | 'batch-presentations' | 'batch-article-presentations'
+export type View = 'dashboard' | 'crm' | 'messages' | 'buyers' | 'tasks' | 'lists' | 'stats' | 'settings' | 'users' | 'live' | 'documents' | 'expenses' | 'rag-docs' | 'prompts' | 'prompt-preview' | 'payments' | 'invite-links' | 'guides' | 'moderation' | 'ab-test' | 'triggers' | 'articles' | 'presentations' | 'batch-presentations' | 'batch-article-presentations' | 'image-generator'
 
 // CRM Types
 // FunnelStatus can be standard statuses or custom column IDs like 'custom_1', 'custom_2', etc.
@@ -494,6 +520,7 @@ export interface FunnelClient {
   subscription_plan_name: string | null
   subscription_status: string | null
   subscription_expires_at: string | null
+  latest_purchase_type: string | null  // 'subscription' | 'seasonal_program' | 'single_block'
 }
 
 export type FunnelSortOption =

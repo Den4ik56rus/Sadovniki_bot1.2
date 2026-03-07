@@ -1,0 +1,54 @@
+{
+  "product": "seasonal_program",
+  "culture": "strawberry",
+  "variety": "summer",
+  "title": "Сезонная программа — Клубника летняя",
+  "articles": [
+    {
+      "key": "nutrition",
+      "title": "Питание растений",
+      "article_pdf": "articles/nutrition.pdf",
+      "presentation_pdf": "presentations/nutrition.pdf",
+      "video": "video/Клуб лет/Питание клуб летняя_branded.mp4"
+    },
+    {
+      "key": "planting_care",
+      "title": "Посадка и уход",
+      "article_pdf": "articles/planting_care.pdf",
+      "presentation_pdf": "presentations/planting_care.pdf",
+      "video": "video/Клуб лет/Посадка_и_уход_(клубники_лет)_branded.mp4"
+    },
+    {
+      "key": "protection",
+      "title": "Защита растений",
+      "article_pdf": "articles/protection.pdf",
+      "presentation_pdf": "presentations/protection.pdf",
+      "video": "video/Клуб лет/Защита_(клубники_лет)_branded.mp4"
+    },
+    {
+      "key": "soil",
+      "title": "Улучшение почвы",
+      "article_pdf": "articles/soil.pdf",
+      "presentation_pdf": "presentations/soil.pdf",
+      "video": "video/Клуб лет/Улучшение_почвы_(клуб_лет)_branded.mp4"
+    },
+    {
+      "key": "varieties",
+      "title": "Подбор сорта",
+      "article_pdf": "articles/varieties.pdf",
+      "presentation_pdf": "presentations/varieties.pdf",
+      "video": "video/Клуб лет/Подбор_сорта_(клуб_лет)_branded.mp4"
+    },
+    {
+      "key": "pruning",
+      "title": "Обрезка",
+      "article_pdf": "articles/pruning.pdf",
+      "presentation_pdf": "presentations/pruning.pdf",
+      "video": "video/Клуб лет/Обрезка_(клубники_лет)_branded.mp4"
+    }
+  ],
+  "season_plan": {
+    "title": "Сезонный план работ",
+    "article_pdf": "articles/season_plan.pdf"
+  }
+}

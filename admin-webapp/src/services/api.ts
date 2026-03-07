@@ -1911,4 +1911,60 @@ export const api = {
       body: JSON.stringify({ conditions }),
     })
   },
+
+  // ==================== Image Generator ====================
+
+  async generateImage(data: {
+    user_prompt: string
+    preset: string
+    image_model?: string
+    reference_image_path?: string
+    optimize_prompt?: boolean
+  }): Promise<{ id: number; generation: import('@/types').ImageGeneration }> {
+    return fetchApi('/image-generator/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    })
+  },
+
+  async generateImageDirect(genId: number, editedPrompt: string): Promise<{ id: number; status: string }> {
+    return fetchApi('/image-generator/generate-direct', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ gen_id: genId, edited_prompt: editedPrompt }),
+    })
+  },
+
+  async uploadReferenceImage(file: File): Promise<{ reference_path: string }> {
+    const formData = new FormData()
+    formData.append('image', file)
+    const response = await fetch(`${API_BASE}/image-generator/upload-reference`, {
+      method: 'POST',
+      headers: { 'ngrok-skip-browser-warning': 'true' },
+      body: formData,
+    })
+    if (!response.ok) throw new Error(await response.text())
+    return response.json()
+  },
+
+  async getImageHistory(params?: { limit?: number; offset?: number; preset?: string }): Promise<{
+    generations: import('@/types').ImageGeneration[]
+    total: number
+  }> {
+    const sp = new URLSearchParams()
+    if (params?.limit) sp.set('limit', String(params.limit))
+    if (params?.offset) sp.set('offset', String(params.offset))
+    if (params?.preset) sp.set('preset', params.preset)
+    const q = sp.toString()
+    return fetchApi(`/image-generator/history${q ? `?${q}` : ''}`)
+  },
+
+  async deleteImageGeneration(id: number): Promise<{ success: boolean }> {
+    return fetchApi(`/image-generator/${id}`, { method: 'DELETE' })
+  },
+
+  async getImageGeneratorPresets(): Promise<{ presets: import('@/types').ImageGeneratorPreset[] }> {
+    return fetchApi('/image-generator/presets')
+  },
 }

@@ -9,6 +9,9 @@ def get_main_keyboard() -> ReplyKeyboardMarkup:
                 KeyboardButton(text="🧑‍🌾 Консультация"),
             ],
             [
+                KeyboardButton(text="🛍 Магазин"),
+            ],
+            [
                 KeyboardButton(text="👤 Мой профиль"),
             ],
         ],

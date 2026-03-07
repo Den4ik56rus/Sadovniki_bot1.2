@@ -91,6 +91,7 @@ async def main():
     parser.add_argument("--variety", default="summer", help="Вариант (summer, remontant, или пусто)")
     parser.add_argument("--dry-run", action="store_true", help="Показать план без копирования")
     parser.add_argument("--force", action="store_true", help="Перезаписать существующие файлы")
+    parser.add_argument("--price", type=int, default=3990, help="Цена в рублях")
     parser.add_argument("--dsn", default=DB_DSN, help="DSN строка подключения к БД")
     args = parser.parse_args()
 
@@ -172,35 +173,56 @@ async def main():
         size_mb = dst.stat().st_size // (1024 * 1024)
         print(f"  OK    presentations/{cat_key}.pdf ({size_mb} MB)")
 
+    # Копируем season_plan article (care plan PDF) если есть
+    season_plan_article = None
+    care_plan_src = PROJECT_ROOT / "data" / "article_pdfs" / f"care_plan_{folder_name}.pdf"
+    if not care_plan_src.exists() and variety:
+        # Попробуем без culture_ prefix (например care_plan_remontant.pdf)
+        care_plan_src = PROJECT_ROOT / "data" / "article_pdfs" / f"care_plan_{variety}.pdf"
+    if care_plan_src.exists():
+        dst = flagship_dst / "articles" / "season_plan.pdf"
+        if not dst.exists() or args.force:
+            shutil.copy2(care_plan_src, dst)
+            size_kb = dst.stat().st_size // 1024
+            print(f"  OK    articles/season_plan.pdf ({size_kb} KB) ← care plan")
+        season_plan_article = "articles/season_plan.pdf"
+
     # Генерируем config.json
+    articles_list = []
+    for cat in CATEGORY_ORDER:
+        entry = {
+            "key": cat,
+            "title": CATEGORY_LABELS.get(cat, cat),
+        }
+        art_file = flagship_dst / "articles" / f"{cat}.pdf"
+        pres_file = flagship_dst / "presentations" / f"{cat}.pdf"
+        if art_file.exists():
+            entry["article_pdf"] = f"articles/{cat}.pdf"
+        if pres_file.exists():
+            entry["presentation_pdf"] = f"presentations/{cat}.pdf"
+        if entry.get("article_pdf") or entry.get("presentation_pdf"):
+            articles_list.append(entry)
+
     config = {
         "product": "seasonal_program",
         "culture": culture,
         "variety": variety,
         "title": f"Сезонная программа — {full_name}",
-        "articles": [
-            {
-                "key": cat,
-                "title": CATEGORY_LABELS.get(cat, cat),
-                "article_pdf": f"articles/{cat}.pdf",
-                "presentation_pdf": f"presentations/{cat}.pdf",
-            }
-            for cat in CATEGORY_ORDER
-            if (flagship_dst / "articles" / f"{cat}.pdf").exists()
-               or (flagship_dst / "presentations" / f"{cat}.pdf").exists()
-        ],
-        "season_plan": None,
-        "video": {},
+        "price_rub": args.price,
+        "articles": articles_list,
     }
 
-    # Добавляем season_plan если есть
+    # Добавляем season_plan если есть презентация
     if "season_plan" in presentation_ids:
         season_dst = flagship_dst / "presentations" / "season_plan.pdf"
         if season_dst.exists():
-            config["season_plan"] = {
+            sp = {
                 "title": CATEGORY_LABELS["season_plan"],
                 "presentation_pdf": "presentations/season_plan.pdf",
             }
+            if season_plan_article:
+                sp["article_pdf"] = season_plan_article
+            config["season_plan"] = sp
 
     config_path = flagship_dst / "config.json"
     with open(config_path, "w", encoding="utf-8") as f:

@@ -163,6 +163,31 @@
   color: #6B7280;
 }
 
+/* Purchase type badges (bought_product stage) */
+
+.purchaseBadge {
+  font-size: 10px;
+  font-weight: var(--font-medium);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.purchaseSub {
+  background: rgba(59, 130, 246, 0.12);
+  color: #1D4ED8;
+}
+
+.purchaseSeason {
+  background: rgba(16, 185, 129, 0.12);
+  color: #047857;
+}
+
+.purchaseBlock {
+  background: rgba(245, 158, 11, 0.12);
+  color: #B45309;
+}
+
 /* ═══════════════════════════════════════════════════════════
    FOOTER
    ═══════════════════════════════════════════════════════════ */

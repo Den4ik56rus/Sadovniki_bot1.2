@@ -263,9 +263,14 @@ async def cmd_start(message: Message) -> None:
                 user_id,
             )
         if funnel_variant == 'B':
-            # Пользователь из воронки Б — всегда запускаем quiz заново
-            await start_funnel_b(message, user_id)
-            return
+            # Проверяем, прошёл ли пользователь квиз
+            from src.handlers.funnel_b import _quiz_already_done
+            quiz_done = await _quiz_already_done(user_id)
+            if not quiz_done:
+                # Квиз не пройден — запускаем воронку Б
+                await start_funnel_b(message, user_id)
+                return
+            # Квиз уже пройден — показываем главное меню (продолжение ниже)
 
     # При команде /start закрываем все старые топики и создаём новый
     from src.services.db.topics_repo import close_open_topics
@@ -883,6 +888,10 @@ async def render_and_send_profile(
             text="⚙️ Управлять подпиской",
             callback_data="show_payment_menu"
         )],
+        [InlineKeyboardButton(
+            text="📂 Мои материалы",
+            callback_data="my_materials"
+        )],
     ]
     if subscription and subscription.get("auto_renew", False):
         kb_buttons.append([InlineKeyboardButton(
@@ -1144,6 +1153,94 @@ async def handle_share_referral(callback: CallbackQuery) -> None:
     await _log_bot_msg(share_text, user_id=internal_user_id, session_id=f"tg:{user.id}")
 
     await callback.answer("Перешлите это сообщение друзьям!")
+
+
+@router.message(Command("menu"))
+async def cmd_menu(message: Message) -> None:
+    """Команда /menu — inline-меню с профилем, консультациями и материалами."""
+    user = message.from_user
+    if user is None:
+        return
+
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="🧑‍🌾 Консультация", callback_data="menu_consultation")],
+        [InlineKeyboardButton(text="🛍 Магазин", callback_data="menu_shop")],
+        [InlineKeyboardButton(text="👤 Мой профиль", callback_data="menu_profile")],
+        [InlineKeyboardButton(text="📂 Мои материалы", callback_data="menu_materials")],
+    ])
+
+    await message.answer("📋 <b>Меню</b>", parse_mode="HTML", reply_markup=keyboard)
+
+
+@router.callback_query(F.data == "menu_consultation")
+async def handle_menu_consultation(callback: CallbackQuery) -> None:
+    """Запуск консультации из inline-меню."""
+    user = callback.from_user
+    if user is None:
+        await callback.answer()
+        return
+
+    await callback.answer()
+
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+    from src.services.db.topics_repo import close_open_topics
+    await close_open_topics(internal_user_id)
+    await clear_consultation_state(user.id)
+    await set_consultation_state(user.id, "waiting_consultation_question")
+
+    kb = get_example_questions_keyboard()
+    entry_text = CONSULTATION_ENTRY_TEXT
+
+    await callback.message.answer(entry_text, parse_mode="HTML", reply_markup=kb)
+    await _log_bot_msg(entry_text, user_id=internal_user_id, session_id=f"tg:{user.id}", meta=serialize_keyboard(kb))
+
+
+@router.callback_query(F.data == "menu_shop")
+async def handle_menu_shop(callback: CallbackQuery) -> None:
+    """Открытие магазина из inline-меню — делегирует в shop handler."""
+    await callback.answer()
+
+    from src.handlers.shop import send_shop_cards
+    await send_shop_cards(callback.bot, callback.from_user.id)
+
+
+@router.callback_query(F.data == "menu_profile")
+async def handle_menu_profile(callback: CallbackQuery) -> None:
+    """Показ профиля из inline-меню."""
+    user = callback.from_user
+    if user is None:
+        await callback.answer()
+        return
+
+    await callback.answer()
+    await render_and_send_profile(
+        bot=callback.bot,
+        chat_id=user.id,
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+
+@router.callback_query(F.data == "menu_materials")
+async def handle_menu_materials(callback: CallbackQuery) -> None:
+    """Переход к материалам из inline-меню — делегирует в flagship."""
+    user = callback.from_user
+    if user is None:
+        await callback.answer()
+        return
+
+    await callback.answer()
+
+    from src.handlers.flagship import handle_my_materials
+    await handle_my_materials(callback)
 
 
 @router.message(Command("support"))

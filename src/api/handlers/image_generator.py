@@ -47,7 +47,7 @@ def _serialize(row: dict) -> dict:
 async def generate_image_api(request: web.Request) -> web.Response:
     """
     POST /api/admin/image-generator/generate
-    Body: { user_prompt, preset, image_model?, reference_image_path? }
+    Body: { user_prompt, preset, image_model?, reference_image_path?, optimize_prompt? }
     """
     try:
         data = await request.json()
@@ -58,6 +58,7 @@ async def generate_image_api(request: web.Request) -> web.Response:
         preset = data.get("preset", "free")
         image_model = data.get("image_model")
         reference_image_path = data.get("reference_image_path")
+        optimize_prompt = data.get("optimize_prompt", False)
 
         gen_id = await repo.create_generation(
             user_prompt=user_prompt,
@@ -65,6 +66,11 @@ async def generate_image_api(request: web.Request) -> web.Response:
             reference_image_path=reference_image_path,
             image_model=image_model,
         )
+
+        # Если оптимизация не запрошена — ставим user_prompt как optimized_prompt,
+        # чтобы image_service пропустил шаг оптимизации
+        if not optimize_prompt:
+            await repo.update_generation(gen_id, optimized_prompt=user_prompt)
 
         # SSE progress callback
         async def on_progress(event: dict):

@@ -1,0 +1,55 @@
+{
+  "product": "seasonal_program",
+  "culture": "strawberry",
+  "variety": "remontant",
+  "title": "Сезонная программа — Клубника ремонтантная",
+  "price_rub": 3990,
+  "articles": [
+    {
+      "key": "nutrition",
+      "title": "Питание растений",
+      "article_pdf": "articles/nutrition.pdf",
+      "presentation_pdf": "presentations/nutrition.pdf",
+      "video": "video/Клуб рем/Питание_(клуб_рем)_branded.mp4"
+    },
+    {
+      "key": "planting_care",
+      "title": "Посадка и уход",
+      "article_pdf": "articles/planting_care.pdf",
+      "presentation_pdf": "presentations/planting_care.pdf",
+      "video": "video/Клуб рем/Посадка_и_уход_(клуб_рем)_branded.mp4"
+    },
+    {
+      "key": "protection",
+      "title": "Защита растений",
+      "article_pdf": "articles/protection.pdf",
+      "presentation_pdf": "presentations/protection.pdf",
+      "video": "video/Клуб рем/Защита_(клуб_рем)_branded.mp4"
+    },
+    {
+      "key": "soil",
+      "title": "Улучшение почвы",
+      "article_pdf": "articles/soil.pdf",
+      "presentation_pdf": "presentations/soil.pdf",
+      "video": "video/Клуб рем/Улучшение_почвы_(клуб_рем)_branded.mp4"
+    },
+    {
+      "key": "varieties",
+      "title": "Подбор сорта",
+      "article_pdf": "articles/varieties.pdf",
+      "presentation_pdf": "presentations/varieties.pdf",
+      "video": "video/Клуб рем/Подбор_сорта_(клуб_рем)_branded.mp4"
+    },
+    {
+      "key": "pruning",
+      "title": "Обрезка",
+      "article_pdf": "articles/pruning.pdf",
+      "presentation_pdf": "presentations/pruning.pdf",
+      "video": "video/Клуб рем/Обрезка_ремонтантной_клубники_branded.mp4"
+    }
+  ],
+  "season_plan": {
+    "title": "Сезонный план работ",
+    "article_pdf": "articles/season_plan.pdf"
+  }
+}

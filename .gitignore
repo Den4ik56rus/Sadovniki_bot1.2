@@ -88,6 +88,12 @@ data/content/
 data/previews/
 data/quiz_solutions/**/*.pdf
 data/prompt_documents/
+data/flagship/*/video/
+data/flagship/*/articles/
+data/flagship/*/presentations/
+data/images/
+data/article_pdfs/
+data/generated_images/
 
 # Google Cloud credentials
 vertex-ai-key.json

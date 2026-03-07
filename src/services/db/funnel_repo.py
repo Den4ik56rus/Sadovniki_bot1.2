@@ -560,7 +560,11 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     u.last_activity_at as last_consultation_at,
                     sub_info.subscription_plan_name,
                     sub_info.subscription_status,
-                    sub_info.subscription_expires_at
+                    sub_info.subscription_expires_at,
+                    COALESCE(
+                        CASE WHEN sub_info.subscription_status = 'active' THEN 'subscription' END,
+                        purchase_info.latest_purchase_type
+                    ) as latest_purchase_type
                 FROM client_funnel_position cfp
                 JOIN users u ON u.id = cfp.user_id
                 JOIN invite_link_users ilu ON ilu.user_id = u.id AND ilu.invite_link_id = $2
@@ -583,6 +587,13 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     ORDER BY us.created_at DESC
                     LIMIT 1
                 ) sub_info ON true
+                LEFT JOIN LATERAL (
+                    SELECT product_type as latest_purchase_type
+                    FROM user_purchased_products upp
+                    WHERE upp.user_id = u.id
+                    ORDER BY upp.purchased_at DESC NULLS LAST
+                    LIMIT 1
+                ) purchase_info ON true
                 WHERE cfp.funnel_id = $1
                 ORDER BY u.last_activity_at DESC NULLS LAST, cfp.entered_at DESC
                 """,
@@ -610,7 +621,11 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     u.last_activity_at as last_consultation_at,
                     sub_info.subscription_plan_name,
                     sub_info.subscription_status,
-                    sub_info.subscription_expires_at
+                    sub_info.subscription_expires_at,
+                    COALESCE(
+                        CASE WHEN sub_info.subscription_status = 'active' THEN 'subscription' END,
+                        purchase_info.latest_purchase_type
+                    ) as latest_purchase_type
                 FROM client_funnel_position cfp
                 JOIN users u ON u.id = cfp.user_id
                 LEFT JOIN LATERAL (
@@ -632,6 +647,13 @@ async def get_clients_in_funnel(funnel_id: str, invite_link_id: Optional[int] = 
                     ORDER BY us.created_at DESC
                     LIMIT 1
                 ) sub_info ON true
+                LEFT JOIN LATERAL (
+                    SELECT product_type as latest_purchase_type
+                    FROM user_purchased_products upp
+                    WHERE upp.user_id = u.id
+                    ORDER BY upp.purchased_at DESC NULLS LAST
+                    LIMIT 1
+                ) purchase_info ON true
                 WHERE cfp.funnel_id = $1
                 ORDER BY u.last_activity_at DESC NULLS LAST, cfp.entered_at DESC
                 """,
@@ -783,7 +805,10 @@ async def move_client_to_stage(
 
 
 # Порядок системных стадий CRM-воронки (для авто-переходов)
-CRM_STAGE_ORDER = {'new': 0, 'tried': 1, 'trial_ended': 2, 'saw_pricing': 3, 'paid': 4}
+CRM_STAGE_ORDER = {
+    'new': 0, 'tried': 1, 'trial_ended': 2, 'saw_pricing': 3,
+    'quiz_done': 4, 'bought_plan': 5, 'bought_product': 6,
+}
 
 
 async def auto_move_client_in_crm(user_id: int, target_stage_key: str) -> bool:

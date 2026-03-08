@@ -934,12 +934,15 @@ export const useBuyersStore = create<BuyersState>()((set, get) => ({
 // A/B Test Store
 // =============================================================================
 
+interface ABTestStageInfo {
+  stage_key: string
+  title: string
+  color: string
+}
+
 interface ABTestVariantStats {
   users: number
-  tried: number
-  trial_ended: number
-  saw_pricing: number
-  paid: number
+  stages: Record<string, number>
   conversion: number
 }
 
@@ -951,6 +954,7 @@ interface ABTestTag {
 
 interface ABTestStats {
   active_variant: 'A' | 'B'
+  stages: ABTestStageInfo[]
   variants: {
     A: ABTestVariantStats
     B: ABTestVariantStats

@@ -3,12 +3,16 @@ from aiohttp import web
 from src.services.db.pool import get_pool
 from src.services.db.bot_settings_repo import get_setting, set_setting
 from src.services.db.client_crm_repo import get_all_tags
+from src.services.db import funnel_repo
 
 logger = logging.getLogger(__name__)
 
 
 async def get_ab_test_stats(request: web.Request) -> web.Response:
-    """GET /api/admin/ab-test/stats — статистика по вариантам воронки, с фильтром по тегу"""
+    """GET /api/admin/ab-test/stats — статистика по вариантам воронки, с фильтром по тегу.
+
+    Этапы загружаются динамически из funnel_stages (CRM-воронка).
+    """
     pool = get_pool()
     tag_id = request.query.get('tag_id')
     tag_id = int(tag_id) if tag_id else None
@@ -16,62 +20,81 @@ async def get_ab_test_stats(request: web.Request) -> web.Response:
     async with pool.acquire() as conn:
         active_variant = await get_setting('active_funnel_variant', 'A')
 
+        # Загружаем этапы CRM-воронки динамически
+        crm_stages = await funnel_repo.get_funnel_stages('crm')
+        stages_info = [
+            {'stage_key': s['stage_key'], 'title': s['title'], 'color': s['color']}
+            for s in crm_stages
+        ]
+        stage_keys = [s['stage_key'] for s in crm_stages]
+
+        # Считаем общее количество пользователей по варианту
         if tag_id:
-            rows = await conn.fetch("""
-                SELECT
-                    u.funnel_variant,
-                    COUNT(DISTINCT u.id) AS users,
-                    COUNT(DISTINCT CASE WHEN cfp.stage_key IN ('tried','trial_ended','saw_pricing') THEN u.id END) AS tried,
-                    COUNT(DISTINCT CASE WHEN cfp.stage_key IN ('trial_ended','saw_pricing') THEN u.id END) AS trial_ended,
-                    COUNT(DISTINCT CASE WHEN cfp.stage_key = 'saw_pricing' THEN u.id END) AS saw_pricing,
-                    COUNT(DISTINCT p.user_id) AS paid
+            user_rows = await conn.fetch("""
+                SELECT u.funnel_variant, COUNT(DISTINCT u.id) AS users
                 FROM users u
                 JOIN client_tag_links ctl ON ctl.user_id = u.id AND ctl.tag_id = $1
-                LEFT JOIN client_funnel_position cfp ON cfp.user_id = u.id AND cfp.funnel_id = 'crm'
-                LEFT JOIN payments p ON p.user_id = u.id AND p.status = 'paid'
                 WHERE u.funnel_variant IS NOT NULL
                 GROUP BY u.funnel_variant
-                ORDER BY u.funnel_variant
             """, tag_id)
         else:
-            rows = await conn.fetch("""
-                SELECT
-                    u.funnel_variant,
-                    COUNT(DISTINCT u.id) AS users,
-                    COUNT(DISTINCT CASE WHEN cfp.stage_key IN ('tried','trial_ended','saw_pricing') THEN u.id END) AS tried,
-                    COUNT(DISTINCT CASE WHEN cfp.stage_key IN ('trial_ended','saw_pricing') THEN u.id END) AS trial_ended,
-                    COUNT(DISTINCT CASE WHEN cfp.stage_key = 'saw_pricing' THEN u.id END) AS saw_pricing,
-                    COUNT(DISTINCT p.user_id) AS paid
+            user_rows = await conn.fetch("""
+                SELECT u.funnel_variant, COUNT(DISTINCT u.id) AS users
                 FROM users u
-                LEFT JOIN client_funnel_position cfp ON cfp.user_id = u.id AND cfp.funnel_id = 'crm'
-                LEFT JOIN payments p ON p.user_id = u.id AND p.status = 'paid'
                 WHERE u.funnel_variant IS NOT NULL
                 GROUP BY u.funnel_variant
-                ORDER BY u.funnel_variant
             """)
 
-        variants = {}
-        for row in rows:
-            variant = row['funnel_variant']
-            users = row['users']
-            paid = row['paid']
-            tried = row['tried']
-            trial_ended = row['trial_ended']
-            saw_pricing = row['saw_pricing']
-            conversion = round(paid / users * 100, 1) if users > 0 else 0.0
-            variants[variant] = {
-                'users': users,
-                'tried': tried,
-                'trial_ended': trial_ended,
-                'saw_pricing': saw_pricing,
-                'paid': paid,
-                'conversion': conversion
-            }
+        user_counts = {row['funnel_variant']: row['users'] for row in user_rows}
 
-        # Гарантировать наличие обоих вариантов в ответе
+        # Считаем количество пользователей на каждом этапе по варианту
+        if tag_id:
+            stage_rows = await conn.fetch("""
+                SELECT u.funnel_variant, cfp.stage_key, COUNT(DISTINCT u.id) AS cnt
+                FROM users u
+                JOIN client_tag_links ctl ON ctl.user_id = u.id AND ctl.tag_id = $1
+                JOIN client_funnel_position cfp ON cfp.user_id = u.id AND cfp.funnel_id = 'crm'
+                WHERE u.funnel_variant IS NOT NULL
+                GROUP BY u.funnel_variant, cfp.stage_key
+            """, tag_id)
+        else:
+            stage_rows = await conn.fetch("""
+                SELECT u.funnel_variant, cfp.stage_key, COUNT(DISTINCT u.id) AS cnt
+                FROM users u
+                JOIN client_funnel_position cfp ON cfp.user_id = u.id AND cfp.funnel_id = 'crm'
+                WHERE u.funnel_variant IS NOT NULL
+                GROUP BY u.funnel_variant, cfp.stage_key
+            """)
+
+        # Группируем по варианту
+        stage_data = {}
+        for row in stage_rows:
+            variant = row['funnel_variant']
+            if variant not in stage_data:
+                stage_data[variant] = {}
+            stage_data[variant][row['stage_key']] = row['cnt']
+
+        # Собираем результат
+        variants = {}
+        # Последний этап — для конверсии
+        last_stage_key = stage_keys[-1] if stage_keys else None
+
         for v in ('A', 'B'):
-            if v not in variants:
-                variants[v] = {'users': 0, 'tried': 0, 'trial_ended': 0, 'saw_pricing': 0, 'paid': 0, 'conversion': 0.0}
+            users = user_counts.get(v, 0)
+            v_stages = stage_data.get(v, {})
+
+            # Заполняем нулями все этапы
+            stages_dict = {sk: v_stages.get(sk, 0) for sk in stage_keys}
+
+            # Конверсия = % пользователей на последнем этапе
+            last_count = stages_dict.get(last_stage_key, 0) if last_stage_key else 0
+            conversion = round(last_count / users * 100, 1) if users > 0 else 0.0
+
+            variants[v] = {
+                'users': users,
+                'stages': stages_dict,
+                'conversion': conversion,
+            }
 
         # Список доступных тегов для фильтра
         all_tags = await get_all_tags()
@@ -79,6 +102,7 @@ async def get_ab_test_stats(request: web.Request) -> web.Response:
 
         return web.json_response({
             'active_variant': active_variant,
+            'stages': stages_info,
             'variants': variants,
             'available_tags': available_tags,
             'selected_tag_id': tag_id,

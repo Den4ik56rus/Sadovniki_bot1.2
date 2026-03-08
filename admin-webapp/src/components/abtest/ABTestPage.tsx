@@ -2,24 +2,6 @@ import { useEffect } from 'react'
 import { useABTestStore } from '@/store'
 import styles from './ABTestPage.module.css'
 
-const STAGE_COLORS = {
-  users:       '#3B82F6',
-  tried:       '#8B5CF6',
-  trial_ended: '#F59E0B',
-  saw_pricing: '#F97316',
-  paid:        '#22C55E',
-}
-
-const STAGE_LABELS = {
-  users:       'Новые',
-  tried:       'Получил консультацию',
-  trial_ended: 'Закончился пробный',
-  saw_pricing: 'Смотрел тарифы',
-  paid:        'Оплатили',
-}
-
-type StageKey = keyof typeof STAGE_COLORS
-
 export function ABTestPage() {
   const { stats, loading, fetchStats, setVariant, selectedTagId, setSelectedTag } = useABTestStore()
 
@@ -43,11 +25,10 @@ export function ABTestPage() {
   }
 
   const active = stats?.active_variant ?? 'A'
-  const a = stats?.variants.A ?? { users: 0, tried: 0, trial_ended: 0, saw_pricing: 0, paid: 0, conversion: 0 }
-  const b = stats?.variants.B ?? { users: 0, tried: 0, trial_ended: 0, saw_pricing: 0, paid: 0, conversion: 0 }
+  const stages = stats?.stages ?? []
+  const a = stats?.variants.A ?? { users: 0, stages: {}, conversion: 0 }
+  const b = stats?.variants.B ?? { users: 0, stages: {}, conversion: 0 }
   const tags = stats?.available_tags ?? []
-
-  const stages: StageKey[] = ['users', 'tried', 'trial_ended', 'saw_pricing', 'paid']
 
   const getPercent = (count: number, total: number) =>
     total > 0 ? Math.round((count / total) * 100) : 0
@@ -128,13 +109,18 @@ export function ABTestPage() {
           <thead>
             <tr className={styles.stageHeaderRow}>
               <th />
+              <th>
+                <div className={styles.stageHeader} style={{ background: '#6B7280' }}>
+                  Всего
+                </div>
+              </th>
               {stages.map((stage) => (
-                <th key={stage}>
+                <th key={stage.stage_key}>
                   <div
                     className={styles.stageHeader}
-                    style={{ background: STAGE_COLORS[stage] }}
+                    style={{ background: stage.color }}
                   >
-                    {STAGE_LABELS[stage]}
+                    {stage.title}
                   </div>
                 </th>
               ))}
@@ -157,11 +143,15 @@ export function ABTestPage() {
                     Тип {variant}
                     {active === variant && <span className={styles.activeDot} />}
                   </td>
+                  <td className={styles.stageCell}>
+                    <span className={styles.stageCount}>{v.users}</span>
+                    <span className={styles.stageCountLabel}>чел.</span>
+                  </td>
                   {stages.map((stage) => {
-                    const count = (v[stage as keyof typeof v] as number) ?? 0
+                    const count = v.stages[stage.stage_key] ?? 0
                     const pct = getPercent(count, v.users)
                     return (
-                      <td key={stage} className={styles.stageCell}>
+                      <td key={stage.stage_key} className={styles.stageCell}>
                         <span className={styles.stageCount}>{count}</span>
                         <span className={styles.stageCountLabel}>чел.</span>
                         <div className={styles.progressWrap}>
@@ -169,7 +159,7 @@ export function ABTestPage() {
                             className={styles.progressBar}
                             style={{
                               width: `${pct}%`,
-                              background: STAGE_COLORS[stage],
+                              background: stage.color,
                             }}
                           />
                         </div>
@@ -180,7 +170,7 @@ export function ABTestPage() {
                   <td className={styles.conversionCell}>
                     <span
                       className={styles.conversionValue}
-                      style={{ color: STAGE_COLORS.paid }}
+                      style={{ color: '#22C55E' }}
                     >
                       {v.conversion}%
                     </span>

@@ -68,13 +68,7 @@ async def has_product_access(
     product_key: str,
     telegram_user_id: int = 0,
 ) -> bool:
-    """Проверяет доступ пользователя к продукту.
-
-    Хардкод: админы получают тестовый доступ.
-    """
-    _TEST_ACCESS_IDS = {833371989, 5208832236}
-    if telegram_user_id and telegram_user_id in _TEST_ACCESS_IDS:
-        return True
+    """Проверяет доступ пользователя к продукту."""
     return await flagship_repo.check_access(user_id, product_key)
 
 

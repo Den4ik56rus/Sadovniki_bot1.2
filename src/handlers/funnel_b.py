@@ -1589,27 +1589,6 @@ async def handle_quiz_problem(callback: CallbackQuery) -> None:
     ctx["quiz_offer_msg_ids"] = offer_msg_ids
     CONSULTATION_CONTEXT[tg_user.id] = ctx
 
-    # Регистрируем в воронке дожима (cancel + reenroll при смене проблемы/культуры)
-    try:
-        from src.services.db.tripwire_followup_repo import cancel_and_reenroll
-        from src.services.db.pool import get_pool as _get_pool
-        _pool = _get_pool()
-        async with _pool.acquire() as _conn:
-            _quiz = await _conn.fetchrow(
-                "SELECT culture FROM user_quiz_answers WHERE user_id = $1",
-                internal_user_id,
-            )
-        _culture_display = _quiz["culture"] if _quiz and _quiz["culture"] else "ягодных культур"
-        await cancel_and_reenroll(
-            user_id=internal_user_id,
-            telegram_user_id=tg_user.id,
-            culture=_culture_display,
-            problem=problem_label,
-            problem_key=problem_key,
-        )
-        logger.info(f"[funnel_b] tripwire_offer_shown: user {internal_user_id}")
-    except Exception as e:
-        logger.error(f"[funnel_b] Follow-up enrollment error for {internal_user_id}: {e}")
 
 
 # ---------------------------------------------------------------------------

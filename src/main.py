@@ -162,10 +162,6 @@ async def main() -> None:
     subscription_check_task = asyncio.create_task(_subscription_expiring_loop(check_subscription_expiring_triggers))
     print("Фоновая задача проверки подписок запущена.")
 
-    # Запускаем фоновую задачу для воронки дожима tripwire
-    from src.services.tripwire_followup_sender import process_pending_followups
-    followup_task = asyncio.create_task(_trigger_scheduler_loop(process_pending_followups))
-    print("Фоновая задача воронки дожима запущена.")
 
     # Graceful shutdown: сохраняем ссылку на dispatcher и ставим свои signal handlers.
     # При SIGTERM наш handler ставит флаг + сигнализирует aiogram остановить polling.

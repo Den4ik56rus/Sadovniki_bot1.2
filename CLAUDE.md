@@ -11,8 +11,8 @@ Before making ANY changes:
 2. Read `session-summary.md` — contains latest session changes
 3. Check relevant docs in `docs/features/` or `docs/architecture/`
 
-**Current Project State (2026-03-05):**
-- Version: 1.9.0
+**Current Project State (2026-03-08):**
+- Version: 1.9.1
 - Phase: Funnel B quiz + upsell built; Article PDF generator built; awaiting DB migrations + testing
 - Latest changes: Upsell flow (funnel_b_upsell.py 549 lines), quiz offer texts rewritten (strawberry), Article PDF WeasyPrint pipeline
 - CRITICAL: `SKIP_PAYMENT = True` in `src/handlers/funnel_b.py` line 16 — MUST be set to False before deploy

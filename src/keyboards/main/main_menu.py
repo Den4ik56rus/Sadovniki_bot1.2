@@ -3,11 +3,24 @@
 from aiogram.types import (
     InlineKeyboardMarkup,
     InlineKeyboardButton,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
     ReplyKeyboardRemove,
 )
 
 # Используем ReplyKeyboardRemove чтобы убрать старую ReplyKeyboard у пользователей
 REMOVE_REPLY_KEYBOARD = ReplyKeyboardRemove()
+
+
+def get_reply_keyboard() -> ReplyKeyboardMarkup:
+    """Постоянная reply-клавиатура внизу экрана."""
+    return ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🧑‍🌾 Консультация"), KeyboardButton(text="🛍 Магазин")],
+            [KeyboardButton(text="👤 Мой профиль"), KeyboardButton(text="📂 Мои материалы")],
+        ],
+        resize_keyboard=True,
+    )
 
 
 def get_main_keyboard() -> InlineKeyboardMarkup:

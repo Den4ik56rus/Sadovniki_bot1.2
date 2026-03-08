@@ -19,7 +19,7 @@ from src.services.db.messages_repo import log_message                # Логи�
 from src.handlers.common import CONSULTATION_STATE, CONSULTATION_CONTEXT, build_session_id_from_message, set_consultation_state, clear_consultation_state
 
 # Импортируем функцию, создающую клавиатуру главного меню (inline)
-from src.keyboards.main.main_menu import get_main_keyboard, REMOVE_REPLY_KEYBOARD
+from src.keyboards.main.main_menu import get_main_keyboard, get_reply_keyboard, REMOVE_REPLY_KEYBOARD
 
 # Импортируем инлайн-меню консультаций (6 тем + кнопка "Закрыть")
 from src.keyboards.consultation.common import CONSULTATION_MENU_INLINE_KB, CONSULTATION_ENTRY_TEXT, EXAMPLE_QUESTIONS, get_example_questions_keyboard
@@ -305,7 +305,7 @@ async def cmd_start(message: Message) -> None:
     )
 
     # Убираем старую ReplyKeyboard
-    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+    _tmp = await message.answer("⏳", reply_markup=get_reply_keyboard())
     try:
         await _tmp.delete()
     except Exception:
@@ -334,19 +334,10 @@ async def cmd_start(message: Message) -> None:
 
 @router.message(F.text == "🧑‍🌾 Консультация")
 async def handle_consultation_button(message: Message) -> None:
-    """
-    Обратная совместимость — старая ReplyKeyboard кнопка «Консультация».
-    """
+    """Reply-клавиатура кнопка «Консультация»."""
     user = message.from_user
     if user is None:
         return
-
-    # Убираем старую ReplyKeyboard
-    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
-    try:
-        await _tmp.delete()
-    except Exception:
-        pass
 
     # Получаем внутренний user_id
     from src.services.db.users_repo import get_or_create_user
@@ -596,7 +587,7 @@ async def handle_back_to_menu(message: Message) -> None:
     )
 
     # Убираем старую ReplyKeyboard и показываем inline-меню
-    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+    _tmp = await message.answer("⏳", reply_markup=get_reply_keyboard())
     try:
         await _tmp.delete()
     except Exception:
@@ -845,7 +836,7 @@ async def handle_profile(message: Message) -> None:
     if user is None:
         return
     # Убираем старую ReplyKeyboard
-    _tmp = await message.answer("⏳", reply_markup=REMOVE_REPLY_KEYBOARD)
+    _tmp = await message.answer("⏳", reply_markup=get_reply_keyboard())
     try:
         await _tmp.delete()
     except Exception:
@@ -1089,12 +1080,12 @@ async def handle_share_referral(callback: CallbackQuery) -> None:
 
 @router.message(Command("menu"))
 async def cmd_menu(message: Message) -> None:
-    """Команда /menu — inline-меню с профилем, консультациями и материалами."""
+    """Команда /menu — показывает reply-клавиатуру внизу экрана."""
     user = message.from_user
     if user is None:
         return
 
-    await message.answer("📋 <b>Меню</b>", parse_mode="HTML", reply_markup=get_main_keyboard())
+    await message.answer("📋 <b>Меню</b>", parse_mode="HTML", reply_markup=get_reply_keyboard())
 
 
 @router.callback_query(F.data == "menu_consultation")
@@ -1166,6 +1157,34 @@ async def handle_menu_materials(callback: CallbackQuery) -> None:
 
     from src.handlers.flagship import handle_my_materials
     await handle_my_materials(callback)
+
+
+@router.message(F.text == "👤 Мой профиль")
+async def handle_profile_button(message: Message) -> None:
+    """Reply-клавиатура кнопка «Мой профиль»."""
+    user = message.from_user
+    if user is None:
+        return
+
+    await render_and_send_profile(
+        bot=message.bot,
+        chat_id=user.id,
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+
+@router.message(F.text == "📂 Мои материалы")
+async def handle_materials_button(message: Message) -> None:
+    """Reply-клавиатура кнопка «Мои материалы»."""
+    user = message.from_user
+    if user is None:
+        return
+
+    from src.handlers.flagship import handle_my_materials_from_message
+    await handle_my_materials_from_message(message)
 
 
 @router.message(Command("support"))

@@ -944,9 +944,10 @@ def _get_blueberry_offer_text(problem_key: str) -> str:
 
 
 def get_offer_keyboard() -> InlineKeyboardMarkup:
-    """Клавиатура финального оффера: 3 кнопки по 1 в ряд."""
+    """Клавиатура финального оффера: 4 кнопки по 1 в ряд."""
     return InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🔥 Получить персональную схему", callback_data="quiz_cta_payment")],
+        [InlineKeyboardButton(text="🛍 Посмотреть все материалы", callback_data="quiz_open_shop")],
         [InlineKeyboardButton(text="🔄 Выбрать другую проблему", callback_data="quiz_change_problem")],
         [InlineKeyboardButton(text="🌱 Выбрать другую культуру", callback_data="quiz_change_culture")],
     ])
@@ -1594,6 +1595,15 @@ async def _delete_offer_messages(callback: CallbackQuery) -> None:
             await bot.delete_message(chat_id=chat_id, message_id=mid)
         except Exception:
             pass
+
+
+@router.callback_query(F.data == "quiz_open_shop")
+async def handle_quiz_open_shop(callback: CallbackQuery) -> None:
+    """Открывает магазин из квиза — делегирует в shop handler."""
+    await callback.answer()
+
+    from src.handlers.shop import send_shop_cards
+    await send_shop_cards(callback.bot, callback.from_user.id)
 
 
 @router.callback_query(F.data == "quiz_change_problem")

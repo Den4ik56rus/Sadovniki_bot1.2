@@ -156,6 +156,79 @@ async def handle_my_materials(callback: CallbackQuery) -> None:
     await callback.answer()
 
 
+async def handle_my_materials_from_message(message) -> None:
+    """Показывает купленные продукты и каталог (из reply-кнопки Message)."""
+    user = message.from_user
+    internal_user_id = await get_or_create_user(
+        telegram_user_id=user.id,
+        username=user.username,
+        first_name=user.first_name,
+        last_name=user.last_name,
+    )
+
+    purchased = await get_user_products(internal_user_id)
+    available = get_available_products()
+
+    purchased_keys = {p["product_key"] for p in purchased}
+    for prod in available:
+        if prod["product_key"] not in purchased_keys:
+            if await has_product_access(internal_user_id, prod["product_key"], user.id):
+                purchased.append({
+                    "product_key": prod["product_key"],
+                    "title": prod["title"],
+                    "culture": prod.get("culture", ""),
+                    "purchased_at": None,
+                })
+                purchased_keys.add(prod["product_key"])
+
+    buttons = []
+    text_parts = ["📂 <b>Мои материалы</b>\n"]
+
+    if purchased:
+        programs = [p for p in purchased if p.get("product_type") != "single_block"]
+        blocks = [p for p in purchased if p.get("product_type") == "single_block"]
+
+        if programs:
+            text_parts.append("📚 <b>Ваши программы:</b>")
+            for p in programs:
+                buttons.append([InlineKeyboardButton(
+                    text=p['title'],
+                    callback_data=f"flagship_open:{p['product_key']}",
+                )])
+
+        if blocks:
+            if programs:
+                text_parts.append("")
+            text_parts.append("📖 <b>Ваши тематические блоки:</b>")
+            for p in blocks:
+                emoji = _CATEGORY_EMOJI.get(p.get("topic_key", ""), "📖")
+                buttons.append([InlineKeyboardButton(
+                    text=f"{emoji} {p['title']}",
+                    callback_data=f"flagship_block_open:{p['product_key']}",
+                )])
+
+    not_purchased = [p for p in available if p["product_key"] not in purchased_keys]
+    if not_purchased:
+        if purchased:
+            text_parts.append("")
+        text_parts.append("🛒 <b>Доступные программы:</b>")
+        for p in not_purchased:
+            price = f"{p['price_rub']:,}".replace(",", " ")
+            buttons.append([InlineKeyboardButton(
+                text=f"{p['title']} — {price} ₽",
+                callback_data=f"flagship_buy:{p['product_key']}",
+            )])
+
+    if not purchased and not not_purchased:
+        text_parts.append("Пока нет доступных программ.")
+
+    await message.answer(
+        "\n".join(text_parts),
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=buttons),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Назад в профиль
 # ---------------------------------------------------------------------------

@@ -93,6 +93,44 @@ async def create_payment(
         return dict(row)
 
 
+async def create_free_grant(
+    user_id: int,
+    payment_type: str,
+    description: str,
+    metadata: Optional[Dict[str, Any]] = None,
+    subscription_plan_id: Optional[int] = None,
+    token_package_id: Optional[int] = None,
+) -> Dict[str, Any]:
+    """
+    Создаёт запись о бесплатной выдаче (без YooKassa).
+    Статус сразу 'succeeded', сумма 0.
+    """
+    import uuid
+    pool = get_pool()
+    fake_id = f"free_{uuid.uuid4().hex[:16]}"
+    metadata_json = json.dumps(metadata) if metadata else None
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO payments (
+                user_id, yookassa_payment_id, idempotency_key,
+                payment_type, subscription_plan_id, token_package_id,
+                amount_rub, currency, status, description, confirmation_url,
+                metadata, created_at, expires_at
+            ) VALUES (
+                $1, $2, $2,
+                $3, $4, $5,
+                0, 'RUB', 'succeeded', $6, '',
+                $7::jsonb, NOW(), NOW()
+            )
+            RETURNING *
+            """,
+            user_id, fake_id, payment_type, subscription_plan_id, token_package_id,
+            description, metadata_json,
+        )
+        return dict(row)
+
+
 async def get_by_id(payment_id: int) -> Optional[Dict[str, Any]]:
     """Получает платеж по внутреннему ID."""
     pool = get_pool()

@@ -142,6 +142,24 @@
   border-color: var(--accent-blue);
 }
 
+.checkboxLabel {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  cursor: pointer;
+  user-select: none;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--accent-blue);
+  flex-shrink: 0;
+}
+
 .priceBlock {
   display: flex;
   align-items: center;

@@ -749,6 +749,7 @@ async def create_quiz_plan_payment(
     return_url: Optional[str] = None,
     user_email: Optional[str] = None,
     price_rub: float = 99.0,
+    trigger_upsell: bool = False,
 ) -> Dict[str, Any]:
     """
     Создает платеж за персональный план из квиза.
@@ -786,6 +787,8 @@ async def create_quiz_plan_payment(
         "problem_display": problem_display,
         "problem_key": problem_key,
     }
+    if trigger_upsell:
+        metadata["trigger_upsell"] = "true"
 
     try:
         yookassa_payment = await yookassa_client.create_payment(
@@ -2073,6 +2076,35 @@ async def _generate_quiz_plan_after_payment(
         # Запускаем upsell-воронку через 90 секунд
         try:
             from src.handlers.funnel_b_upsell import schedule_upsell_trigger
+
+            # Если платёж создан из CRM с флагом trigger_upsell — сохранить quiz_answers
+            # чтобы upsell знал правильную культуру и проблему
+            if metadata.get("trigger_upsell") == "true":
+                problem_key_meta = metadata.get("problem_key", "")
+                culture_display_meta = metadata.get("culture_display", "")
+                problem_display_meta = metadata.get("problem_display", "")
+                if problem_key_meta:
+                    async with get_pool().acquire() as conn:
+                        await conn.execute(
+                            """
+                            INSERT INTO user_quiz_answers (user_id, culture, problem, problem_key)
+                            VALUES ($1, $2, $3, $4)
+                            ON CONFLICT (user_id) DO UPDATE
+                                SET culture = EXCLUDED.culture,
+                                    problem = EXCLUDED.problem,
+                                    problem_key = EXCLUDED.problem_key,
+                                    updated_at = NOW()
+                            """,
+                            payment["user_id"],
+                            culture_display_meta,
+                            problem_display_meta,
+                            problem_key_meta,
+                        )
+                    logger.info(
+                        f"[quiz_plan] CRM upsell: upserted quiz_answers for user={payment['user_id']}, "
+                        f"problem_key={problem_key_meta}"
+                    )
+
             await schedule_upsell_trigger(bot, telegram_user_id, payment["user_id"])
         except Exception as e:
             logger.error(f"[quiz_plan] Ошибка запуска upsell: {e}")

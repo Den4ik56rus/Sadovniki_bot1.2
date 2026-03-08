@@ -537,6 +537,7 @@ export const api = {
     discount_percent?: number
     discount_duration_hours?: number
     custom_message?: string
+    send_quiz_after_payment?: boolean
   }): Promise<{ success: boolean; payment_id: number; amount: number }> {
     return fetchApi(`/crm/clients/${clientId}/send-payment-link`, {
       method: 'POST',

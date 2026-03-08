@@ -23,8 +23,11 @@ export function ABTestSection() {
   if (loading && !stats) return <div className={styles.loading}>Загрузка...</div>
 
   const active = stats?.active_variant ?? 'A'
-  const a = stats?.variants.A ?? { users: 0, paid: 0, conversion: 0 }
-  const b = stats?.variants.B ?? { users: 0, paid: 0, conversion: 0 }
+  const stages = stats?.stages ?? []
+  const a = stats?.variants.A ?? { users: 0, stages: {}, conversion: 0 }
+  const b = stats?.variants.B ?? { users: 0, stages: {}, conversion: 0 }
+  const lastStageKey = stages.length > 0 ? stages[stages.length - 1].stage_key : null
+  const lastStageTitle = stages.length > 0 ? stages[stages.length - 1].title : 'Оплатили'
 
   return (
     <div className={styles.section}>
@@ -63,9 +66,9 @@ export function ABTestSection() {
             <td>{b.users}</td>
           </tr>
           <tr>
-            <td>Оплатили</td>
-            <td>{a.paid}</td>
-            <td>{b.paid}</td>
+            <td>{lastStageTitle}</td>
+            <td>{lastStageKey ? (a.stages[lastStageKey] ?? 0) : 0}</td>
+            <td>{lastStageKey ? (b.stages[lastStageKey] ?? 0) : 0}</td>
           </tr>
           <tr className={styles.highlight}>
             <td>Конверсия</td>

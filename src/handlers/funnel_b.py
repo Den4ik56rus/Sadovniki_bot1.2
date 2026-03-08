@@ -1283,11 +1283,13 @@ async def handle_quiz_culture(callback: CallbackQuery) -> None:
 
     await _log_quiz_msg(internal_user_id, "user", f"Культура: {culture_label}")
 
-    # Сохраняем culture_key в контекст, сохраняя регион если уже был
+    # Сохраняем culture_key в контекст, сохраняя broadcast-конфиг и регион
     old_ctx = CONSULTATION_CONTEXT.get(tg_user.id, {})
     new_ctx = {"quiz_culture_key": culture_key}
-    if "quiz_region_label" in old_ctx:
-        new_ctx["quiz_region_label"] = old_ctx["quiz_region_label"]
+    # Переносим данные, которые не должны теряться
+    for key in ("quiz_region_label", "broadcast_quiz_price", "broadcast_quiz_original_price"):
+        if key in old_ctx:
+            new_ctx[key] = old_ctx[key]
     CONSULTATION_CONTEXT[tg_user.id] = new_ctx
 
     # Проверяем, есть ли уже сохранённый регион (при смене культуры)

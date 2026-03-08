@@ -304,16 +304,9 @@ async def cmd_start(message: Message) -> None:
         "<b>«🧑‍🌾 Консультация»</b>!"
     )
 
-    # Убираем старую ReplyKeyboard
-    _tmp = await message.answer("⏳", reply_markup=get_reply_keyboard())
-    try:
-        await _tmp.delete()
-    except Exception:
-        pass
-
     await message.answer(
         welcome_text,
-        reply_markup=get_main_keyboard(),
+        reply_markup=get_reply_keyboard(),
         parse_mode="HTML",
     )
 

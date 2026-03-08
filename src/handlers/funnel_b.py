@@ -1705,12 +1705,13 @@ async def handle_quiz_cta_payment(callback: CallbackQuery) -> None:
             internal_user_id,
         )
 
-    culture_display = quiz["culture"] if quiz and quiz["culture"] else "ягодных культур"
-    problem_display = quiz["problem"] if quiz and quiz["problem"] else "уход"
-    problem_key = quiz["problem_key"] if quiz and quiz["problem_key"] else ""
-
     # Динамическая цена из контекста рассылки
     ctx = CONSULTATION_CONTEXT.get(tg_user.id, {})
+
+    # Данные из БД, с fallback на CRM-контекст (если пользователь не проходил квиз)
+    culture_display = (quiz["culture"] if quiz and quiz["culture"] else None) or ctx.get("crm_culture_display") or "ягодных культур"
+    problem_display = (quiz["problem"] if quiz and quiz["problem"] else None) or ctx.get("crm_problem_display") or "уход"
+    problem_key = (quiz["problem_key"] if quiz and quiz["problem_key"] else None) or ctx.get("crm_problem_key") or ""
     quiz_price = ctx.get("broadcast_quiz_price", 99)
     original_price = ctx.get("broadcast_quiz_original_price", 490)
 

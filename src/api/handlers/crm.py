@@ -1832,6 +1832,12 @@ async def send_payment_link_to_client(request: web.Request) -> web.Response:
             ctx = CONSULTATION_CONTEXT.get(telegram_user_id, {})
             ctx["broadcast_quiz_price"] = 0 if is_free else final_price_actual
             ctx["broadcast_quiz_original_price"] = 490
+            # При бесплатной CRM-выдаче пользователь мог не проходить квиз →
+            # сохраняем данные в контекст чтобы handle_quiz_cta_payment мог их использовать
+            if is_free and problem_key:
+                ctx["crm_problem_key"] = problem_key
+                ctx["crm_culture_display"] = culture_display
+                ctx["crm_problem_display"] = problem_display
             if is_free and send_quiz_after_payment:
                 ctx["crm_trigger_upsell"] = True
             CONSULTATION_CONTEXT[telegram_user_id] = ctx

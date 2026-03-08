@@ -306,7 +306,7 @@ export type CustomFieldType = 'text' | 'number' | 'date' | 'checkbox' | 'select'
 export type TaskPriority = 'low' | 'medium' | 'high'
 export type TaskStatus = 'pending' | 'completed' | 'cancelled'
 export type RepeatInterval = 'none' | 'daily' | 'weekly' | 'monthly'
-export type ActivityEventType = 'consultation' | 'chat_message' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change' | 'article' | 'payment' | 'broadcast_sent' | 'broadcast_button_click' | 'broadcast_poll_answer'
+export type ActivityEventType = 'consultation' | 'chat_message' | 'task_created' | 'task_completed' | 'note' | 'status_change' | 'tag_change' | 'field_change' | 'article' | 'payment' | 'payment_link_sent' | 'broadcast_sent' | 'broadcast_button_click' | 'broadcast_poll_answer'
 
 export interface ClientTag {
   id: number

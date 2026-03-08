@@ -73,6 +73,8 @@ export function ActivityItem({
         return '👆'
       case 'broadcast_poll_answer':
         return '📊'
+      case 'payment_link_sent':
+        return '💳'
       default:
         return '📌'
     }
@@ -477,6 +479,26 @@ export function ActivityItem({
       // broadcast_poll_answer — hidden, shown inline in broadcast_sent card
       case 'broadcast_poll_answer':
         return null
+
+      case 'payment_link_sent': {
+        const productName = data.product_name as string || 'Товар'
+        const finalPrice = data.final_price as number
+        const discountPct = data.discount_percent as number
+        return (
+          <div className={styles.payment}>
+            <div className={styles.paymentHeader}>
+              <span className={styles.paymentType}>Ссылка на оплату</span>
+            </div>
+            <div className={styles.paymentProduct}>{productName}</div>
+            <div className={styles.paymentMeta}>
+              <span className={styles.paymentAmount}>{Math.round(finalPrice)} ₽</span>
+              {discountPct > 0 && (
+                <span>(скидка {discountPct}%)</span>
+              )}
+            </div>
+          </div>
+        )
+      }
 
       default:
         return <div>Неизвестное событие</div>

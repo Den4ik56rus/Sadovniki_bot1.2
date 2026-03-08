@@ -521,6 +521,29 @@ export const api = {
     })
   },
 
+  async getAvailableProducts(): Promise<{
+    subscriptions: Array<{ id: number; name: string; price_rub: number; tokens_included: number; duration_days: number }>
+    token_packages: Array<{ id: number; name: string; price_rub: number; tokens_amount: number }>
+    guide: { price_rub: number }
+    quiz_plan: { price_rub: number }
+    flagships: Array<{ product_key: string; title: string; price_rub: number }>
+  }> {
+    return fetchApi('/crm/products')
+  },
+
+  async sendPaymentLinkToClient(clientId: number, data: {
+    product_type: string
+    product_id: number | string
+    discount_percent?: number
+    discount_duration_hours?: number
+    custom_message?: string
+  }): Promise<{ success: boolean; payment_id: number; amount: number }> {
+    return fetchApi(`/crm/clients/${clientId}/send-payment-link`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    })
+  },
+
   // CRM: Funnel columns (Kanban)
   async getFunnelColumns(): Promise<FunnelColumnConfig[]> {
     return fetchApi<FunnelColumnConfig[]>('/crm/columns')

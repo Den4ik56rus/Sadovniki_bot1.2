@@ -1,6 +1,7 @@
 // AdminMessageInput — отправка сообщений клиенту из админ-панели
 import { useState, useRef, useCallback } from 'react'
 import { api } from '@/services/api'
+import { SendPaymentModal } from './SendPaymentModal'
 import styles from './AdminMessageInput.module.css'
 
 interface AdminMessageInputProps {
@@ -12,6 +13,7 @@ export function AdminMessageInput({ clientId, disabled }: AdminMessageInputProps
   const [text, setText] = useState('')
   const [isSending, setIsSending] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [showPaymentModal, setShowPaymentModal] = useState(false)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   const handleSend = useCallback(async () => {
@@ -63,6 +65,14 @@ export function AdminMessageInput({ clientId, disabled }: AdminMessageInputProps
           disabled={disabled || isSending}
         />
         <button
+          className={styles.paymentBtn}
+          onClick={() => setShowPaymentModal(true)}
+          disabled={disabled}
+          title="Отправить ссылку на оплату"
+        >
+          ₽
+        </button>
+        <button
           className={styles.sendBtn}
           onClick={handleSend}
           disabled={!text.trim() || isSending || disabled}
@@ -71,6 +81,14 @@ export function AdminMessageInput({ clientId, disabled }: AdminMessageInputProps
           {isSending ? '...' : '↑'}
         </button>
       </div>
+
+      {showPaymentModal && (
+        <SendPaymentModal
+          clientId={clientId}
+          onClose={() => setShowPaymentModal(false)}
+          onSent={() => setShowPaymentModal(false)}
+        />
+      )}
     </div>
   )
 }

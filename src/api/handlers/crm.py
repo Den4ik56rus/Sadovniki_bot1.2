@@ -1409,6 +1409,303 @@ async def send_message_to_client(request: web.Request) -> web.Response:
         raise web.HTTPInternalServerError(text=f"Failed to send message: {e}")
 
 
+async def get_available_products(request: web.Request) -> web.Response:
+    """
+    GET /api/admin/crm/products
+    Возвращает все доступные товары для отправки ссылки на оплату.
+    """
+    try:
+        from src.services.db import subscription_plan_repo, token_package_repo
+        from src.services.flagship.flagship_service import get_available_products as get_flagships
+        from src.pricing import COMPLEXITY_TIERS
+
+        plans = await subscription_plan_repo.get_all_active()
+        packages = await token_package_repo.get_all_active()
+        flagships = get_flagships()
+        guide_price = COMPLEXITY_TIERS["turnkey_solution"]["price_rub"]
+
+        products = {
+            "subscriptions": [
+                {"id": p["id"], "name": p["name"], "price_rub": float(p["price_rub"]),
+                 "tokens_included": p["tokens_included"], "duration_days": p["duration_days"]}
+                for p in plans
+            ],
+            "token_packages": [
+                {"id": p["id"], "name": p["name"], "price_rub": float(p["price_rub"]),
+                 "tokens_amount": p["tokens_amount"]}
+                for p in packages
+            ],
+            "guide": {"price_rub": float(guide_price)},
+            "quiz_plan": {"price_rub": 99},
+            "flagships": [
+                {"product_key": f["product_key"], "title": f["title"],
+                 "price_rub": float(f["price_rub"])}
+                for f in flagships
+            ],
+        }
+        return web.json_response(products)
+
+    except Exception as e:
+        logger.error(f"Error getting available products: {e}")
+        raise web.HTTPInternalServerError(text="Failed to load products")
+
+
+async def send_payment_link_to_client(request: web.Request) -> web.Response:
+    """
+    POST /api/admin/crm/clients/{id}/send-payment-link
+    Создать платёж и отправить ссылку на оплату клиенту через Telegram.
+
+    Body: {
+        "product_type": "subscription" | "tokens" | "guide" | "quiz_plan" | "flagship",
+        "product_id": int | str,
+        "discount_percent": 0-100,
+        "discount_duration_hours": int,
+        "custom_message": "string"
+    }
+    """
+    try:
+        user_id = int(request.match_info["id"])
+        body = await request.json()
+
+        product_type = body.get("product_type", "")
+        product_id = body.get("product_id")
+        discount_percent = int(body.get("discount_percent", 0))
+        discount_duration_hours = int(body.get("discount_duration_hours", 0))
+        custom_message = body.get("custom_message", "").strip()
+
+        if product_type not in ("subscription", "tokens", "guide", "quiz_plan", "flagship"):
+            raise web.HTTPBadRequest(text=f"Invalid product_type: {product_type}")
+        if discount_percent < 0 or discount_percent > 99:
+            raise web.HTTPBadRequest(text="discount_percent must be 0-99")
+
+        # Получить telegram_user_id
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            row = await conn.fetchrow(
+                "SELECT telegram_user_id FROM users WHERE id = $1", user_id
+            )
+        if not row:
+            raise web.HTTPNotFound(text="Client not found")
+        telegram_user_id = row["telegram_user_id"]
+
+        # Импорты
+        from src.services.payments.payment_service import (
+            create_subscription_payment_custom,
+            create_token_payment_custom,
+            create_quiz_plan_payment,
+            create_flagship_payment,
+        )
+        from src.services.payments import yookassa_client
+        from src.services.db import payment_repo
+        from src.config import settings
+
+        product_name = ""
+        original_price = 0
+        payment_result = None
+
+        if product_type == "subscription":
+            from src.services.db import subscription_plan_repo
+            plan = await subscription_plan_repo.get_by_id(int(product_id))
+            if not plan:
+                raise web.HTTPNotFound(text="Subscription plan not found")
+            product_name = f"Подписка «{plan['name']}»"
+            original_price = float(plan["price_rub"])
+            final_price = round(original_price * (1 - discount_percent / 100))
+            final_price = max(final_price, 1)
+            payment_result = await create_subscription_payment_custom(
+                user_id=user_id,
+                telegram_user_id=telegram_user_id,
+                plan_id=int(product_id),
+                custom_price=final_price if discount_percent > 0 else None,
+            )
+
+        elif product_type == "tokens":
+            from src.services.db import token_package_repo
+            package = await token_package_repo.get_by_id(int(product_id))
+            if not package:
+                raise web.HTTPNotFound(text="Token package not found")
+            product_name = f"Пакет токенов: {package['tokens_amount']} шт."
+            original_price = float(package["price_rub"])
+            final_price = round(original_price * (1 - discount_percent / 100))
+            final_price = max(final_price, 1)
+            payment_result = await create_token_payment_custom(
+                user_id=user_id,
+                telegram_user_id=telegram_user_id,
+                package_id=int(product_id),
+                custom_price=final_price if discount_percent > 0 else None,
+            )
+
+        elif product_type == "guide":
+            from src.pricing import COMPLEXITY_TIERS
+            original_price = float(COMPLEXITY_TIERS["turnkey_solution"]["price_rub"])
+            product_name = "Готовое решение: уход под ключ на сезон"
+            final_price = round(original_price * (1 - discount_percent / 100))
+            final_price = max(final_price, 1)
+
+            # create_guide_payment не поддерживает custom price — создаём напрямую
+            idempotency_key = f"guide_admin_{user_id}_{int(datetime.now().timestamp())}"
+            description_text = product_name
+            receipt_items = yookassa_client.create_receipt_items(
+                description=description_text,
+                amount_rub=Decimal(str(final_price)),
+                quantity=1,
+            )
+            metadata = {
+                "user_id": str(user_id),
+                "telegram_user_id": str(telegram_user_id),
+                "payment_type": "guide",
+                "source": "admin_payment_link",
+            }
+            if discount_percent > 0:
+                metadata["discount_percent"] = str(discount_percent)
+                metadata["original_price_rub"] = str(original_price)
+
+            yookassa_payment = await yookassa_client.create_payment(
+                amount_rub=Decimal(str(final_price)),
+                description=description_text,
+                return_url=settings.YOOKASSA_RETURN_URL,
+                user_telegram_id=telegram_user_id,
+                receipt_items=receipt_items if settings.YOOKASSA_SEND_RECEIPT else None,
+                metadata=metadata,
+                idempotence_key=idempotency_key,
+            )
+            payment = await payment_repo.create_payment(
+                user_id=user_id,
+                yookassa_payment_id=yookassa_payment["id"],
+                idempotency_key=idempotency_key,
+                payment_type="guide",
+                amount_rub=float(final_price),
+                description=description_text,
+                confirmation_url=yookassa_payment["confirmation"]["confirmation_url"],
+                metadata=metadata,
+            )
+            from src.services.payments.payment_service import create_payment_activity_event
+            await create_payment_activity_event(user_id, payment["id"])
+            payment_result = {
+                "payment_id": payment["id"],
+                "confirmation_url": yookassa_payment["confirmation"]["confirmation_url"],
+                "amount": float(final_price),
+                "description": description_text,
+            }
+
+        elif product_type == "quiz_plan":
+            original_price = 99
+            product_name = "Персональный план"
+            final_price = round(original_price * (1 - discount_percent / 100))
+            final_price = max(final_price, 1)
+            payment_result = await create_quiz_plan_payment(
+                user_id=user_id,
+                telegram_user_id=telegram_user_id,
+                culture_display="Персональный план",
+                problem_display="квиз-план",
+                problem_key="",
+                price_rub=float(final_price),
+            )
+
+        elif product_type == "flagship":
+            from src.services.flagship.flagship_service import load_product_config
+            product_key = str(product_id)
+            try:
+                config = load_product_config(product_key)
+            except FileNotFoundError:
+                raise web.HTTPNotFound(text=f"Flagship product not found: {product_key}")
+            product_name = config.get("title", product_key)
+            original_price = float(config.get("price_rub", 0))
+            final_price = round(original_price * (1 - discount_percent / 100))
+            final_price = max(final_price, 1)
+            payment_result = await create_flagship_payment(
+                user_id=user_id,
+                telegram_user_id=telegram_user_id,
+                product_key=product_key,
+                product_title=product_name,
+                price_rub=Decimal(str(final_price)),
+            )
+
+        # Сформировать текст сообщения
+        final_price_actual = payment_result["amount"]
+        lines = []
+        if custom_message:
+            lines.append(custom_message)
+            lines.append("")
+        lines.append(f"<b>{product_name}</b>")
+        if discount_percent > 0:
+            lines.append(f"<s>{int(original_price)} ₽</s> → <b>{int(final_price_actual)} ₽</b> (скидка {discount_percent}%)")
+        else:
+            lines.append(f"<b>{int(final_price_actual)} ₽</b>")
+        if discount_duration_hours and discount_duration_hours > 0:
+            if discount_duration_hours >= 24:
+                days = discount_duration_hours // 24
+                hours = discount_duration_hours % 24
+                time_str = f"{days} дн." + (f" {hours} ч." if hours else "")
+            else:
+                time_str = f"{discount_duration_hours} ч."
+            lines.append(f"Предложение действует: {time_str}")
+
+        message_text = "\n".join(lines)
+
+        # Отправить сообщение с кнопкой оплаты
+        from src.bot import get_bot
+        from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+        bot = get_bot()
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text=f"Оплатить {int(final_price_actual)} ₽",
+                url=payment_result["confirmation_url"],
+            )]
+        ])
+        await bot.send_message(
+            chat_id=telegram_user_id,
+            text=message_text,
+            parse_mode="HTML",
+            reply_markup=keyboard,
+        )
+
+        # Залогировать сообщение
+        from src.services.db.messages_repo import log_message
+        await log_message(
+            user_id=user_id,
+            direction="bot",
+            text=message_text,
+            session_id=f"admin:{user_id}",
+            topic_id=None,
+            meta={"source": "admin", "type": "payment_link", "product_type": product_type},
+        )
+
+        # Залогировать в activity feed
+        try:
+            await client_crm_repo.log_activity(
+                user_id=user_id,
+                event_type="payment_link_sent",
+                event_data={
+                    "product_type": product_type,
+                    "product_name": product_name,
+                    "original_price": original_price,
+                    "final_price": final_price_actual,
+                    "discount_percent": discount_percent,
+                    "discount_duration_hours": discount_duration_hours,
+                    "payment_id": payment_result.get("payment_id"),
+                },
+            )
+        except Exception as e:
+            logger.warning(f"Failed to log payment_link_sent activity: {e}")
+
+        return web.json_response({
+            "success": True,
+            "payment_id": payment_result.get("payment_id"),
+            "amount": final_price_actual,
+        })
+
+    except ValueError:
+        raise web.HTTPBadRequest(text="Invalid client ID")
+    except web.HTTPBadRequest:
+        raise
+    except web.HTTPNotFound:
+        raise
+    except Exception as e:
+        logger.error(f"Error sending payment link: {e}", exc_info=True)
+        raise web.HTTPInternalServerError(text=f"Failed to send payment link: {e}")
+
+
 async def reorder_funnel_columns(request: web.Request) -> web.Response:
     """
     PUT /api/admin/crm/columns/reorder

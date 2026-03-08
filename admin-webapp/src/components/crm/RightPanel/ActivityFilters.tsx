@@ -19,6 +19,7 @@ const _FILTER_LABELS: Record<ActivityEventType, { label: string; icon: string }>
   tag_change: { label: 'Теги', icon: '🏷️' },
   field_change: { label: 'Поля', icon: '✏️' },
   payment: { label: 'Платежи', icon: '💳' },
+  payment_link_sent: { label: 'Ссылки на оплату', icon: '💳' },
   broadcast_sent: { label: 'Рассылки', icon: '📢' },
   broadcast_button_click: { label: 'Ответы', icon: '👆' },
   broadcast_poll_answer: { label: 'Опросы', icon: '📊' },

@@ -1821,39 +1821,49 @@ async def send_payment_link_to_client(request: web.Request) -> web.Response:
         # Отправить оффер — с превью и описанием как в магазине
         if product_type == "quiz_plan" and problem_key:
             from src.services.quiz_solutions import get_quiz_solution, get_offer_text as get_file_offer
+            from src.handlers.funnel_b import get_offer_keyboard, CONSULTATION_CONTEXT
+
+            # Установить контекст для кнопки quiz_cta_payment
+            ctx = CONSULTATION_CONTEXT.get(telegram_user_id, {})
+            ctx["broadcast_quiz_price"] = 0 if is_free else final_price_actual
+            ctx["broadcast_quiz_original_price"] = 490
+            CONSULTATION_CONTEXT[telegram_user_id] = ctx
+
+            quiz_price_for_btn = 0 if is_free else int(final_price_actual)
+            original_price_display = 490
+
+            if is_free:
+                offer_price_text = f"Обычно такой план стоит <s>{original_price_display} ₽</s>.\nДля Вас сегодня — <b>бесплатно</b>"
+            elif discount_percent > 0:
+                offer_price_text = f"Обычно такой план стоит <s>{original_price_display} ₽</s>.\nДля Вас сегодня — <b>{int(final_price_actual)} ₽</b>"
+            else:
+                offer_price_text = f"Обычно такой план стоит <s>{original_price_display} ₽</s>.\nДля Вас сегодня — <b>{int(final_price_actual)} ₽</b>"
+
             intro_text = get_file_offer(problem_key)
             if intro_text:
                 await bot.send_message(chat_id=telegram_user_id, text=intro_text, parse_mode="HTML")
+
             solution = get_quiz_solution(problem_key)
-            if is_free:
-                # Бесплатно — сразу отправить PDF если есть
-                if solution and solution.get("pdf_path"):
-                    pdf_file = FSInputFile(solution["pdf_path"])
-                    deliver_caption = solution.get("delivery_caption") or f"Ваш план: {product_name}"
-                    message_text = deliver_caption
-                    await bot.send_document(chat_id=telegram_user_id, document=pdf_file, caption=deliver_caption, parse_mode="HTML")
-                else:
-                    message_text = f"✅ <b>{product_name}</b>\n\nДоступ открыт!"
-                    await bot.send_message(chat_id=telegram_user_id, text=message_text, parse_mode="HTML")
-            elif solution and solution.get("preview_path"):
+            offer_keyboard = get_offer_keyboard(quiz_price=quiz_price_for_btn)
+
+            if solution and solution.get("preview_path"):
                 preview_photo = FSInputFile(solution["preview_path"])
-                caption = f"<b>{product_name}</b>\n\n{price_text}"
                 await bot.send_photo(
                     chat_id=telegram_user_id,
                     photo=preview_photo,
-                    caption=caption,
+                    caption=offer_price_text,
                     parse_mode="HTML",
-                    reply_markup=keyboard,
+                    reply_markup=offer_keyboard,
                 )
-                message_text = f"{intro_text}\n\n{caption}" if intro_text else caption
+                message_text = offer_price_text
             else:
-                message_text = f"<b>{product_name}</b>\n\n{price_text}"
                 await bot.send_message(
                     chat_id=telegram_user_id,
-                    text=message_text,
+                    text=offer_price_text,
                     parse_mode="HTML",
-                    reply_markup=keyboard,
+                    reply_markup=offer_keyboard,
                 )
+                message_text = offer_price_text
 
         elif product_type == "single_block":
             content_lines = []

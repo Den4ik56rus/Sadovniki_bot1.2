@@ -1204,6 +1204,15 @@ async def start_funnel_b_from_broadcast(bot, telegram_user_id: int, user_id: int
     """
     logger.info(f"[funnel_b] User {user_id} entered funnel B from broadcast")
 
+    # Обновляем funnel_variant на 'B' (для старых пользователей из рассылки)
+    from src.services.db.pool import get_pool
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        await conn.execute(
+            "UPDATE users SET funnel_variant = 'B' WHERE id = $1 AND funnel_variant != 'B'",
+            user_id,
+        )
+
     # Если квиз уже пройден — не запускаем повторно
     already_done = await _quiz_already_done(user_id)
     if already_done:

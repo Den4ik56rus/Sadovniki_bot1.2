@@ -1725,14 +1725,19 @@ async def handle_quiz_cta_payment(callback: CallbackQuery) -> None:
         await _log_quiz_msg(internal_user_id, "bot", payment_text)
 
         # Генерируем план как при fake_payment
+        free_meta = {
+            "payment_type": "quiz_plan",
+            "problem_key": problem_key,
+            "culture_display": culture_display,
+            "problem_display": problem_display,
+        }
+        # Если CRM запросил upsell после бесплатной выдачи — передаём флаг
+        ctx_check = CONSULTATION_CONTEXT.get(tg_user.id, {})
+        if ctx_check.pop("crm_trigger_upsell", False):
+            free_meta["trigger_upsell"] = "true"
         fake_payment = {
             "user_id": internal_user_id,
-            "metadata": {
-                "payment_type": "quiz_plan",
-                "problem_key": problem_key,
-                "culture_display": culture_display,
-                "problem_display": problem_display,
-            },
+            "metadata": free_meta,
         }
         try:
             from src.services.db.tripwire_followup_repo import cancel_all_pending

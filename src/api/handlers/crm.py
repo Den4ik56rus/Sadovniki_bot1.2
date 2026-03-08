@@ -1691,11 +1691,16 @@ async def send_payment_link_to_client(request: web.Request) -> web.Response:
             final_price = 0 if is_free else max(round(original_price * (1 - discount_percent / 100)), 1)
             if is_free:
                 from src.services.db import payment_repo as _payment_repo
+                free_meta = {"source": "admin_free_grant", "telegram_user_id": str(telegram_user_id), "problem_key": problem_key}
+                if send_quiz_after_payment:
+                    free_meta["trigger_upsell"] = "true"
+                    free_meta["culture_display"] = culture_display
+                    free_meta["problem_display"] = problem_display
                 free_payment = await _payment_repo.create_free_grant(
                     user_id=user_id,
                     payment_type="quiz_plan",
                     description=product_name,
-                    metadata={"source": "admin_free_grant", "telegram_user_id": str(telegram_user_id), "problem_key": problem_key},
+                    metadata=free_meta,
                 )
                 payment_result = {"payment_id": free_payment["id"], "confirmation_url": "", "amount": 0, "description": product_name}
             else:
@@ -1827,6 +1832,8 @@ async def send_payment_link_to_client(request: web.Request) -> web.Response:
             ctx = CONSULTATION_CONTEXT.get(telegram_user_id, {})
             ctx["broadcast_quiz_price"] = 0 if is_free else final_price_actual
             ctx["broadcast_quiz_original_price"] = 490
+            if is_free and send_quiz_after_payment:
+                ctx["crm_trigger_upsell"] = True
             CONSULTATION_CONTEXT[telegram_user_id] = ctx
 
             quiz_price_for_btn = 0 if is_free else int(final_price_actual)

@@ -9,6 +9,45 @@
   color: var(--text-primary, #111);
 }
 
+/* Tag filter */
+.filterRow {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.tagSelect {
+  padding: 6px 10px;
+  border: 1px solid var(--border-default, #e5e7eb);
+  border-radius: 6px;
+  font-size: 13px;
+  background: var(--bg-primary, #fff);
+  color: var(--text-primary, #111);
+  min-width: 180px;
+}
+
+.tagSelect:focus {
+  outline: none;
+  border-color: var(--accent-primary, #4A7C59);
+}
+
+.clearFilter {
+  padding: 6px 12px;
+  border: 1px solid var(--border-default, #e5e7eb);
+  border-radius: 6px;
+  font-size: 12px;
+  background: var(--bg-secondary, #f9fafb);
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.clearFilter:hover {
+  border-color: var(--accent-primary, #4A7C59);
+  color: var(--text-primary, #111);
+}
+
 .table {
   width: 100%;
   border-collapse: collapse;

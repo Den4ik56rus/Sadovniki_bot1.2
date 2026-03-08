@@ -228,6 +228,52 @@
    FUNNEL
    ═══════════════════════════════════════════════════════════ */
 
+.funnelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-2);
+}
+
+.funnelHeader .sectionTitle {
+  margin-bottom: 0;
+}
+
+.funnelFilter {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.funnelTagSelect {
+  padding: 4px 8px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  background: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.funnelTagSelect:focus {
+  outline: none;
+  border-color: var(--accent-primary);
+}
+
+.funnelClearFilter {
+  padding: 2px 6px;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.funnelClearFilter:hover {
+  border-color: var(--accent-primary);
+}
+
 .funnel {
   width: 100%;
   display: flex;

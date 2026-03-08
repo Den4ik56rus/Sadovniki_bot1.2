@@ -185,14 +185,16 @@ async def get_crm_client_topics(request: web.Request) -> web.Response:
 
 async def get_funnel_stats(request: web.Request) -> web.Response:
     """
-    GET /api/admin/crm/stats
-    Получить статистику воронки.
+    GET /api/admin/crm/stats?tag_id=5
+    Получить статистику воронки. Опционально фильтр по тегу.
 
     Returns:
         {"new": 10, "tried": 25, "trial_ended": 5, "paid": 3}
     """
     try:
-        stats = await client_funnel_repo.get_funnel_stats()
+        tag_id = request.query.get('tag_id')
+        tag_id = int(tag_id) if tag_id else None
+        stats = await client_funnel_repo.get_funnel_stats(tag_id=tag_id)
         return web.json_response(stats)
 
     except Exception as e:

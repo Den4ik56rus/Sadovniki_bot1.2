@@ -291,8 +291,9 @@ export const api = {
     return fetchApi<Topic[]>(`/crm/clients/${clientId}/topics${query ? `?${query}` : ''}`)
   },
 
-  async getCrmFunnelStats(): Promise<Record<FunnelStatus, number>> {
-    return fetchApi('/crm/stats')
+  async getCrmFunnelStats(tagId?: number | null): Promise<Record<FunnelStatus, number>> {
+    const query = tagId ? `?tag_id=${tagId}` : ''
+    return fetchApi(`/crm/stats${query}`)
   },
 
   // CRM Extended: Client full data

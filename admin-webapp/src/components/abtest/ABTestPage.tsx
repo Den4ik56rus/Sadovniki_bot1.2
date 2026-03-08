@@ -21,7 +21,7 @@ const STAGE_LABELS = {
 type StageKey = keyof typeof STAGE_COLORS
 
 export function ABTestPage() {
-  const { stats, loading, fetchStats, setVariant } = useABTestStore()
+  const { stats, loading, fetchStats, setVariant, selectedTagId, setSelectedTag } = useABTestStore()
 
   useEffect(() => {
     fetchStats()
@@ -45,6 +45,7 @@ export function ABTestPage() {
   const active = stats?.active_variant ?? 'A'
   const a = stats?.variants.A ?? { users: 0, tried: 0, trial_ended: 0, saw_pricing: 0, paid: 0, conversion: 0 }
   const b = stats?.variants.B ?? { users: 0, tried: 0, trial_ended: 0, saw_pricing: 0, paid: 0, conversion: 0 }
+  const tags = stats?.available_tags ?? []
 
   const stages: StageKey[] = ['users', 'tried', 'trial_ended', 'saw_pricing', 'paid']
 
@@ -75,6 +76,28 @@ export function ABTestPage() {
           </div>
         </div>
       </div>
+
+      {/* Tag filter */}
+      {tags.length > 0 && (
+        <div className={styles.filterRow}>
+          <span className={styles.filterLabel}>Сегмент:</span>
+          <select
+            className={styles.tagSelect}
+            value={selectedTagId ?? ''}
+            onChange={e => setSelectedTag(e.target.value ? Number(e.target.value) : null)}
+          >
+            <option value="">Все пользователи</option>
+            {tags.map(t => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          {selectedTagId && (
+            <button className={styles.clearFilter} onClick={() => setSelectedTag(null)}>
+              Сбросить
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Summary cards */}
       <div className={styles.summaryRow}>

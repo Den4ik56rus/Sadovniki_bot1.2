@@ -295,32 +295,52 @@ async def recalculate_auto_status(user_id: int) -> str:
         return auto_status
 
 
-async def get_funnel_stats() -> Dict[str, int]:
+async def get_funnel_stats(tag_id: int = None) -> Dict[str, int]:
     """
     Получить количество клиентов в каждом статусе воронки CRM.
 
     Исключает пользователей, которые находятся в других воронках.
     Поддерживает кастомные колонки.
+    Args:
+        tag_id: Если задан — фильтровать только пользователей с этим тегом.
     Возвращает: {'new': 10, 'tried': 25, 'custom_1': 5, ...}
     """
     pool = get_pool()
     columns = await get_funnel_columns()
 
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT
-                COALESCE(cfs.status, 'new') as status,
-                COUNT(*)::int as count
-            FROM users u
-            LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
-            WHERE NOT EXISTS (
-                SELECT 1 FROM client_funnel_position cfp
-                WHERE cfp.user_id = u.id AND cfp.funnel_id != 'crm'
+        if tag_id:
+            rows = await conn.fetch(
+                """
+                SELECT
+                    COALESCE(cfs.status, 'new') as status,
+                    COUNT(*)::int as count
+                FROM users u
+                JOIN client_tag_links ctl ON ctl.user_id = u.id AND ctl.tag_id = $1
+                LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM client_funnel_position cfp
+                    WHERE cfp.user_id = u.id AND cfp.funnel_id != 'crm'
+                )
+                GROUP BY COALESCE(cfs.status, 'new')
+                """,
+                tag_id
             )
-            GROUP BY COALESCE(cfs.status, 'new')
-            """
-        )
+        else:
+            rows = await conn.fetch(
+                """
+                SELECT
+                    COALESCE(cfs.status, 'new') as status,
+                    COUNT(*)::int as count
+                FROM users u
+                LEFT JOIN client_funnel_status cfs ON cfs.user_id = u.id
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM client_funnel_position cfp
+                    WHERE cfp.user_id = u.id AND cfp.funnel_id != 'crm'
+                )
+                GROUP BY COALESCE(cfs.status, 'new')
+                """
+            )
 
         # Инициализируем все колонки нулями
         stats = {col['id']: 0 for col in columns}

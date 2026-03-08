@@ -1645,6 +1645,10 @@ export interface BroadcastButton {
   discount_bonus_tokens?: number | null
   discount_bonus_tokens_mode?: 'absolute' | 'percent'
   discount_duration_hours?: number | null
+  // quiz_start button fields
+  quiz_price?: number
+  quiz_original_price?: number
+  quiz_tag_id?: number | null
 }
 
 export interface Broadcast {

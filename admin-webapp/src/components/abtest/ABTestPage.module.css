@@ -62,6 +62,49 @@
   color: #fff;
 }
 
+/* Tag filter */
+.filterRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.filterLabel {
+  font-size: 14px;
+  color: var(--text-secondary, #6b7280);
+}
+
+.tagSelect {
+  padding: 6px 12px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  font-size: 14px;
+  background: var(--card-bg, #fff);
+  color: var(--text-primary, #111);
+  min-width: 200px;
+}
+
+.tagSelect:focus {
+  outline: none;
+  border-color: var(--primary, #4A7C59);
+}
+
+.clearFilter {
+  padding: 6px 14px;
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--bg-secondary, #f9fafb);
+  color: var(--text-secondary, #6b7280);
+  cursor: pointer;
+}
+
+.clearFilter:hover {
+  border-color: var(--primary, #4A7C59);
+  color: var(--text-primary, #111);
+}
+
 /* Funnel table */
 .funnelCard {
   background: var(--card-bg, #fff);

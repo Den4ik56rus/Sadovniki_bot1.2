@@ -943,29 +943,42 @@ interface ABTestVariantStats {
   conversion: number
 }
 
+interface ABTestTag {
+  id: number
+  name: string
+  color: string
+}
+
 interface ABTestStats {
   active_variant: 'A' | 'B'
   variants: {
     A: ABTestVariantStats
     B: ABTestVariantStats
   }
+  available_tags?: ABTestTag[]
+  selected_tag_id?: number | null
 }
 
 interface ABTestState {
   stats: ABTestStats | null
   loading: boolean
-  fetchStats: () => Promise<void>
+  selectedTagId: number | null
+  fetchStats: (tagId?: number | null) => Promise<void>
+  setSelectedTag: (tagId: number | null) => void
   setVariant: (variant: 'A' | 'B') => Promise<void>
 }
 
-export const useABTestStore = create<ABTestState>((set) => ({
+export const useABTestStore = create<ABTestState>((set, get) => ({
   stats: null,
   loading: false,
+  selectedTagId: null,
 
-  fetchStats: async () => {
+  fetchStats: async (tagId?: number | null) => {
     set({ loading: true })
+    const tid = tagId !== undefined ? tagId : get().selectedTagId
     try {
-      const res = await fetch('/api/admin/ab-test/stats')
+      const query = tid ? `?tag_id=${tid}` : ''
+      const res = await fetch(`/api/admin/ab-test/stats${query}`)
       const data = await res.json()
       set({ stats: data })
     } catch (error) {
@@ -973,6 +986,11 @@ export const useABTestStore = create<ABTestState>((set) => ({
     } finally {
       set({ loading: false })
     }
+  },
+
+  setSelectedTag: (tagId: number | null) => {
+    set({ selectedTagId: tagId })
+    get().fetchStats(tagId)
   },
 
   setVariant: async (variant: 'A' | 'B') => {

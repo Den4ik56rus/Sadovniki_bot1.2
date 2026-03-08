@@ -943,10 +943,14 @@ def _get_blueberry_offer_text(problem_key: str) -> str:
     return offer_texts.get(problem_key, _get_offer_text("blueberry", problem_key))
 
 
-def get_offer_keyboard() -> InlineKeyboardMarkup:
+def get_offer_keyboard(quiz_price: int = 99) -> InlineKeyboardMarkup:
     """Клавиатура финального оффера: 4 кнопки по 1 в ряд."""
+    if quiz_price == 0:
+        cta_text = "🔥 Получить персональную схему бесплатно"
+    else:
+        cta_text = "🔥 Получить персональную схему"
     return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔥 Получить персональную схему", callback_data="quiz_cta_payment")],
+        [InlineKeyboardButton(text=cta_text, callback_data="quiz_cta_payment")],
         [InlineKeyboardButton(text="🛍 Посмотреть все материалы", callback_data="quiz_open_shop")],
         [InlineKeyboardButton(text="🔄 Выбрать другую проблему", callback_data="quiz_change_problem")],
         [InlineKeyboardButton(text="🌱 Выбрать другую культуру", callback_data="quiz_change_culture")],
@@ -1197,7 +1201,10 @@ async def start_funnel_b(message: Message, user_id: int) -> None:
     await set_consultation_state(telegram_user_id, "quiz_awaiting_culture")
 
 
-async def start_funnel_b_from_broadcast(bot, telegram_user_id: int, user_id: int) -> None:
+async def start_funnel_b_from_broadcast(
+    bot, telegram_user_id: int, user_id: int,
+    broadcast_id: int = None, quiz_config: dict = None,
+) -> None:
     """
     Точка входа для воронки Б из рассылки.
     Welcome-текст уже отправлен как сообщение рассылки — сразу показываем квиз.
@@ -1212,6 +1219,13 @@ async def start_funnel_b_from_broadcast(bot, telegram_user_id: int, user_id: int
             "UPDATE users SET funnel_variant = 'B' WHERE id = $1 AND funnel_variant != 'B'",
             user_id,
         )
+
+    # Сохраняем контекст цены из рассылки
+    if quiz_config:
+        ctx = CONSULTATION_CONTEXT.get(telegram_user_id, {})
+        ctx["broadcast_quiz_price"] = quiz_config.get("quiz_price", 99)
+        ctx["broadcast_quiz_original_price"] = quiz_config.get("quiz_original_price", 490)
+        CONSULTATION_CONTEXT[telegram_user_id] = ctx
 
     # Если квиз уже пройден — не запускаем повторно
     already_done = await _quiz_already_done(user_id)
@@ -1530,6 +1544,15 @@ async def handle_quiz_problem(callback: CallbackQuery) -> None:
     offer_msg_ids.append(intro_msg.message_id)
     await _log_quiz_msg(internal_user_id, "bot", intro_text)
 
+    # Динамическая цена из контекста рассылки
+    quiz_price = ctx.get("broadcast_quiz_price", 99)
+    original_price = ctx.get("broadcast_quiz_original_price", 490)
+
+    if quiz_price == 0:
+        price_text = f"Обычно такой план стоит <s>{original_price} ₽</s>.\nДля Вас сегодня — <b>бесплатно</b>"
+    else:
+        price_text = f"Обычно такой план стоит <s>{original_price} ₽</s>.\nДля Вас сегодня — <b>{quiz_price} ₽</b>"
+
     # Превью PDF-решения (если есть готовый PDF для этой проблемы)
     from src.services.quiz_solutions import get_quiz_solution
     solution = get_quiz_solution(problem_key)
@@ -1541,13 +1564,11 @@ async def handle_quiz_problem(callback: CallbackQuery) -> None:
         from aiogram.types import FSInputFile
         preview_photo = FSInputFile(solution["preview_path"])
 
-        preview_caption = "Обычно такой план стоит <s>490 ₽</s>.\nДля Вас сегодня — <b>99 ₽</b>"
-
         preview_msg = await callback.message.answer_photo(
             photo=preview_photo,
-            caption=preview_caption,
+            caption=price_text,
             parse_mode="HTML",
-            reply_markup=get_offer_keyboard(),
+            reply_markup=get_offer_keyboard(quiz_price=quiz_price),
         )
         offer_msg_ids.append(preview_msg.message_id)
         await _log_quiz_msg(internal_user_id, "bot", f"[Превью PDF + оффер]")
@@ -1558,9 +1579,9 @@ async def handle_quiz_problem(callback: CallbackQuery) -> None:
 
     if not (solution and solution.get("preview_path")):
         # Нет превью — показываем оффер отдельным сообщением
-        offer_msg = await callback.message.answer(OFFER_TEXT_2, reply_markup=get_offer_keyboard())
+        offer_msg = await callback.message.answer(price_text, reply_markup=get_offer_keyboard(quiz_price=quiz_price))
         offer_msg_ids.append(offer_msg.message_id)
-        await _log_quiz_msg(internal_user_id, "bot", OFFER_TEXT_2)
+        await _log_quiz_msg(internal_user_id, "bot", price_text)
 
     # Сохраняем message_id оффера в контекст для удаления при смене
     ctx["quiz_offer_msg_ids"] = offer_msg_ids
@@ -1686,19 +1707,53 @@ async def handle_quiz_cta_payment(callback: CallbackQuery) -> None:
     problem_display = quiz["problem"] if quiz and quiz["problem"] else "уход"
     problem_key = quiz["problem_key"] if quiz and quiz["problem_key"] else ""
 
-    # Сообщение с описанием продукта
+    # Динамическая цена из контекста рассылки
+    ctx = CONSULTATION_CONTEXT.get(tg_user.id, {})
+    quiz_price = ctx.get("broadcast_quiz_price", 99)
+    original_price = ctx.get("broadcast_quiz_original_price", 490)
+
+    # Бесплатный путь: quiz_price == 0 → сразу генерируем план
+    if quiz_price == 0:
+        payment_text = (
+            f"Персональный план по проблеме «{problem_display}» "
+            f"для {culture_display}\n\n"
+            f"Для Вас сегодня — <b>бесплатно</b>"
+        )
+        await callback.message.answer(payment_text, parse_mode="HTML")
+        await _log_quiz_msg(internal_user_id, "bot", payment_text)
+
+        # Генерируем план как при fake_payment
+        fake_payment = {
+            "user_id": internal_user_id,
+            "metadata": {
+                "payment_type": "quiz_plan",
+                "problem_key": problem_key,
+                "culture_display": culture_display,
+                "problem_display": problem_display,
+            },
+        }
+        try:
+            from src.services.db.tripwire_followup_repo import cancel_all_pending
+            await cancel_all_pending(internal_user_id)
+        except Exception as e:
+            logger.error(f"[funnel_b] Error cancelling follow-ups: {e}")
+        from src.services.payments.payment_service import _generate_quiz_plan_after_payment
+        await _generate_quiz_plan_after_payment(fake_payment, fake_payment["metadata"])
+        return
+
+    # Сообщение с описанием продукта (платный путь)
     payment_text = (
         f"Персональный план по проблеме «{problem_display}» "
         f"для {culture_display}\n\n"
-        f"<s>490 ₽</s> → <b>99 ₽</b>"
+        f"<s>{original_price} ₽</s> → <b>{quiz_price} ₽</b>"
     )
 
     if SKIP_PAYMENT:
         # === ТЕСТОВЫЙ РЕЖИМ: кнопка сразу имитирует оплату ===
         payment_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить 99 ₽ (тест)", callback_data="quiz_fake_payment")],
+            [InlineKeyboardButton(text=f"Оплатить {quiz_price} ₽ (тест)", callback_data="quiz_fake_payment")],
         ])
-        await callback.message.answer(payment_text, reply_markup=payment_keyboard)
+        await callback.message.answer(payment_text, reply_markup=payment_keyboard, parse_mode="HTML")
         await _log_quiz_msg(internal_user_id, "bot", payment_text)
         return
 
@@ -1711,15 +1766,16 @@ async def handle_quiz_cta_payment(callback: CallbackQuery) -> None:
             culture_display=culture_display,
             problem_display=problem_display,
             problem_key=problem_key,
+            price_rub=float(quiz_price),
         )
 
         confirmation_url = result["confirmation_url"]
 
         payment_keyboard = InlineKeyboardMarkup(inline_keyboard=[
-            [InlineKeyboardButton(text="Оплатить 99 ₽", url=confirmation_url)],
+            [InlineKeyboardButton(text=f"Оплатить {quiz_price} ₽", url=confirmation_url)],
         ])
 
-        await callback.message.answer(payment_text, reply_markup=payment_keyboard)
+        await callback.message.answer(payment_text, reply_markup=payment_keyboard, parse_mode="HTML")
         await _log_quiz_msg(internal_user_id, "bot", payment_text)
 
     except Exception as e:

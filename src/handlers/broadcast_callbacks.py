@@ -242,17 +242,53 @@ async def handle_broadcast_quiz_click(callback: CallbackQuery) -> None:
 
         await callback.answer()
 
+        # Загружаем конфиг рассылки для динамической цены и тега
+        quiz_config = {}
+        try:
+            broadcast = await get_broadcast(broadcast_id)
+            if broadcast and broadcast.get("inline_buttons"):
+                buttons = broadcast["inline_buttons"]
+                if isinstance(buttons, str):
+                    buttons = json.loads(buttons)
+                for btn in buttons:
+                    if btn.get("type") == "quiz_start":
+                        quiz_config = {
+                            "quiz_price": btn.get("quiz_price", 99),
+                            "quiz_original_price": btn.get("quiz_original_price", 490),
+                            "quiz_tag_id": btn.get("quiz_tag_id"),
+                        }
+                        break
+        except Exception as e:
+            logger.warning(f"Failed to load quiz config from broadcast {broadcast_id}: {e}")
+
+        # Авто-тег: присваиваем тег пользователю если задан
+        await _auto_tag_user(user_id, quiz_config.get("quiz_tag_id"))
+
         # Запускаем квиз
         from src.handlers.funnel_b import start_funnel_b_from_broadcast
         await start_funnel_b_from_broadcast(
             bot=callback.bot,
             telegram_user_id=callback.from_user.id,
             user_id=user_id,
+            broadcast_id=broadcast_id,
+            quiz_config=quiz_config,
         )
 
     except Exception as e:
         logger.error(f"Error handling broadcast quiz click: {e}", exc_info=True)
         await callback.answer("Произошла ошибка")
+
+
+async def _auto_tag_user(user_id: int, tag_id: int | None) -> None:
+    """Присвоить CRM-тег пользователю (если задан). Ошибка не блокирует квиз."""
+    if not tag_id:
+        return
+    try:
+        from src.services.db.client_crm_repo import add_client_tag
+        await add_client_tag(user_id, tag_id)
+        logger.info(f"Auto-tagged user {user_id} with tag {tag_id}")
+    except Exception as e:
+        logger.warning(f"Failed to auto-tag user {user_id} with tag {tag_id}: {e}")
 
 
 @router.poll_answer()

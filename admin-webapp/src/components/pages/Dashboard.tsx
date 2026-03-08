@@ -1,24 +1,58 @@
 // Dashboard Page - Рабочий стол с основной статистикой
-import { useEffect } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useStatsStore, useCrmStore, useCurrencyStore } from '@/store'
+import { api } from '@/services/api'
 import { ServerMetricsPanel } from './ServerMetrics'
 import { OpenAIBalanceCard } from './OpenAIBalanceCard'
 import styles from './Dashboard.module.css'
+
+const API = import.meta.env.VITE_API_URL || ''
+
+interface Tag {
+  id: number
+  name: string
+  color: string
+}
 
 export function Dashboard() {
   const { stats, embeddingStats, period, fetchStats, fetchEmbeddingStats, setPeriod } = useStatsStore()
   const { stats: crmStats, fetchClients } = useCrmStore()
   const { usdRate, fetchRate } = useCurrencyStore()
 
+  // Tag filter for funnel
+  const [funnelTagId, setFunnelTagId] = useState<number | null>(null)
+  const [funnelTags, setFunnelTags] = useState<Tag[]>([])
+  const [filteredFunnelStats, setFilteredFunnelStats] = useState<Record<string, number> | null>(null)
+
   useEffect(() => {
     fetchStats(period)
     fetchEmbeddingStats(period)
     fetchClients()
     fetchRate()
+    // Fetch tags for funnel filter
+    fetch(`${API}/api/admin/crm/tags`)
+      .then(r => r.json())
+      .then(data => setFunnelTags(Array.isArray(data) ? data : (data.tags || [])))
+      .catch(() => {})
   }, [fetchStats, fetchEmbeddingStats, fetchClients, fetchRate, period])
 
-  const totalClients = Object.values(crmStats).reduce((a, b) => (a ?? 0) + (b ?? 0), 0)
-  const paidClients = crmStats.paid || 0
+  const handleFunnelTagChange = useCallback(async (tagId: number | null) => {
+    setFunnelTagId(tagId)
+    if (tagId) {
+      try {
+        const stats = await api.getCrmFunnelStats(tagId)
+        setFilteredFunnelStats(stats)
+      } catch {
+        setFilteredFunnelStats(null)
+      }
+    } else {
+      setFilteredFunnelStats(null)
+    }
+  }, [])
+
+  const activeFunnelStats = filteredFunnelStats ?? crmStats
+  const totalClients = Object.values(activeFunnelStats).reduce((a, b) => (a ?? 0) + (b ?? 0), 0)
+  const paidClients = activeFunnelStats.paid || 0
 
   return (
     <div className={styles.container}>
@@ -103,45 +137,66 @@ export function Dashboard() {
 
         {/* Воронка */}
         <div className={`${styles.card} ${styles.full}`}>
-          <h3 className={styles.sectionTitle}>Воронка продаж</h3>
+          <div className={styles.funnelHeader}>
+            <h3 className={styles.sectionTitle}>Воронка продаж</h3>
+            {funnelTags.length > 0 && (
+              <div className={styles.funnelFilter}>
+                <select
+                  className={styles.funnelTagSelect}
+                  value={funnelTagId ?? ''}
+                  onChange={e => handleFunnelTagChange(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">Все</option>
+                  {funnelTags.map(t => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+                {funnelTagId && (
+                  <button className={styles.funnelClearFilter} onClick={() => handleFunnelTagChange(null)}>
+                    ×
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
           <div className={styles.funnel}>
             <div className={styles.funnelItem}>
               <div className={styles.funnelBar} style={{ width: '100%', background: 'var(--accent-blue)' }} />
               <span className={styles.funnelLabel}>Новые</span>
-              <span className={styles.funnelValue}>{crmStats.new || 0}</span>
+              <span className={styles.funnelValue}>{activeFunnelStats.new || 0}</span>
             </div>
             <div className={styles.funnelItem}>
               <div
                 className={styles.funnelBar}
                 style={{
-                  width: totalClients ? `${((crmStats.tried || 0) / totalClients) * 100}%` : '0%',
+                  width: totalClients ? `${((activeFunnelStats.tried || 0) / totalClients) * 100}%` : '0%',
                   background: 'var(--accent-purple)'
                 }}
               />
               <span className={styles.funnelLabel}>Попробовали</span>
-              <span className={styles.funnelValue}>{crmStats.tried || 0}</span>
+              <span className={styles.funnelValue}>{activeFunnelStats.tried || 0}</span>
             </div>
             <div className={styles.funnelItem}>
               <div
                 className={styles.funnelBar}
                 style={{
-                  width: totalClients ? `${((crmStats.trial_ended || 0) / totalClients) * 100}%` : '0%',
+                  width: totalClients ? `${((activeFunnelStats.trial_ended || 0) / totalClients) * 100}%` : '0%',
                   background: 'var(--accent-yellow)'
                 }}
               />
               <span className={styles.funnelLabel}>Триал закончился</span>
-              <span className={styles.funnelValue}>{crmStats.trial_ended || 0}</span>
+              <span className={styles.funnelValue}>{activeFunnelStats.trial_ended || 0}</span>
             </div>
             <div className={styles.funnelItem}>
               <div
                 className={styles.funnelBar}
                 style={{
-                  width: totalClients ? `${((crmStats.paid || 0) / totalClients) * 100}%` : '0%',
+                  width: totalClients ? `${((activeFunnelStats.paid || 0) / totalClients) * 100}%` : '0%',
                   background: 'var(--accent-green)'
                 }}
               />
               <span className={styles.funnelLabel}>Оплатили</span>
-              <span className={styles.funnelValue}>{crmStats.paid || 0}</span>
+              <span className={styles.funnelValue}>{activeFunnelStats.paid || 0}</span>
             </div>
           </div>
         </div>

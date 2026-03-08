@@ -748,9 +748,10 @@ async def create_quiz_plan_payment(
     problem_key: str = "",
     return_url: Optional[str] = None,
     user_email: Optional[str] = None,
+    price_rub: float = 99.0,
 ) -> Dict[str, Any]:
     """
-    Создает платеж за персональный план из квиза (99₽).
+    Создает платеж за персональный план из квиза.
 
     Args:
         user_id: Внутренний ID пользователя
@@ -760,11 +761,12 @@ async def create_quiz_plan_payment(
         problem_key: Ключ проблемы для lookup PDF-решения
         return_url: URL для возврата
         user_email: Email для чека
+        price_rub: Цена в рублях (по умолчанию 99)
 
     Returns:
         Словарь с данными платежа: payment_id, confirmation_url, amount
     """
-    price_rub = Decimal("99.00")
+    price_rub = Decimal(str(price_rub))
 
     idempotency_key = f"quiz_plan_{user_id}_{int(datetime.now().timestamp())}"
 

@@ -99,6 +99,14 @@ async def create_trigger(
     description: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Создать новый триггер."""
+    # Guard against double-encoding: ensure event_config is always a dict
+    if isinstance(event_config, str):
+        event_config = json.loads(event_config)
+    if isinstance(conditions, str):
+        conditions = json.loads(conditions)
+    if isinstance(actions, str):
+        actions = json.loads(actions)
+
     pool = get_pool()
     async with pool.acquire() as conn:
         row = await conn.fetchrow(
@@ -283,6 +291,7 @@ async def get_pending_triggers_due(limit: int = 100) -> List[Dict[str, Any]]:
                 at.event_config,
                 at.conditions,
                 at.actions,
+                at.is_active,
                 u.telegram_user_id
             FROM automation_trigger_log atl
             JOIN automation_triggers at ON at.id = atl.trigger_id
@@ -369,7 +378,6 @@ async def has_been_triggered(
                 """
                 SELECT 1 FROM automation_trigger_log
                 WHERE trigger_id = $1 AND user_id = $2
-                  AND status IN ('sent', 'pending')
                   AND event_snapshot->>'subscription_id' = $3
                 """,
                 trigger_id, user_id, str(event_snapshot['subscription_id']),
@@ -378,7 +386,7 @@ async def has_been_triggered(
             row = await conn.fetchrow(
                 """
                 SELECT 1 FROM automation_trigger_log
-                WHERE trigger_id = $1 AND user_id = $2 AND status IN ('sent', 'pending')
+                WHERE trigger_id = $1 AND user_id = $2
                 """,
                 trigger_id, user_id,
             )

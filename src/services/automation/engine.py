@@ -169,6 +169,15 @@ async def process_pending_automation_triggers() -> int:
             event_config = record.get('event_config') or {}
             conditions = record.get('conditions')
 
+            # Если триггер выключен — удалить pending запись
+            if not record.get('is_active', True):
+                await repo.delete_trigger_log_entry(log_id)
+                logger.info(
+                    f"Pending trigger log_id={log_id} deleted: trigger {trigger_id} is disabled"
+                )
+                processed += 1
+                continue
+
             # Re-evaluate conditions (user state may have changed)
             conditions_met = await evaluate_conditions(conditions, user_id)
             if not conditions_met:

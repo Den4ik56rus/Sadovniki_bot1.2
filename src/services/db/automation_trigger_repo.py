@@ -402,8 +402,8 @@ async def update_trigger_log_status(
         await conn.execute(
             """
             UPDATE automation_trigger_log
-            SET status = $1, actions_result = ($2::text)::jsonb, error_message = $3,
-                executed_at = CASE WHEN $1 IN ('sent', 'failed', 'skipped') THEN NOW() ELSE executed_at END
+            SET status = $1::text, actions_result = ($2::text)::jsonb, error_message = $3,
+                executed_at = CASE WHEN $1::text IN ('sent', 'failed', 'skipped') THEN NOW() ELSE executed_at END
             WHERE id = $4
             """,
             status,

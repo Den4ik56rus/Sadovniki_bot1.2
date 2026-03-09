@@ -718,13 +718,13 @@ def _validate_inline_buttons(buttons: list) -> None:
             raise web.HTTPBadRequest(text='Each button must be an object')
 
         btn_type = btn.get('type')
-        if btn_type not in ('url', 'quick_reply', 'payment', 'discount', 'quiz_start'):
-            raise web.HTTPBadRequest(text='Button type must be "url", "quick_reply", "payment", "discount" or "quiz_start"')
+        if btn_type not in ('url', 'quick_reply', 'payment', 'discount', 'quiz_start', 'consultation'):
+            raise web.HTTPBadRequest(text='Button type must be "url", "quick_reply", "payment", "discount", "quiz_start" or "consultation"')
 
         text = btn.get('text', '')
-        if btn_type not in ('payment', 'discount', 'quiz_start') and (not text or len(text) > 64):
+        if btn_type not in ('payment', 'discount', 'quiz_start', 'consultation') and (not text or len(text) > 64):
             raise web.HTTPBadRequest(text='Button text must be 1-64 characters')
-        if btn_type in ('payment', 'discount', 'quiz_start') and len(text) > 64:
+        if btn_type in ('payment', 'discount', 'quiz_start', 'consultation') and len(text) > 64:
             raise web.HTTPBadRequest(text='Button text must be max 64 characters')
 
         if btn_type == 'url':

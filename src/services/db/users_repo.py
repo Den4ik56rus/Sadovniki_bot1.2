@@ -51,8 +51,21 @@ async def get_or_create_user(
             telegram_user_id,  # Подставляем $1
         )
 
-        # Если пользователь уже существует — возвращаем его id
+        # Если пользователь уже существует — обновляем данные профиля и возвращаем id
         if row is not None:
+            await conn.execute(
+                """
+                UPDATE users
+                SET username = COALESCE($2, username),
+                    first_name = COALESCE($3, first_name),
+                    last_name = COALESCE($4, last_name)
+                WHERE telegram_user_id = $1
+                """,
+                telegram_user_id,
+                username,
+                first_name,
+                last_name,
+            )
             return row["id"]
 
         # Если не нашли — создаём нового пользователя и начисляем триал

@@ -22,6 +22,7 @@ interface Props {
   funnelId: string
   stageKey: string
   triggers: FunnelStageTrigger[]
+  refreshKey?: number
 }
 
 function formatDelay(minutes: number): string {
@@ -32,7 +33,7 @@ function formatDelay(minutes: number): string {
   return `${minutes} мин`
 }
 
-export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
+export function StageTriggerEditor({ funnelId, stageKey, triggers, refreshKey }: Props) {
   const { createTrigger, deleteTrigger, toggleTrigger } = useFunnelStore()
   const [broadcasts, setBroadcasts] = useState<Broadcast[]>([])
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
@@ -61,7 +62,7 @@ export function StageTriggerEditor({ funnelId, stageKey, triggers }: Props) {
         )
       })
       .catch(() => {})
-  }, [funnelId, stageKey])
+  }, [funnelId, stageKey, refreshKey])
 
   // Load broadcasts and plans when opening add form
   useEffect(() => {

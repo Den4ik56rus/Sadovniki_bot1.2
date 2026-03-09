@@ -240,6 +240,11 @@ def _build_event_snapshot(event_type: str, event_data: Dict[str, Any]) -> Option
             'subscription_id': event_data.get('subscription_id'),
             'days_before': event_data.get('days_before'),
         }
+    if event_type == 'stage_transition':
+        return {
+            'funnel_id': event_data.get('funnel_id'),
+            'stage_key': event_data.get('stage_key'),
+        }
     return None
 
 

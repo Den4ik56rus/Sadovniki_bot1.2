@@ -16,6 +16,7 @@ interface FunnelStore {
   isLoadingClients: boolean
   error: string | null
   isSettingsMode: boolean
+  settingsRefreshKey: number
   sseConnected: boolean
   selectedInviteLinkId: number | null
   sortOption: FunnelSortOption
@@ -81,6 +82,7 @@ export const useFunnelStore = create<FunnelStore>()(
       isLoadingClients: false,
       error: null,
       isSettingsMode: false,
+      settingsRefreshKey: 0,
       sseConnected: false,
       selectedInviteLinkId: null,
       sortOption: 'last_activity_desc' as FunnelSortOption,
@@ -441,7 +443,7 @@ export const useFunnelStore = create<FunnelStore>()(
       // Settings mode
       toggleSettingsMode: () => {
         const wasSettings = get().isSettingsMode
-        set({ isSettingsMode: !wasSettings })
+        set({ isSettingsMode: !wasSettings, settingsRefreshKey: get().settingsRefreshKey + 1 })
         // Загружаем триггеры при входе в режим настроек
         if (!wasSettings) {
           const funnelId = get().currentFunnelId
@@ -519,6 +521,7 @@ export const useFunnelStore = create<FunnelStore>()(
         isLoadingClients: false,
         error: null,
         isSettingsMode: false,
+        settingsRefreshKey: 0,
         sseConnected: false,
         selectedInviteLinkId: null,
         sortOption: 'last_activity_desc' as FunnelSortOption,

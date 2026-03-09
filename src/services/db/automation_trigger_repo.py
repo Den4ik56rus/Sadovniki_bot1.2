@@ -375,7 +375,8 @@ async def has_been_triggered(
     Проверить, срабатывал ли триггер для пользователя.
 
     Для subscription_expiring: проверяем по subscription_id в event_snapshot.
-    Для остальных: проверяем по trigger_id + user_id + status (sent/pending).
+    Для остальных: проверяем по trigger_id + user_id + status IN (sent, pending).
+    skipped не блокирует повтор — условия могли измениться.
     """
     pool = get_pool()
     async with pool.acquire() as conn:
@@ -393,6 +394,7 @@ async def has_been_triggered(
                 """
                 SELECT 1 FROM automation_trigger_log
                 WHERE trigger_id = $1 AND user_id = $2
+                  AND status IN ('sent', 'pending')
                 """,
                 trigger_id, user_id,
             )

@@ -42,6 +42,7 @@ export function FunnelColumn({
 }: FunnelColumnProps) {
   const {
     isSettingsMode,
+    settingsRefreshKey,
     currentFunnelId,
     stages,
     triggers,
@@ -314,6 +315,7 @@ export function FunnelColumn({
               funnelId={currentFunnelId}
               stageKey={stageKey}
               triggers={triggers}
+              refreshKey={settingsRefreshKey}
             />
           )}
         </div>

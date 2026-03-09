@@ -268,14 +268,15 @@ export function ActionListEditor({ actions, onChange }: Props) {
                 <span style={{ fontSize: 13 }}>Запустить опрос №2 через 90 сек</span>
               </label>
             </div>
-            <div className={styles.actionFieldRow}>
-              <span className={styles.actionFieldLabel}>Сообщение</span>
-              <input
-                type="text"
+            <div className={styles.actionFieldRow} style={{ alignItems: 'flex-start' }}>
+              <span className={styles.actionFieldLabel} style={{ paddingTop: 6 }}>Сообщение</span>
+              <textarea
                 className={styles.actionFieldInput}
                 value={action.custom_message || ''}
                 onChange={e => updateAction(idx, { ...action, custom_message: e.target.value || undefined })}
                 placeholder="Текст перед оффером (необязательно)"
+                rows={4}
+                style={{ resize: 'vertical', lineHeight: '1.5', fontFamily: 'inherit' }}
               />
             </div>
           </div>

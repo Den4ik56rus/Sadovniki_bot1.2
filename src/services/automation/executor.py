@@ -189,12 +189,12 @@ async def _action_send_quiz_payment(
     from aiogram.enums import ParseMode
 
     problem_key = action.get('problem_key', '')
-    discount_percent = int(action.get('discount_percent') or 0)
+    custom_price = action.get('custom_price')
     send_quiz_after = bool(action.get('send_quiz_after_payment', False))
     custom_message = action.get('custom_message', '')
 
     original_price = 99
-    final_price = max(round(original_price * (1 - discount_percent / 100)), 1)
+    final_price = int(custom_price) if custom_price else original_price
 
     if problem_key and problem_key in quiz_headers:
         culture_display, problem_display = quiz_headers[problem_key]
@@ -224,7 +224,7 @@ async def _action_send_quiz_payment(
     ctx['broadcast_quiz_original_price'] = 490
     CONSULTATION_CONTEXT[telegram_user_id] = ctx
 
-    if discount_percent > 0:
+    if final_price < original_price:
         offer_price_text = f"Обычно такой план стоит <s>490 ₽</s>.\nДля Вас сегодня — <b>{final_price} ₽</b>"
     else:
         offer_price_text = f"Обычно такой план стоит <s>490 ₽</s>.\nДля Вас сегодня — <b>{final_price} ₽</b>"

@@ -219,8 +219,7 @@ export function ActionListEditor({ actions, onChange }: Props) {
           if (!groups[p.culture]) groups[p.culture] = []
           groups[p.culture].push(p)
         }
-        const discountPct = action.discount_percent || 0
-        const finalPrice = Math.max(Math.round(99 * (1 - discountPct / 100)), 1)
+        const customPrice = action.custom_price
         return (
           <div className={styles.actionFields}>
             <div className={styles.actionFieldRow}>
@@ -243,19 +242,18 @@ export function ActionListEditor({ actions, onChange }: Props) {
               </select>
             </div>
             <div className={styles.actionFieldRow}>
-              <span className={styles.actionFieldLabel}>Скидка %</span>
+              <span className={styles.actionFieldLabel}>Цена ₽</span>
               <input
                 type="number"
                 className={styles.actionFieldInput}
-                value={discountPct || ''}
-                onChange={e => updateAction(idx, { ...action, discount_percent: e.target.value ? Math.min(99, Number(e.target.value)) : undefined })}
-                placeholder="0"
-                min={0}
-                max={99}
+                value={customPrice ?? ''}
+                onChange={e => updateAction(idx, { ...action, custom_price: e.target.value ? Number(e.target.value) : undefined })}
+                placeholder="99 (по умолчанию)"
+                min={1}
               />
-              {discountPct > 0 && (
+              {customPrice && customPrice < 99 && (
                 <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 6 }}>
-                  → {finalPrice} ₽
+                  скидка {Math.round((1 - customPrice / 99) * 100)}%
                 </span>
               )}
             </div>

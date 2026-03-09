@@ -161,6 +161,8 @@ async def update_trigger(
         idx += 1
 
     if event_config is not None:
+        if isinstance(event_config, str):
+            event_config = json.loads(event_config)
         set_parts.append(f"event_config = ${idx}::jsonb")
         values.append(json.dumps(event_config))
         idx += 1
@@ -168,11 +170,15 @@ async def update_trigger(
     if clear_conditions:
         set_parts.append("conditions = NULL")
     elif conditions is not None:
+        if isinstance(conditions, str):
+            conditions = json.loads(conditions)
         set_parts.append(f"conditions = ${idx}::jsonb")
         values.append(json.dumps(conditions))
         idx += 1
 
     if actions is not None:
+        if isinstance(actions, str):
+            actions = json.loads(actions)
         set_parts.append(f"actions = ${idx}::jsonb")
         values.append(json.dumps(actions))
         idx += 1

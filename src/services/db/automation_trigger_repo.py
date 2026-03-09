@@ -163,10 +163,8 @@ async def update_trigger(
     if event_config is not None:
         if isinstance(event_config, str):
             event_config = json.loads(event_config)
-        ec_str = json.dumps(event_config)
-        logger.info(f"[update_trigger repo] event_config type={type(event_config).__name__} ec_str={ec_str!r}")
         set_parts.append(f"event_config = ${idx}")
-        values.append(ec_str)
+        values.append(json.dumps(event_config))
         idx += 1
 
     if clear_conditions:
@@ -195,11 +193,16 @@ async def update_trigger(
         values.append(is_active)
         idx += 1
 
+    sql = f"UPDATE automation_triggers SET {', '.join(set_parts)} WHERE id = $1 RETURNING *"
+    print(f"[DEBUG update_trigger] sql={sql}", flush=True)
+    print(f"[DEBUG update_trigger] values types={[type(v).__name__ for v in values]}", flush=True)
+    print(f"[DEBUG update_trigger] values={values!r}", flush=True)
     async with pool.acquire() as conn:
-        row = await conn.fetchrow(
-            f"UPDATE automation_triggers SET {', '.join(set_parts)} WHERE id = $1 RETURNING *",
-            *values,
-        )
+        row = await conn.fetchrow(sql, *values)
+        if row:
+            async with pool.acquire() as conn2:
+                chk = await conn2.fetchrow("SELECT jsonb_typeof(event_config) as t FROM automation_triggers WHERE id=$1", trigger_id)
+                print(f"[DEBUG update_trigger] DB jsonb_typeof after update: {chk['t']}", flush=True)
     return _serialize_row(dict(row)) if row else None
 
 

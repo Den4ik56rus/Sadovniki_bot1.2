@@ -281,32 +281,80 @@ async def log_trigger_execution(
 
 
 async def get_pending_triggers_due(limit: int = 100) -> List[Dict[str, Any]]:
-    """Получить pending-триггеры у которых пришло время выполнения."""
+    """
+    Атомарно захватить pending-триггеры у которых пришло время выполнения.
+
+    Меняет статус с 'pending' на 'processing' внутри транзакции (FOR UPDATE SKIP LOCKED),
+    чтобы исключить повторную обработку при рестарте бота или параллельных вызовах.
+    """
     pool = get_pool()
     async with pool.acquire() as conn:
-        rows = await conn.fetch(
-            """
-            SELECT
-                atl.id AS log_id,
-                atl.trigger_id,
-                atl.user_id,
-                atl.event_snapshot,
-                at.event_type,
-                at.event_config,
-                at.conditions,
-                at.actions,
-                at.is_active,
-                u.telegram_user_id
-            FROM automation_trigger_log atl
-            JOIN automation_triggers at ON at.id = atl.trigger_id
-            JOIN users u ON u.id = atl.user_id
-            WHERE atl.status = 'pending' AND atl.send_at <= NOW()
-            ORDER BY atl.send_at ASC
-            LIMIT $1
-            """,
-            limit,
-        )
+        async with conn.transaction():
+            log_ids = await conn.fetch(
+                """
+                UPDATE automation_trigger_log
+                SET status = 'processing'
+                WHERE id IN (
+                    SELECT id FROM automation_trigger_log
+                    WHERE status = 'pending' AND send_at <= NOW()
+                    ORDER BY send_at ASC
+                    LIMIT $1
+                    FOR UPDATE SKIP LOCKED
+                )
+                RETURNING id
+                """,
+                limit,
+            )
+            if not log_ids:
+                return []
+
+            ids = [r['id'] for r in log_ids]
+            rows = await conn.fetch(
+                """
+                SELECT
+                    atl.id AS log_id,
+                    atl.trigger_id,
+                    atl.user_id,
+                    atl.event_snapshot,
+                    at.event_type,
+                    at.event_config,
+                    at.conditions,
+                    at.actions,
+                    at.is_active,
+                    u.telegram_user_id
+                FROM automation_trigger_log atl
+                JOIN automation_triggers at ON at.id = atl.trigger_id
+                JOIN users u ON u.id = atl.user_id
+                WHERE atl.id = ANY($1)
+                ORDER BY atl.send_at ASC
+                """,
+                ids,
+            )
     return [_serialize_row(dict(row)) for row in rows]
+
+
+async def reset_stale_processing_triggers(minutes: int = 5) -> int:
+    """
+    Вернуть в pending застрявшие 'processing' записи (упали при обработке).
+
+    Если бот упал между захватом и обновлением статуса — записи останутся в processing.
+    Через 5 минут они возвращаются в pending для повторной обработки.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        result = await conn.execute(
+            """
+            UPDATE automation_trigger_log
+            SET status = 'pending'
+            WHERE status = 'processing'
+              AND send_at < NOW() - ($1 * INTERVAL '1 minute')
+            """,
+            minutes,
+        )
+    count = int(result.split()[-1]) if result else 0
+    if count > 0:
+        logger.warning(f"Reset {count} stale processing triggers to pending")
+    return count
 
 
 async def update_trigger_log_status(
@@ -392,7 +440,7 @@ async def has_been_triggered(
                 """
                 SELECT 1 FROM automation_trigger_log
                 WHERE trigger_id = $1 AND user_id = $2
-                  AND status IN ('sent', 'pending')
+                  AND status IN ('sent', 'pending', 'processing')
                 """,
                 trigger_id, user_id,
             )

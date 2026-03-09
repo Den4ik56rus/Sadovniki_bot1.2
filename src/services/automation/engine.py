@@ -154,6 +154,9 @@ async def process_pending_automation_triggers() -> int:
     Вызывается фоновым планировщиком каждые 30 секунд.
     """
     try:
+        # Вернуть в pending записи которые застряли в processing (упали при обработке)
+        await repo.reset_stale_processing_triggers(minutes=5)
+
         due = await repo.get_pending_triggers_due(limit=100)
         if not due:
             return 0

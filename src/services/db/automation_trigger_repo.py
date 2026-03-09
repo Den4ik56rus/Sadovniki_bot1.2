@@ -113,7 +113,7 @@ async def create_trigger(
             """
             INSERT INTO automation_triggers
                 (name, description, event_type, event_config, conditions, actions, delay_minutes)
-            VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6::jsonb, $7)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             RETURNING *
             """,
             name,
@@ -163,7 +163,7 @@ async def update_trigger(
     if event_config is not None:
         if isinstance(event_config, str):
             event_config = json.loads(event_config)
-        set_parts.append(f"event_config = ${idx}::jsonb")
+        set_parts.append(f"event_config = ${idx}")
         values.append(json.dumps(event_config))
         idx += 1
 
@@ -172,14 +172,14 @@ async def update_trigger(
     elif conditions is not None:
         if isinstance(conditions, str):
             conditions = json.loads(conditions)
-        set_parts.append(f"conditions = ${idx}::jsonb")
+        set_parts.append(f"conditions = ${idx}")
         values.append(json.dumps(conditions))
         idx += 1
 
     if actions is not None:
         if isinstance(actions, str):
             actions = json.loads(actions)
-        set_parts.append(f"actions = ${idx}::jsonb")
+        set_parts.append(f"actions = ${idx}")
         values.append(json.dumps(actions))
         idx += 1
 
@@ -257,7 +257,7 @@ async def log_trigger_execution(
                 """
                 INSERT INTO automation_trigger_log
                     (trigger_id, user_id, status, send_at, event_snapshot, actions_result, error_message)
-                VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'), $5::jsonb, $6::jsonb, $7)
+                VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'), $5, $6, $7)
                 RETURNING id
                 """,
                 trigger_id, user_id, status, send_at_offset_minutes,
@@ -271,7 +271,7 @@ async def log_trigger_execution(
                 f"""
                 INSERT INTO automation_trigger_log
                     (trigger_id, user_id, status, event_snapshot, actions_result, error_message, executed_at)
-                VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6, {executed_at})
+                VALUES ($1, $2, $3, $4, $5, $6, {executed_at})
                 RETURNING id
                 """,
                 trigger_id, user_id, status,
@@ -323,7 +323,7 @@ async def update_trigger_log_status(
         await conn.execute(
             """
             UPDATE automation_trigger_log
-            SET status = $1, actions_result = $2::jsonb, error_message = $3,
+            SET status = $1, actions_result = $2, error_message = $3,
                 executed_at = CASE WHEN $1 IN ('sent', 'failed', 'skipped') THEN NOW() ELSE executed_at END
             WHERE id = $4
             """,

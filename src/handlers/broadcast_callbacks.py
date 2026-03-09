@@ -279,6 +279,60 @@ async def handle_broadcast_quiz_click(callback: CallbackQuery) -> None:
         await callback.answer("Произошла ошибка")
 
 
+@router.callback_query(F.data.startswith("bcast_consultation:"))
+async def handle_broadcast_consultation_click(callback: CallbackQuery) -> None:
+    """Обработка клика по кнопке консультации из рассылки. Открывает меню выбора темы."""
+    try:
+        parts = callback.data.split(":", 2)
+        broadcast_id = int(parts[1])
+        option_key = parts[2] if len(parts) > 2 else "consultation"
+
+        from src.services.db.pool import get_pool
+        pool = get_pool()
+        async with pool.acquire() as conn:
+            user_row = await conn.fetchrow(
+                "SELECT id FROM users WHERE telegram_user_id = $1",
+                callback.from_user.id,
+            )
+
+        if not user_row:
+            await callback.answer("Пользователь не найден")
+            return
+
+        user_id = user_row['id']
+
+        # Записываем клик для аналитики
+        run_id = await resolve_run_id_from_recipient(broadcast_id, user_id)
+        await record_button_click(
+            broadcast_id=broadcast_id,
+            user_id=user_id,
+            telegram_user_id=callback.from_user.id,
+            option_key=option_key,
+            button_text="Консультация",
+            run_id=run_id,
+        )
+
+        await callback.answer()
+
+        # Открываем меню консультации (как menu_consultation)
+        from src.services.db.topics_repo import close_open_topics
+        from src.handlers.common import clear_consultation_state, set_consultation_state
+        from src.keyboards.consultation.common import CONSULTATION_ENTRY_TEXT, get_example_questions_keyboard
+        from src.handlers.consultation.entry import _log_bot_msg, serialize_keyboard
+
+        await close_open_topics(user_id)
+        await clear_consultation_state(callback.from_user.id)
+        await set_consultation_state(callback.from_user.id, "waiting_consultation_question")
+
+        kb = get_example_questions_keyboard()
+        await callback.message.answer(CONSULTATION_ENTRY_TEXT, parse_mode="HTML", reply_markup=kb)
+        await _log_bot_msg(CONSULTATION_ENTRY_TEXT, user_id=user_id, session_id=f"tg:{callback.from_user.id}", meta=serialize_keyboard(kb))
+
+    except Exception as e:
+        logger.error(f"Error handling broadcast consultation click: {e}", exc_info=True)
+        await callback.answer("Произошла ошибка")
+
+
 async def _auto_tag_user(user_id: int, tag_id: int | None) -> None:
     """Присвоить CRM-тег пользователю (если задан). Ошибка не блокирует квиз."""
     if not tag_id:

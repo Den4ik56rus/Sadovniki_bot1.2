@@ -288,6 +288,13 @@ async def build_inline_keyboard(
                     text=btn.get('text', 'START'),
                     callback_data=callback_data,
                 ))
+            elif btn['type'] == 'consultation':
+                option_key = btn.get('option_key', 'consultation')
+                callback_data = f"bcast_consultation:{broadcast_id}:{option_key}"
+                row_buttons.append(InlineKeyboardButton(
+                    text=btn.get('text', '💬 Консультация'),
+                    callback_data=callback_data,
+                ))
         if row_buttons:
             keyboard.append(row_buttons)
 

@@ -347,7 +347,7 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                           className={styles.typeSelect}
                           value={btn.type}
                           onChange={(e) => {
-                            const newType = e.target.value as 'url' | 'quick_reply' | 'payment' | 'discount' | 'quiz_start'
+                            const newType = e.target.value as 'url' | 'quick_reply' | 'payment' | 'discount' | 'quiz_start' | 'consultation'
                             const optIdx = buttons.length
                             if (newType === 'payment') {
                               if (plans.length === 0) {
@@ -391,6 +391,7 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                           <option value="payment">💳 Оплата</option>
                           <option value="discount">🏷️ Скидка на все тарифы</option>
                           <option value="quiz_start">🎯 Запустить опросник</option>
+                          <option value="consultation">💬 Начать консультацию</option>
                         </select>
                         {btn.type === 'url' && (
                           <input
@@ -909,6 +910,11 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                             <div className={styles.urlHint}>
                               При нажатии запустится опросник Funnel B с настроенными ценами
                             </div>
+                          </div>
+                        )}
+                        {btn.type === 'consultation' && (
+                          <div className={styles.urlHint}>
+                            При нажатии откроется меню консультации с выбором темы
                           </div>
                         )}
                       </div>

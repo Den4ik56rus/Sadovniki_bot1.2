@@ -238,6 +238,37 @@ async def get_active_triggers_by_event(event_type: str) -> List[Dict[str, Any]]:
 # ЛОГ ВЫПОЛНЕНИЯ
 # ═══════════════════════════════════════════════════════════════════
 
+async def try_claim_immediate_trigger(
+    trigger_id: int,
+    user_id: int,
+    event_snapshot: Optional[Dict[str, Any]] = None,
+) -> Optional[int]:
+    """
+    Атомарно захватить слот для немедленного выполнения триггера.
+
+    Вставляет запись со статусом 'processing' через INSERT ON CONFLICT DO NOTHING.
+    Если запись уже существует (sent/pending/processing) — возвращает None (уже обработан).
+    Если вставка прошла — возвращает log_id (можно выполнять действия).
+
+    Решает race condition в emit_automation_event: два параллельных asyncio.create_task()
+    не смогут оба пройти одновременно — только один получит log_id.
+    """
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            INSERT INTO automation_trigger_log
+                (trigger_id, user_id, status, event_snapshot)
+            VALUES ($1, $2, 'processing', ($3::text)::jsonb)
+            ON CONFLICT DO NOTHING
+            RETURNING id
+            """,
+            trigger_id, user_id,
+            json.dumps(event_snapshot) if event_snapshot else None,
+        )
+    return row['id'] if row else None
+
+
 async def log_trigger_execution(
     trigger_id: int,
     user_id: int,
@@ -256,6 +287,7 @@ async def log_trigger_execution(
                 INSERT INTO automation_trigger_log
                     (trigger_id, user_id, status, send_at, event_snapshot, actions_result, error_message)
                 VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'), ($5::text)::jsonb, ($6::text)::jsonb, $7)
+                ON CONFLICT DO NOTHING
                 RETURNING id
                 """,
                 trigger_id, user_id, status, send_at_offset_minutes,
@@ -270,6 +302,7 @@ async def log_trigger_execution(
                 INSERT INTO automation_trigger_log
                     (trigger_id, user_id, status, event_snapshot, actions_result, error_message, executed_at)
                 VALUES ($1, $2, $3, ($4::text)::jsonb, ($5::text)::jsonb, $6, {executed_at})
+                ON CONFLICT DO NOTHING
                 RETURNING id
                 """,
                 trigger_id, user_id, status,
@@ -277,7 +310,7 @@ async def log_trigger_execution(
                 json.dumps(actions_result) if actions_result else None,
                 error_message,
             )
-    return row['id']
+    return row['id'] if row else 0
 
 
 async def get_pending_triggers_due(limit: int = 100) -> List[Dict[str, Any]]:

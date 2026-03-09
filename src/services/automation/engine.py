@@ -87,24 +87,24 @@ async def emit_automation_event(
             if not _match_event_config(trigger_config, event_data, event_type):
                 continue
 
-            # 2. Проверяем дедупликацию
+            # 2. Проверяем дедупликацию (только для отложенных — у немедленных атомарный claim)
             event_snapshot = _build_event_snapshot(event_type, event_data)
-            already = await repo.has_been_triggered(trigger_id, user_id, event_snapshot)
-            if already:
-                continue
 
             # 3. Оценить условия
             conditions_met = await evaluate_conditions(conditions, user_id)
-            if not conditions_met:
-                # Логируем как skipped если условия не выполнены
-                await repo.log_trigger_execution(
-                    trigger_id, user_id, 'skipped',
-                    event_snapshot=event_snapshot,
-                )
-                continue
 
             # 4. Отложенная или немедленная отправка
             if delay_minutes > 0:
+                # Для отложенных — сначала проверяем, потом пишем pending
+                already = await repo.has_been_triggered(trigger_id, user_id, event_snapshot)
+                if already:
+                    continue
+                if not conditions_met:
+                    await repo.log_trigger_execution(
+                        trigger_id, user_id, 'skipped',
+                        event_snapshot=event_snapshot,
+                    )
+                    continue
                 await repo.log_trigger_execution(
                     trigger_id, user_id, 'pending',
                     send_at_offset_minutes=delay_minutes,
@@ -115,15 +115,32 @@ async def emit_automation_event(
                     f"in {delay_minutes} min (event={event_type})"
                 )
             else:
-                # Немедленное выполнение
+                # Немедленное выполнение — атомарный claim через INSERT ON CONFLICT DO NOTHING
+                if not conditions_met:
+                    # Пробуем вставить skipped — если уже есть sent/pending/processing, DO NOTHING
+                    await repo.log_trigger_execution(
+                        trigger_id, user_id, 'skipped',
+                        event_snapshot=event_snapshot,
+                    )
+                    continue
+
+                log_id = await repo.try_claim_immediate_trigger(
+                    trigger_id, user_id, event_snapshot
+                )
+                if log_id is None:
+                    # Уже обрабатывается или выполнен — пропускаем
+                    logger.debug(
+                        f"Automation trigger {trigger_id} already claimed for user {user_id}, skipping"
+                    )
+                    continue
+
                 try:
                     results = await execute_actions(actions, user_id, telegram_user_id)
                     all_success = all(r.get('success') for r in results)
 
-                    await repo.log_trigger_execution(
-                        trigger_id, user_id,
-                        status='sent' if all_success else 'failed',
-                        event_snapshot=event_snapshot,
+                    await repo.update_trigger_log_status(
+                        log_id,
+                        'sent' if all_success else 'failed',
                         actions_result=results,
                         error_message=None if all_success else _collect_errors(results),
                     )
@@ -134,11 +151,7 @@ async def emit_automation_event(
                     )
                 except Exception as e:
                     error_msg = str(e)[:500]
-                    await repo.log_trigger_execution(
-                        trigger_id, user_id, 'failed',
-                        event_snapshot=event_snapshot,
-                        error_message=error_msg,
-                    )
+                    await repo.update_trigger_log_status(log_id, 'failed', error_message=error_msg)
                     logger.warning(
                         f"Automation trigger {trigger_id} failed for user {user_id}: {error_msg}"
                     )

@@ -113,9 +113,6 @@ async def update_trigger(request: web.Request) -> web.Response:
         trigger_id = int(request.match_info.get("id"))
         data = await request.json()
 
-        ec = data.get('event_config')
-        logger.info(f"[update_trigger] id={trigger_id} event_config type={type(ec).__name__} value={ec!r}")
-
         clear_conditions = False
         conditions = data.get('conditions')
         if 'conditions' in data and conditions is None:

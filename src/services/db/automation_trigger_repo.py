@@ -163,8 +163,10 @@ async def update_trigger(
     if event_config is not None:
         if isinstance(event_config, str):
             event_config = json.loads(event_config)
+        ec_str = json.dumps(event_config)
+        logger.info(f"[update_trigger repo] event_config type={type(event_config).__name__} ec_str={ec_str!r}")
         set_parts.append(f"event_config = ${idx}")
-        values.append(json.dumps(event_config))
+        values.append(ec_str)
         idx += 1
 
     if clear_conditions:

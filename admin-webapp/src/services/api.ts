@@ -526,6 +526,7 @@ export const api = {
     token_packages: Array<{ id: number; name: string; price_rub: number; tokens_amount: number }>
     guide: { price_rub: number }
     quiz_plan: { price_rub: number }
+    quiz_plans?: Array<{ problem_key: string; culture: string; problem: string; price_rub: number }>
     flagships: Array<{ product_key: string; title: string; price_rub: number }>
   }> {
     return fetchApi('/crm/products')

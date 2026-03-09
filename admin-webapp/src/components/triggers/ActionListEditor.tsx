@@ -13,7 +13,8 @@ const ACTION_TYPE_LABELS: Record<TriggerActionType, string> = {
   add_tag: 'Добавить тег',
   remove_tag: 'Удалить тег',
   set_custom_field: 'Изменить поле',
-  send_payment_offer: 'Отправить оплату',
+  send_payment_offer: 'Отправить оплату (подписка)',
+  send_quiz_payment: 'Оплата презентации + флагман',
 }
 
 interface Props {
@@ -21,18 +22,24 @@ interface Props {
   onChange: (actions: TriggerAction[]) => void
 }
 
+type QuizPlan = { problem_key: string; culture: string; problem: string; price_rub: number }
+
 export function ActionListEditor({ actions, onChange }: Props) {
   const { funnels } = useFunnelStore()
   const { broadcasts, fetchBroadcasts } = useBroadcastStore()
   const [tags, setTags] = useState<ClientTag[]>([])
   const [stagesMap, setStagesMap] = useState<Record<string, FunnelStage[]>>({})
   const [plans, setPlans] = useState<{ id: number; name: string; price_rub: number }[]>([])
+  const [quizPlans, setQuizPlans] = useState<QuizPlan[]>([])
 
   useEffect(() => {
     api.getTags().then(setTags).catch(() => {})
     fetchBroadcasts()
     api.getSubscriptionPlans().then(data => {
       setPlans(data.plans.filter((p: any) => p.is_active))
+    }).catch(() => {})
+    api.getAvailableProducts().then(data => {
+      setQuizPlans(data.quiz_plans || [])
     }).catch(() => {})
   }, [fetchBroadcasts])
 
@@ -204,6 +211,78 @@ export function ActionListEditor({ actions, onChange }: Props) {
             </div>
           </div>
         )
+
+      case 'send_quiz_payment': {
+        // Группировка по культуре
+        const groups: Record<string, QuizPlan[]> = {}
+        for (const p of quizPlans) {
+          if (!groups[p.culture]) groups[p.culture] = []
+          groups[p.culture].push(p)
+        }
+        const discountPct = action.discount_percent || 0
+        const finalPrice = Math.max(Math.round(99 * (1 - discountPct / 100)), 1)
+        return (
+          <div className={styles.actionFields}>
+            <div className={styles.actionFieldRow}>
+              <span className={styles.actionFieldLabel}>Презентация</span>
+              <select
+                className={styles.actionFieldSelect}
+                value={action.problem_key || ''}
+                onChange={e => updateAction(idx, { ...action, problem_key: e.target.value || undefined })}
+              >
+                <option value="">По квизу пользователя</option>
+                {Object.entries(groups).map(([culture, items]) => (
+                  <optgroup key={culture} label={culture}>
+                    {items.map(item => (
+                      <option key={item.problem_key} value={item.problem_key}>
+                        {item.problem}
+                      </option>
+                    ))}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+            <div className={styles.actionFieldRow}>
+              <span className={styles.actionFieldLabel}>Скидка %</span>
+              <input
+                type="number"
+                className={styles.actionFieldInput}
+                value={discountPct || ''}
+                onChange={e => updateAction(idx, { ...action, discount_percent: e.target.value ? Math.min(99, Number(e.target.value)) : undefined })}
+                placeholder="0"
+                min={0}
+                max={99}
+              />
+              {discountPct > 0 && (
+                <span style={{ fontSize: 12, color: 'var(--text-muted)', marginLeft: 6 }}>
+                  → {finalPrice} ₽
+                </span>
+              )}
+            </div>
+            <div className={styles.actionFieldRow}>
+              <span className={styles.actionFieldLabel}>Опрос после оплаты</span>
+              <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={!!action.send_quiz_after_payment}
+                  onChange={e => updateAction(idx, { ...action, send_quiz_after_payment: e.target.checked || undefined })}
+                />
+                <span style={{ fontSize: 13 }}>Запустить опрос №2 через 90 сек</span>
+              </label>
+            </div>
+            <div className={styles.actionFieldRow}>
+              <span className={styles.actionFieldLabel}>Сообщение</span>
+              <input
+                type="text"
+                className={styles.actionFieldInput}
+                value={action.custom_message || ''}
+                onChange={e => updateAction(idx, { ...action, custom_message: e.target.value || undefined })}
+                placeholder="Текст перед оффером (необязательно)"
+              />
+            </div>
+          </div>
+        )
+      }
 
       default:
         return null

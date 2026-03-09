@@ -1844,7 +1844,7 @@ export interface FunnelTriggersResponse {
 
 export type TriggerEventType = 'stage_transition' | 'payment_success' | 'tag_changed' | 'subscription_expiring'
 
-export type TriggerActionType = 'send_broadcast' | 'move_to_stage' | 'add_tag' | 'remove_tag' | 'set_custom_field' | 'send_payment_offer'
+export type TriggerActionType = 'send_broadcast' | 'move_to_stage' | 'add_tag' | 'remove_tag' | 'set_custom_field' | 'send_payment_offer' | 'send_quiz_payment'
 
 export interface ConditionRule {
   type: 'has_tag' | 'not_has_tag' | 'from_invite_link' | 'at_funnel_stage' | 'not_at_funnel_stage'
@@ -1875,6 +1875,11 @@ export interface TriggerAction {
   plan_id?: number
   custom_price?: number
   bonus_tokens?: number
+  // send_quiz_payment fields
+  problem_key?: string
+  discount_percent?: number
+  send_quiz_after_payment?: boolean
+  custom_message?: string
 }
 
 export interface AutomationTrigger {

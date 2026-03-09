@@ -45,6 +45,8 @@ async def execute_actions(
                 result = await _action_set_custom_field(action, user_id)
             elif action_type == 'send_payment_offer':
                 result = await _action_send_payment_offer(action, user_id, telegram_user_id)
+            elif action_type == 'send_quiz_payment':
+                result = await _action_send_quiz_payment(action, user_id, telegram_user_id)
             else:
                 result = {'type': action_type, 'success': False, 'error': f'Unknown action type: {action_type}'}
 
@@ -162,3 +164,99 @@ async def _action_send_payment_offer(
         payment_config=payment_config,
     )
     return {'type': 'send_payment_offer', 'success': success, 'plan_id': action.get('plan_id')}
+
+
+async def _action_send_quiz_payment(
+    action: Dict[str, Any],
+    user_id: int,
+    telegram_user_id: int,
+) -> Dict[str, Any]:
+    """
+    Отправить оффер на оплату презентации (quiz_plan).
+
+    Параметры action:
+        problem_key: str       — ключ проблемы (напр. "strawberry_small_berries")
+        discount_percent: int  — скидка в % (0 = полная цена 99₽)
+        send_quiz_after_payment: bool — запустить upsell-опрос после оплаты
+        custom_message: str    — текст перед оффером (optional)
+    """
+    from src.services.quiz_solutions import _OFFER_HEADERS as quiz_headers, get_quiz_solution, get_offer_text
+    from src.services.payments.payment_service import create_quiz_plan_payment
+    from src.handlers.funnel_b import get_offer_keyboard, CONSULTATION_CONTEXT
+    from src.config import settings
+    from src.bot import get_bot
+    from aiogram.types import FSInputFile
+    from aiogram.enums import ParseMode
+
+    problem_key = action.get('problem_key', '')
+    discount_percent = int(action.get('discount_percent') or 0)
+    send_quiz_after = bool(action.get('send_quiz_after_payment', False))
+    custom_message = action.get('custom_message', '')
+
+    original_price = 99
+    final_price = max(round(original_price * (1 - discount_percent / 100)), 1)
+
+    if problem_key and problem_key in quiz_headers:
+        culture_display, problem_display = quiz_headers[problem_key]
+        product_name = f"Презентация: {culture_display} — {problem_display}"
+    else:
+        culture_display = "Персональный план"
+        problem_display = "квиз-план"
+        product_name = "Персональный план"
+
+    try:
+        payment_result = await create_quiz_plan_payment(
+            user_id=user_id,
+            telegram_user_id=telegram_user_id,
+            culture_display=culture_display,
+            problem_display=problem_display,
+            problem_key=problem_key,
+            price_rub=float(final_price),
+            trigger_upsell=send_quiz_after,
+            return_url=settings.YOOKASSA_RETURN_URL,
+        )
+    except Exception as e:
+        return {'type': 'send_quiz_payment', 'success': False, 'error': str(e)[:300]}
+
+    # Установить контекст для кнопки quiz_cta_payment
+    ctx = CONSULTATION_CONTEXT.get(telegram_user_id, {})
+    ctx['broadcast_quiz_price'] = final_price
+    ctx['broadcast_quiz_original_price'] = 490
+    CONSULTATION_CONTEXT[telegram_user_id] = ctx
+
+    if discount_percent > 0:
+        offer_price_text = f"Обычно такой план стоит <s>490 ₽</s>.\nДля Вас сегодня — <b>{final_price} ₽</b>"
+    else:
+        offer_price_text = f"Обычно такой план стоит <s>490 ₽</s>.\nДля Вас сегодня — <b>{final_price} ₽</b>"
+
+    bot = get_bot()
+    try:
+        if custom_message:
+            await bot.send_message(chat_id=telegram_user_id, text=custom_message, parse_mode=ParseMode.HTML)
+
+        intro_text = get_offer_text(problem_key)
+        if intro_text:
+            await bot.send_message(chat_id=telegram_user_id, text=intro_text, parse_mode=ParseMode.HTML)
+
+        solution = get_quiz_solution(problem_key)
+        offer_keyboard = get_offer_keyboard(quiz_price=final_price)
+
+        if solution and solution.get('preview_path'):
+            preview_photo = FSInputFile(solution['preview_path'])
+            await bot.send_photo(
+                chat_id=telegram_user_id,
+                photo=preview_photo,
+                caption=offer_price_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=offer_keyboard,
+            )
+        else:
+            await bot.send_message(
+                chat_id=telegram_user_id,
+                text=offer_price_text,
+                parse_mode=ParseMode.HTML,
+                reply_markup=offer_keyboard,
+            )
+        return {'type': 'send_quiz_payment', 'success': True, 'problem_key': problem_key}
+    except Exception as e:
+        return {'type': 'send_quiz_payment', 'success': False, 'error': str(e)[:300]}

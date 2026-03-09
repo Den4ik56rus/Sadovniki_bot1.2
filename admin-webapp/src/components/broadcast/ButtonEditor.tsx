@@ -1,10 +1,12 @@
 // Button Editor — редактор inline-кнопок для рассылки
 
 import { useState, useEffect } from 'react'
-import type { BroadcastButton } from '@/types'
+import type { BroadcastButton, ClientTag } from '@/types'
 import { MessageEditor } from './MessageEditor'
 import { api } from '@/services/api'
 import styles from './ButtonEditor.module.css'
+
+const API = import.meta.env.VITE_API_URL || ''
 
 interface SubscriptionPlan {
   id: number
@@ -156,6 +158,10 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
   const [enabled, setEnabled] = useState(buttons.length > 0)
   const [plans, setPlans] = useState<SubscriptionPlan[]>([])
   const [tokenPackages, setTokenPackages] = useState<TokenPackage[]>([])
+  const [tags, setTags] = useState<ClientTag[]>([])
+  const [showNewTagForBtn, setShowNewTagForBtn] = useState<string | null>(null)
+  const [newTagName, setNewTagName] = useState('')
+  const [newTagColor, setNewTagColor] = useState('#4A7C59')
   const [expandedReplies, setExpandedReplies] = useState<Set<string>>(() => {
     const initial = new Set<string>()
     const rowsMap: Record<number, BroadcastButton[]> = {}
@@ -176,6 +182,7 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
 
   const hasPaymentButton = buttons.some((b) => b.type === 'payment')
   const hasDiscountButton = buttons.some((b) => b.type === 'discount')
+  const hasQuizButton = buttons.some((b) => b.type === 'quiz_start')
 
   useEffect(() => {
     if (hasPaymentButton || hasDiscountButton) {
@@ -192,7 +199,32 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
         }).catch(() => {})
       }
     }
-  }, [hasPaymentButton, hasDiscountButton, plans.length, tokenPackages.length])
+    if (hasQuizButton && tags.length === 0) {
+      fetch(`${API}/api/admin/crm/tags`)
+        .then(r => r.json())
+        .then(data => setTags(Array.isArray(data) ? data : (data.tags || [])))
+        .catch(() => {})
+    }
+  }, [hasPaymentButton, hasDiscountButton, hasQuizButton, plans.length, tokenPackages.length, tags.length])
+
+  const handleCreateTag = async (rowIdx: number, btnIdx: number) => {
+    if (!newTagName.trim()) return
+    try {
+      const res = await fetch(`${API}/api/admin/crm/tags`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newTagName.trim(), color: newTagColor }),
+      })
+      const data = await res.json()
+      const tag = data.tag || data
+      if (tag && tag.id) {
+        setTags(prev => [...prev, tag])
+        updateButton(rowIdx, btnIdx, { quiz_tag_id: tag.id })
+        setNewTagName('')
+        setShowNewTagForBtn(null)
+      }
+    } catch {}
+  }
 
   const handleToggle = () => {
     const next = !enabled
@@ -315,7 +347,7 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                           className={styles.typeSelect}
                           value={btn.type}
                           onChange={(e) => {
-                            const newType = e.target.value as 'url' | 'quick_reply' | 'payment' | 'discount'
+                            const newType = e.target.value as 'url' | 'quick_reply' | 'payment' | 'discount' | 'quiz_start'
                             const optIdx = buttons.length
                             if (newType === 'payment') {
                               if (plans.length === 0) {
@@ -328,6 +360,12 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                                   setTokenPackages((data.packages as TokenPackage[]).filter((p) => p.is_active))
                                 }).catch(() => {})
                               }
+                            }
+                            if (newType === 'quiz_start' && tags.length === 0) {
+                              fetch(`${API}/api/admin/crm/tags`)
+                                .then(r => r.json())
+                                .then(data => setTags(Array.isArray(data) ? data : (data.tags || [])))
+                                .catch(() => {})
                             }
                             updateButton(rowIdx, btnIdx, {
                               type: newType,
@@ -342,6 +380,9 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                               discount_bonus_tokens: newType === 'discount' ? (btn.discount_bonus_tokens ?? null) : undefined,
                               discount_bonus_tokens_mode: newType === 'discount' ? (btn.discount_bonus_tokens_mode ?? 'absolute') : undefined,
                               discount_duration_hours: newType === 'discount' ? (btn.discount_duration_hours ?? null) : undefined,
+                              quiz_price: newType === 'quiz_start' ? (btn.quiz_price ?? 99) : undefined,
+                              quiz_original_price: newType === 'quiz_start' ? (btn.quiz_original_price ?? 490) : undefined,
+                              quiz_tag_id: newType === 'quiz_start' ? (btn.quiz_tag_id ?? null) : undefined,
                             })
                           }}
                         >
@@ -349,6 +390,7 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                           <option value="url">Ссылка</option>
                           <option value="payment">💳 Оплата</option>
                           <option value="discount">🏷️ Скидка на все тарифы</option>
+                          <option value="quiz_start">🎯 Запустить опросник</option>
                         </select>
                         {btn.type === 'url' && (
                           <input
@@ -780,6 +822,92 @@ export function ButtonEditor({ buttons, onChange, onAutoFillMessage }: Props) {
                             )}
                             <div className={styles.urlHint}>
                               Скидка действует на все тарифы. Пользователь провалится в специальное меню с зачёркнутыми ценами.
+                            </div>
+                          </div>
+                        )}
+                        {btn.type === 'quiz_start' && (
+                          <div className={styles.paymentSection}>
+                            <div className={styles.paymentFields}>
+                              <div className={styles.paymentFieldGroup}>
+                                <label className={styles.paymentFieldLabel}>Цена опросника (₽)</label>
+                                <input
+                                  className={styles.urlInput}
+                                  type="number"
+                                  placeholder="99"
+                                  value={btn.quiz_price ?? 99}
+                                  min={0}
+                                  onChange={(e) => updateButton(rowIdx, btnIdx, {
+                                    quiz_price: Number(e.target.value),
+                                  })}
+                                />
+                              </div>
+                              <div className={styles.paymentFieldGroup}>
+                                <label className={styles.paymentFieldLabel}>Зачёркнутая цена (₽)</label>
+                                <input
+                                  className={styles.urlInput}
+                                  type="number"
+                                  placeholder="490"
+                                  value={btn.quiz_original_price ?? 490}
+                                  min={0}
+                                  onChange={(e) => updateButton(rowIdx, btnIdx, {
+                                    quiz_original_price: Number(e.target.value),
+                                  })}
+                                />
+                              </div>
+                            </div>
+                            <div className={styles.paymentFieldGroup}>
+                              <label className={styles.paymentFieldLabel}>Авто-тег (необязательно)</label>
+                              <div className={styles.tagRow}>
+                                <select
+                                  className={styles.typeSelect}
+                                  value={btn.quiz_tag_id ?? ''}
+                                  onChange={(e) => updateButton(rowIdx, btnIdx, {
+                                    quiz_tag_id: e.target.value ? Number(e.target.value) : null,
+                                  })}
+                                >
+                                  <option value="">Без тега</option>
+                                  {tags.map(t => (
+                                    <option key={t.id} value={t.id}>{t.name}</option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  className={styles.addBtnInRow}
+                                  onClick={() => setShowNewTagForBtn(
+                                    showNewTagForBtn === `${rowIdx}_${btnIdx}` ? null : `${rowIdx}_${btnIdx}`
+                                  )}
+                                >
+                                  {showNewTagForBtn === `${rowIdx}_${btnIdx}` ? 'Отмена' : '+ Тег'}
+                                </button>
+                              </div>
+                              {showNewTagForBtn === `${rowIdx}_${btnIdx}` && (
+                                <div className={styles.paymentFields} style={{ marginTop: 6 }}>
+                                  <input
+                                    type="text"
+                                    placeholder="Название тега"
+                                    value={newTagName}
+                                    onChange={(e) => setNewTagName(e.target.value)}
+                                    className={styles.urlInput}
+                                  />
+                                  <input
+                                    type="color"
+                                    value={newTagColor}
+                                    onChange={(e) => setNewTagColor(e.target.value)}
+                                    style={{ width: 36, height: 36, padding: 2, border: 'none', cursor: 'pointer' }}
+                                  />
+                                  <button
+                                    type="button"
+                                    className={styles.addBtnInRow}
+                                    onClick={() => handleCreateTag(rowIdx, btnIdx)}
+                                    disabled={!newTagName.trim()}
+                                  >
+                                    Создать
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                            <div className={styles.urlHint}>
+                              При нажатии запустится опросник Funnel B с настроенными ценами
                             </div>
                           </div>
                         )}

@@ -421,3 +421,9 @@
   background: var(--bg-secondary);
   border-radius: var(--radius-sm);
 }
+
+.tagRow {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}

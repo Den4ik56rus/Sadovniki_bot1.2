@@ -5,7 +5,18 @@ import { useEditor, EditorContent } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
+import { TemplateVariableExtension } from './TemplateVariableExtension'
 import styles from './MessageEditor.module.css'
+
+const TEMPLATE_VARIABLES = [
+  { varName: 'first_name', label: 'Имя' },
+  { varName: 'username',   label: '@username' },
+  { varName: 'culture',    label: 'Культура' },
+  { varName: 'region',     label: 'Регион' },
+  { varName: 'problem',    label: 'Проблема' },
+  { varName: 'urgency',    label: 'Срочность' },
+  { varName: 'goal',       label: 'Цель' },
+] as const
 
 interface Props {
   value: string
@@ -36,6 +47,7 @@ export function MessageEditor({ value, onChange, forceRefresh }: Props) {
       Placeholder.configure({
         placeholder: 'Введите текст рассылки...',
       }),
+      TemplateVariableExtension,
     ],
     content: value || '',
     onUpdate: ({ editor: ed }) => {
@@ -128,6 +140,22 @@ export function MessageEditor({ value, onChange, forceRefresh }: Props) {
             </svg>
           </button>
         )}
+      </div>
+
+      {/* Variable panel */}
+      <div className={styles.varPanel}>
+        <span className={styles.varPanelLabel}>Переменные:</span>
+        {TEMPLATE_VARIABLES.map(({ varName, label }) => (
+          <button
+            key={varName}
+            type="button"
+            className={styles.varChipBtn}
+            onClick={() => editor.chain().focus().insertTemplateVariable(varName, label).run()}
+            title={`Вставить {{${varName}}}`}
+          >
+            {label}
+          </button>
+        ))}
       </div>
 
       {/* Editor */}

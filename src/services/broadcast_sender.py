@@ -43,6 +43,76 @@ TELEGRAM_ALLOWED_TAGS = frozenset({
     'a', 'code', 'pre', 'tg-spoiler', 'blockquote',
 })
 
+# ─── Template variable substitution ──────────────────────────────────────────
+
+CULTURE_NAMES = {
+    "strawberry": "Клубника", "raspberry": "Малина", "blueberry": "Голубика",
+    "currant": "Смородина", "honeysuckle": "Жимолость", "blackberry": "Ежевика", "other": "Другое",
+}
+REGION_NAMES = {
+    "central": "Центральный", "south": "Южный", "north": "Северный",
+}
+PROBLEM_NAMES = {
+    "small_berries": "Мало ягод", "diseases": "Болезни", "low_yield": "Низкий урожай",
+    "increase_yield": "Увеличить урожай", "check_care": "Проверить уход",
+}
+URGENCY_NAMES = {
+    "early": "Только заметил", "progressing": "Уже прогрессирует", "urgent": "Срочно спасать",
+}
+GOAL_NAMES = {
+    "save": "Спасти урожай", "restore": "Восстановить",
+    "yield": "Увеличить урожай", "prevent": "Предотвратить",
+}
+
+
+def substitute_variables(text: str, user_vars: dict) -> str:
+    """Заменить {{var}} токены на значения пользователя. Отсутствующие → пустая строка."""
+    if not text or '{{' not in text:
+        return text
+    return re.sub(r'\{\{(\w+)\}\}', lambda m: user_vars.get(m.group(1).strip(), ''), text)
+
+
+def _build_user_vars_from_row(row) -> dict:
+    return {
+        'first_name': row['first_name'] or '',
+        'username':   f"@{row['username']}" if row['username'] else '',
+        'culture':    CULTURE_NAMES.get(row['culture'] or '', row['culture'] or ''),
+        'region':     REGION_NAMES.get(row['region'] or '', row['region'] or ''),
+        'problem':    PROBLEM_NAMES.get(row['problem'] or '', row['problem'] or ''),
+        'urgency':    URGENCY_NAMES.get(row['urgency'] or '', row['urgency'] or ''),
+        'goal':       GOAL_NAMES.get(row['goal'] or '', row['goal'] or ''),
+    }
+
+
+_VARS_QUERY = """
+    SELECT u.id, u.first_name, u.username,
+           qa.culture, qa.region, qa.problem,
+           qs.urgency, qs.goal
+    FROM users u
+    LEFT JOIN user_quiz_answers qa ON qa.user_id = u.id
+    LEFT JOIN user_quiz_survey2  qs ON qs.user_id = u.id
+"""
+
+
+async def _fetch_user_vars_batch(user_ids: list) -> dict:
+    """Пакетная загрузка переменных для списка user_id. Возвращает dict[user_id → vars]."""
+    if not user_ids:
+        return {}
+    from src.services.db.pool import get_pool
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        rows = await conn.fetch(_VARS_QUERY + "WHERE u.id = ANY($1)", user_ids)
+    return {row['id']: _build_user_vars_from_row(row) for row in rows}
+
+
+async def _fetch_user_vars_single(user_id: int) -> dict:
+    """Загрузка переменных для одного пользователя."""
+    from src.services.db.pool import get_pool
+    pool = get_pool()
+    async with pool.acquire() as conn:
+        row = await conn.fetchrow(_VARS_QUERY + "WHERE u.id = $1", user_id)
+    return _build_user_vars_from_row(row) if row else {}
+
 
 def sanitize_html_for_telegram(html: str) -> str:
     """Конвертировать TipTap HTML в Telegram-совместимый HTML."""
@@ -262,8 +332,16 @@ async def execute_broadcast(broadcast_id: int, run_id: Optional[int] = None) -> 
     from src.bot import get_bot  # lazy import to avoid circular dependency
     bot = get_bot()
 
-    # Конвертируем HTML в Telegram-совместимый формат
-    message_text = sanitize_html_for_telegram(broadcast['message_text']) if broadcast['message_text'] else None
+    # Персонализация: если в тексте есть {{var}} — загружаем данные пользователей
+    raw_message_text = broadcast['message_text']
+    has_vars = bool(raw_message_text and '{{' in raw_message_text)
+    user_vars_map: dict = {}
+    if has_vars:
+        all_user_ids = [r['user_id'] for r in recipients]
+        user_vars_map = await _fetch_user_vars_batch(all_user_ids)
+
+    # Статичный текст (без переменных) — вычисляем один раз
+    static_message_text = sanitize_html_for_telegram(raw_message_text) if raw_message_text else None
 
     # Если photo_path — только имя файла, строим полный путь
     photo_path = broadcast['photo_path']
@@ -321,6 +399,13 @@ async def execute_broadcast(broadcast_id: int, run_id: Optional[int] = None) -> 
 
         tg_id = recipient['telegram_user_id']
         user_id = recipient['user_id']
+
+        # Персонализированный текст сообщения
+        if has_vars:
+            user_vars = user_vars_map.get(user_id, {})
+            message_text = sanitize_html_for_telegram(substitute_variables(raw_message_text, user_vars))
+        else:
+            message_text = static_message_text
 
         # Персональный reply_markup для URL/payment кнопок
         reply_markup = shared_reply_markup
@@ -450,7 +535,11 @@ async def send_to_single_user(broadcast_id: int, user_id: int, telegram_user_id:
     from src.bot import get_bot
     bot = get_bot()
 
-    message_text = sanitize_html_for_telegram(broadcast['message_text']) if broadcast['message_text'] else None
+    raw_message = broadcast['message_text']
+    if raw_message and '{{' in raw_message and user_id:
+        user_vars = await _fetch_user_vars_single(user_id)
+        raw_message = substitute_variables(raw_message, user_vars)
+    message_text = sanitize_html_for_telegram(raw_message) if raw_message else None
 
     photo_path = broadcast['photo_path']
     if photo_path and not os.path.isabs(photo_path):
